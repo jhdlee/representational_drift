@@ -641,13 +641,15 @@ class TimeVaryingLinearGaussianSSM(SSM):
         time_varying_emission_variance: float=0.0,
         sequence_length: int=0,
         has_dynamics_bias: bool=False,
-        has_emissions_bias: bool=False
+        has_emissions_bias: bool=False,
+        update_covariance: bool=True
     ):
         self.state_dim = state_dim
         self.emission_dim = emission_dim
         self.input_dim = input_dim
         self.has_dynamics_bias = has_dynamics_bias
         self.has_emissions_bias = has_emissions_bias
+        self.update_covariance = update_covariance
 
         assert time_varying_dynamics_variance >= 0.0
         assert time_varying_emission_variance >= 0.0
@@ -925,8 +927,18 @@ class TimeVaryingLinearGaussianSSM(SSM):
         b = params.emissions.bias
         R = params.emissions.cov
         emission_dim = R.shape[0]
-        smoothed_emissions = posterior.smoothed_means @ H.T + b if self.has_emissions_bias else posterior.smoothed_means @ H.T
-        smoothed_emissions_cov = H @ posterior.smoothed_covariances @ H.T + R
+
+        if self.time_varying_emission_variance > 0.0:
+            smoothed_emissions = jnp.einsum('tx,tyx->ty', posterior.smoothed_means, H)
+            smoothed_emissions_cov = jnp.einsum('tya,ab,txb->tyx', H, posterior.smoothed_means, H) + R
+            print(smoothed_emissions_cov.shape)
+        else:
+            smoothed_emissions = posterior.smoothed_means @ H.T
+            smoothed_emissions_cov = H @ posterior.smoothed_covariances @ H.T + R
+
+        if self.has_emissions_bias:
+            smoothed_emissions += b
+
         smoothed_emissions_std = jnp.sqrt(
             jnp.array([smoothed_emissions_cov[:, i, i] for i in range(emission_dim)]))
         return smoothed_emissions, smoothed_emissions_std
@@ -1031,9 +1043,16 @@ class TimeVaryingLinearGaussianSSM(SSM):
         D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
             else (HD[:, self.state_dim:], None)
 
-        params = ParamsLGSSM(
-            initial=ParamsLGSSMInitial(mean=m, cov=S),
-            dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q),
-            emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R)
-        )
+        if self.update_covariance:
+            params = ParamsLGSSM(
+                initial=ParamsLGSSMInitial(mean=m, cov=S),
+                dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q),
+                emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R)
+            )
+        else:
+            params = ParamsLGSSM(
+                initial=ParamsLGSSMInitial(mean=m, cov=params.initial.cov),
+                dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=params.dynamics.cov),
+                emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=params.emissions.cov)
+            )
         return params, m_step_state
