@@ -733,12 +733,10 @@ class TimeVaryingLinearGaussianSSM(SSM):
             key1, key = jr.split(key, 2)
             initial_emission_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
             _, emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
-            emission_weights = jnp.concatenate([initial_emission_weights[None], dynamics_weights])
-            _emission_weights = emission_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(emission_weights)), axis=-1))
+            _emission_weights = jnp.concatenate([initial_emission_weights[None], emission_weights])
         else:
             key1, key = jr.split(key, 2)
-            emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
-            _emission_weights = emission_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(emission_weights))))
+            _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
