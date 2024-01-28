@@ -637,8 +637,8 @@ class TimeVaryingLinearGaussianSSM(SSM):
         state_dim: int,
         emission_dim: int,
         input_dim: int=0,
-        time_varying_dynamics_scale: float=0.0,
-        time_varying_emission_scale: float=0.0,
+        time_varying_dynamics_variance: float=0.0,
+        time_varying_emission_variance: float=0.0,
         sequence_length: int=0,
         has_dynamics_bias: bool=False,
         has_emissions_bias: bool=False
@@ -649,11 +649,11 @@ class TimeVaryingLinearGaussianSSM(SSM):
         self.has_dynamics_bias = has_dynamics_bias
         self.has_emissions_bias = has_emissions_bias
 
-        assert time_varying_dynamics_scale >= 0.0
-        assert time_varying_emission_scale >= 0.0
-        self.time_varying_dynamics_scale = time_varying_dynamics_scale
-        self.time_varying_emission_scale = time_varying_emission_scale
-        if time_varying_dynamics_scale > 0.0 or time_varying_emission_scale > 0.0:
+        assert time_varying_dynamics_variance >= 0.0
+        assert time_varying_emission_variance >= 0.0
+        self.time_varying_dynamics_variance = time_varying_dynamics_variance
+        self.time_varying_emission_variance = time_varying_emission_variance
+        if time_varying_dynamics_variance > 0.0 or time_varying_emission_variance > 0.0:
             assert sequence_length > 0
         self.sequence_length = sequence_length
 
@@ -702,36 +702,36 @@ class TimeVaryingLinearGaussianSSM(SSM):
         _initial_mean = jnp.zeros(self.state_dim)
         _initial_covariance = jnp.eye(self.state_dim)
 
-        if self.time_varying_dynamics_scale > 0.0:
+        if self.time_varying_dynamics_variance > 0.0:
             keys = jr.split(key, self.sequence_length)
             key = keys[-1]
             def _get_dynamics_weights(prev_weights, current_key):
-                current_weights = prev_weights + jnp.sqrt(self.time_varying_dynamics_scale) * jr.normal(current_key, shape=(self.state_dim, self.state_dim))
+                current_weights = prev_weights + jnp.sqrt(self.time_varying_dynamics_variance) * jr.normal(current_key, shape=(self.state_dim, self.state_dim))
                 return current_weights, current_weights
 
             key1, key = jr.split(key, 2)
             initial_dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
             _, _dynamics_weights = jax.lax.scan(_get_dynamics_weights, initial_dynamics_weights, keys[:-1])
             _dynamics_weights = jnp.concatenate([initial_dynamics_weights[None], _dynamics_weights])
-            _dynamics_weights = _dynamics_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights)), axis=-1))[:, None, None]
+            _dynamics_weights = _dynamics_weights / (1e-8 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
         else:
             key1, key = jr.split(key, 2)
             _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
-            _dynamics_weights = _dynamics_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
+            _dynamics_weights = _dynamics_weights / (1e-8 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
 
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
         _dynamics_covariance = 0.1 * jnp.eye(self.state_dim)
 
-        if self.time_varying_emission_scale > 0.0:
+        if self.time_varying_emission_variance > 0.0:
             keys = jr.split(key, self.sequence_length)
             key = keys[-1]
             def _get_emission_weights(prev_weights, current_key):
-                current_weights = prev_weights + jnp.sqrt(self.time_varying_emission_scale) * jr.normal(current_key, shape=(self.emission_dim, self.state_dim))
+                current_weights = prev_weights + jnp.sqrt(self.time_varying_emission_variance) * jr.normal(current_key, shape=(self.emission_dim, self.state_dim))
                 return current_weights, current_weights
 
             key1, key = jr.split(key, 2)
-            initial_emission_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
+            initial_emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
         else:
@@ -802,7 +802,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
 
         """
 
-        if self.time_varying_dynamics_scale > 0.0 or self.time_varying_emission_scale > 0.0:
+        if self.time_varying_dynamics_variance > 0.0 or self.time_varying_emission_variance > 0.0:
             assert num_timesteps <= self.sequence_length
 
         def _step(prev_state, args):
@@ -816,12 +816,12 @@ class TimeVaryingLinearGaussianSSM(SSM):
         key1, key2, key = jr.split(key, 3)
         initial_input = tree_map(lambda x: x[0], inputs)
         initial_state = self.initial_distribution(params, initial_input).sample(seed=key1)
-        initial_emission = self.emission_distribution(params, initial_state, initial_input).sample(seed=key2)
+        initial_emission = self.emission_distribution(0, params, initial_state, initial_input).sample(seed=key2)
 
         # Sample the remaining emissions and states
         next_keys = jr.split(key, num_timesteps - 1)
         next_inputs = tree_map(lambda x: x[1:], inputs)
-        next_indices = jnp.arange(num_timesteps)
+        next_indices = jnp.arange(1, num_timesteps)
         _, (next_states, next_emissions) = lax.scan(_step, initial_state, (next_keys, next_inputs, next_indices))
 
         # Concatenate the initial state and emission with the following ones
@@ -845,7 +845,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         inputs: Optional[Float[Array, "ntime input_dim"]]=None
     ) -> tfd.Distribution:
         inputs = inputs if inputs is not None else jnp.zeros(self.input_dim)
-        if self.time_varying_dynamics_scale > 0.0:
+        if self.time_varying_dynamics_variance > 0.0:
             mean = params.dynamics.weights[timestep] @ state + params.dynamics.input_weights @ inputs
         else:
             mean = params.dynamics.weights @ state + params.dynamics.input_weights @ inputs
@@ -861,7 +861,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         inputs: Optional[Float[Array, "ntime input_dim"]]=None
     ) -> tfd.Distribution:
         inputs = inputs if inputs is not None else jnp.zeros(self.input_dim)
-        if self.time_varying_emission_scale > 0.0:
+        if self.time_varying_emission_variance > 0.0:
             mean = params.emissions.weights[timestep] @ state + params.emissions.input_weights @ inputs
         else:
             mean = params.emissions.weights @ state + params.emissions.input_weights @ inputs
