@@ -713,7 +713,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
             initial_dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
             _, _dynamics_weights = jax.lax.scan(_get_dynamics_weights, initial_dynamics_weights, keys[:-1])
             _dynamics_weights = jnp.concatenate([initial_dynamics_weights[None], _dynamics_weights])
-            _dynamics_weights = _dynamics_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights)), axis=-1))
+            _dynamics_weights = _dynamics_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights)), axis=-1))[:, None, None]
         else:
             key1, key = jr.split(key, 2)
             _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
