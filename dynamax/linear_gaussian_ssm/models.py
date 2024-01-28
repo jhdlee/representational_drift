@@ -702,7 +702,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         _initial_mean = jnp.zeros(self.state_dim)
         _initial_covariance = jnp.eye(self.state_dim)
 
-        if self.time_varying_dynamics_scale >= 0.0:
+        if self.time_varying_dynamics_scale > 0.0:
             keys = jr.split(key, self.sequence_length)
             key = keys[-1]
             def _get_dynamics_weights(prev_weights, current_key):
@@ -723,7 +723,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
         _dynamics_covariance = 0.1 * jnp.eye(self.state_dim)
 
-        if self.time_varying_emission_scale >= 0.0:
+        if self.time_varying_emission_scale > 0.0:
             keys = jr.split(key, self.sequence_length)
             key = keys[-1]
             def _get_emission_weights(prev_weights, current_key):
@@ -847,7 +847,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         inputs: Optional[Float[Array, "ntime input_dim"]]=None
     ) -> tfd.Distribution:
         inputs = inputs if inputs is not None else jnp.zeros(self.input_dim)
-        if self.time_varying_dynamics_scale >= 0.0:
+        if self.time_varying_dynamics_scale > 0.0:
             mean = params.dynamics.weights[timestep] @ state + params.dynamics.input_weights @ inputs
         else:
             mean = params.dynamics.weights @ state + params.dynamics.input_weights @ inputs
@@ -863,7 +863,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         inputs: Optional[Float[Array, "ntime input_dim"]]=None
     ) -> tfd.Distribution:
         inputs = inputs if inputs is not None else jnp.zeros(self.input_dim)
-        if self.time_varying_emission_scale >= 0.0:
+        if self.time_varying_emission_scale > 0.0:
             mean = params.emissions.weights[timestep] @ state + params.emissions.input_weights @ inputs
         else:
             mean = params.emissions.weights @ state + params.emissions.input_weights @ inputs
