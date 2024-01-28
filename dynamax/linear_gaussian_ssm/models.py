@@ -925,7 +925,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         b = params.emissions.bias
         R = params.emissions.cov
         emission_dim = R.shape[0]
-        smoothed_emissions = posterior.smoothed_means @ H.T + b
+        smoothed_emissions = posterior.smoothed_means @ H.T + b if self.has_emissions_bias else posterior.smoothed_means @ H.T
         smoothed_emissions_cov = H @ posterior.smoothed_covariances @ H.T + R
         smoothed_emissions_std = jnp.sqrt(
             jnp.array([smoothed_emissions_cov[:, i, i] for i in range(emission_dim)]))
