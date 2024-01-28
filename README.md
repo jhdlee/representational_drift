@@ -1,4 +1,4 @@
-# Welcome to DYNAMAX!
+# Welcome to DYNAMAX! (This is a fork of DYNAMAX for investigating LDS Identiability)
 
 ![Logo](https://raw.githubusercontent.com/probml/dynamax/main/logo/logo.gif)
 
