@@ -711,13 +711,13 @@ class TimeVaryingLinearGaussianSSM(SSM):
 
             key1, key = jr.split(key, 2)
             initial_dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
-            _, dynamics_weights = jax.lax.scan(_get_dynamics_weights, initial_dynamics_weights, keys[:-1])
-            dynamics_weights = jnp.concatenate([initial_dynamics_weights[None], dynamics_weights])
-            _dynamics_weights = dynamics_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(dynamics_weights)), axis=-1))
+            _, _dynamics_weights = jax.lax.scan(_get_dynamics_weights, initial_dynamics_weights, keys[:-1])
+            _dynamics_weights = jnp.concatenate([initial_dynamics_weights[None], _dynamics_weights])
+            _dynamics_weights = _dynamics_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights)), axis=-1))
         else:
             key1, key = jr.split(key, 2)
-            dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
-            _dynamics_weights = dynamics_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(dynamics_weights))))
+            _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
+            _dynamics_weights = _dynamics_weights / (1e-2 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
 
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
@@ -732,8 +732,8 @@ class TimeVaryingLinearGaussianSSM(SSM):
 
             key1, key = jr.split(key, 2)
             initial_emission_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
-            _, emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
-            _emission_weights = jnp.concatenate([initial_emission_weights[None], emission_weights])
+            _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
+            _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
         else:
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
