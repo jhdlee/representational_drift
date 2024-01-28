@@ -2,7 +2,7 @@ from fastprogress.fastprogress import progress_bar
 from functools import partial
 import numpy as np
 import jax
-from jax import jit
+from jax import jit, lax
 import jax.numpy as jnp
 import jax.random as jr
 from jax.tree_util import tree_map
@@ -713,11 +713,11 @@ class TimeVaryingLinearGaussianSSM(SSM):
             initial_dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
             _, _dynamics_weights = jax.lax.scan(_get_dynamics_weights, initial_dynamics_weights, keys[:-1])
             _dynamics_weights = jnp.concatenate([initial_dynamics_weights[None], _dynamics_weights])
-            _dynamics_weights = _dynamics_weights / (1e-8 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
+            _dynamics_weights = _dynamics_weights / (1e-4 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
         else:
             key1, key = jr.split(key, 2)
             _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
-            _dynamics_weights = _dynamics_weights / (1e-8 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
+            _dynamics_weights = _dynamics_weights / (1e-4 + np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
 
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
