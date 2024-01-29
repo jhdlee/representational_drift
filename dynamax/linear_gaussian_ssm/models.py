@@ -1031,6 +1031,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
 
         def fit_linear_regression(ExxT, ExyT, EyyT, N):
             # Solve a linear regression given sufficient statistics
+            ExxT, ExyT, EyyT = ExxT.sum(0), ExyT.sum(0), EyyT.sum(0)
             W = psd_solve(ExxT, ExyT).T
             Sigma = (EyyT - W @ ExyT - ExyT.T @ W.T + W @ ExxT @ W.T) / N
             return W, Sigma
