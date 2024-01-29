@@ -930,7 +930,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
 
         if self.time_varying_emission_variance > 0.0:
             smoothed_emissions = jnp.einsum('tx,tyx->ty', posterior.smoothed_means, H)
-            smoothed_emissions_cov = jnp.einsum('tya,tab,txb->tyx', H, posterior.smoothed_means, H) + R
+            smoothed_emissions_cov = jnp.einsum('tya,tab,txb->tyx', H, posterior.smoothed_covariances, H) + R
         else:
             smoothed_emissions = posterior.smoothed_means @ H.T
             smoothed_emissions_cov = H @ posterior.smoothed_covariances @ H.T + R
