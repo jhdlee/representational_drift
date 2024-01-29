@@ -1042,9 +1042,8 @@ class TimeVaryingLinearGaussianSSM(SSM):
             # EyyT: T x state_dim x state_dim
             # N: T-1 (for dynamics)
             W = jnp.swapaxes(vmap(psd_solve)(ExxT, ExyT), -1, -2)
-            print(W.shape, ExyT.shape, ExxT.shape, EyyT.shape)
-            Sigma = (EyyT.sum(0) - jnp.einsum('tij,tjk->ik', W, ExyT) - jnp.einsum('tij,tjk->ik', ExyT.T, W.T) \
-                     + jnp.einsum('tij,tjk,tkl', W, ExxT, W.T)) / N
+            Sigma = (EyyT.sum(0) - jnp.einsum('tij,tjk->ik', W, ExyT) - jnp.einsum('tji,tkj->ik', ExyT, W) \
+                     + jnp.einsum('tij,tjk,tlk->il', W, ExxT, W)) / N
             return W, Sigma
 
         # Sum the statistics across all batches
