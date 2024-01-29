@@ -1003,13 +1003,24 @@ class TimeVaryingLinearGaussianSSM(SSM):
 
         # more expected sufficient statistics for the emissions
         # let z[t] = [x[t], u[t]] for t = 0...T-1
-        sum_zzT = jnp.block([[Ex.T @ Ex, Ex.T @ u], [u.T @ Ex, u.T @ u]])
-        sum_zzT = sum_zzT.at[:self.state_dim, :self.state_dim].add(Vx.sum(0))
-        sum_zyT = jnp.block([[Ex.T @ y], [u.T @ y]])
-        sum_yyT = emissions.T @ emissions
+        # sum_zzT = jnp.block([[Ex.T @ Ex, Ex.T @ u], [u.T @ Ex, u.T @ u]])
+        # sum_zzT = sum_zzT.at[:self.state_dim, :self.state_dim].add(Vx.sum(0))
+        # sum_zyT = jnp.block([[Ex.T @ y], [u.T @ y]])
+        # sum_yyT = emissions.T @ emissions
+        # emission_stats = (sum_zzT, sum_zyT, sum_yyT, num_timesteps)
+        # if not self.has_emissions_bias:
+        #     emission_stats = (sum_zzT[:-1, :-1], sum_zyT[:-1, :], sum_yyT, num_timesteps)
+        sum_zzT = jnp.block([[jnp.einsum('ti,tj->tij', Ex, Ex),
+                              jnp.einsum('ti,tj->tij', Ex, u)],
+                             [jnp.einsum('ti,tj->tij', u, Ex),
+                              jnp.einsum('ti,tj->tij', u, u)]])
+        sum_zzT = sum_zzT.at[:, :self.state_dim, :self.state_dim].add(Vx)
+        sum_zyT = jnp.block([[jnp.einsum('ti,tj->tij', Ex, y)],
+                             [jnp.einsum('ti,tj->tij', u, y)]])
+        sum_yyT = jnp.einsum('ti,tj->tij', emissions, emissions)
         emission_stats = (sum_zzT, sum_zyT, sum_yyT, num_timesteps)
         if not self.has_emissions_bias:
-            emission_stats = (sum_zzT[:-1, :-1], sum_zyT[:-1, :], sum_yyT, num_timesteps)
+            emission_stats = (sum_zzT[:, :-1, :-1], sum_zyT[:, :-1, :], sum_yyT, num_timesteps)
 
         return (init_stats, dynamics_stats, emission_stats), posterior.marginal_loglik
 
@@ -1068,10 +1079,19 @@ class TimeVaryingLinearGaussianSSM(SSM):
             B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
                 else (FB[:, self.state_dim:], None)
 
-        HD, R = fit_linear_regression(*emission_stats)
-        H = HD[:, :self.state_dim]
-        D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
-            else (HD[:, self.state_dim:], None)
+        if self.time_varying_emission_variance > 0.0:
+            HD, R = fit_time_varying_linear_regression(*emission_stats)
+            H = HD[:, :, :self.state_dim]
+            D, d = (HD[:, :, self.state_dim:-1].mean(0), HD[:, :, -1].mean(0)) if self.has_emissions_bias else (HD[:, :, self.state_dim:].mean(0), None)
+        else:
+            emission_stats = (emission_stats[0].sum(0),
+                              emission_stats[1].sum(0),
+                              emission_stats[2].sum(0),
+                              emission_stats[3])
+            HD, R = fit_linear_regression(*emission_stats)
+            H = HD[:, :self.state_dim]
+            D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
+                else (HD[:, self.state_dim:], None)
 
         if self.update_initial_and_covariance:
             params = ParamsLGSSM(
