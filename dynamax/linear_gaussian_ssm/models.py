@@ -642,14 +642,14 @@ class TimeVaryingLinearGaussianSSM(SSM):
         sequence_length: int=0,
         has_dynamics_bias: bool=False,
         has_emissions_bias: bool=False,
-        update_covariance: bool=True
+        update_initial_and_covariance: bool=True
     ):
         self.state_dim = state_dim
         self.emission_dim = emission_dim
         self.input_dim = input_dim
         self.has_dynamics_bias = has_dynamics_bias
         self.has_emissions_bias = has_emissions_bias
-        self.update_covariance = update_covariance
+        self.update_initial_and_covariance = update_initial_and_covariance
 
         assert time_varying_dynamics_variance >= 0.0
         assert time_varying_emission_variance >= 0.0
@@ -1043,7 +1043,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
             else (HD[:, self.state_dim:], None)
 
-        if self.update_covariance:
+        if self.update_initial_and_covariance:
             params = ParamsLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
                 dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q),
@@ -1051,7 +1051,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
             )
         else:
             params = ParamsLGSSM(
-                initial=ParamsLGSSMInitial(mean=m, cov=params.initial.cov),
+                initial=ParamsLGSSMInitial(mean=params.initial.mean, cov=params.initial.cov),
                 dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=params.dynamics.cov),
                 emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=params.emissions.cov)
             )
