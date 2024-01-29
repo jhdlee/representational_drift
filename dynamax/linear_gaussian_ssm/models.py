@@ -2,7 +2,7 @@ from fastprogress.fastprogress import progress_bar
 from functools import partial
 import numpy as np
 import jax
-from jax import jit, lax
+from jax import jit, lax, vmap
 import jax.numpy as jnp
 import jax.random as jr
 from jax.tree_util import tree_map
@@ -705,7 +705,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         _initial_covariance = jnp.eye(self.state_dim)
 
         if self.time_varying_dynamics_variance > 0.0:
-            keys = jr.split(key, self.sequence_length)
+            keys = jr.split(key, self.sequence_length-1)
             key = keys[-1]
             def _get_dynamics_weights(prev_weights, current_key):
                 current_weights = prev_weights + jnp.sqrt(self.time_varying_dynamics_variance) * jr.normal(current_key, shape=(self.state_dim, self.state_dim))
@@ -810,7 +810,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         def _step(prev_state, args):
             key, inpt, idx = args
             key1, key2 = jr.split(key, 2)
-            state = self.transition_distribution(idx, params, prev_state, inpt).sample(seed=key2)
+            state = self.transition_distribution(idx-1, params, prev_state, inpt).sample(seed=key2)
             emission = self.emission_distribution(idx, params, state, inpt).sample(seed=key1)
             return state, (state, emission)
 
@@ -982,13 +982,24 @@ class TimeVaryingLinearGaussianSSM(SSM):
         # expected sufficient statistics for the dynamics tfd.Distribution
         # let zp[t] = [x[t], u[t]] for t = 0...T-2
         # let xn[t] = x[t+1]          for t = 0...T-2
-        sum_zpzpT = jnp.block([[Exp.T @ Exp, Exp.T @ up], [up.T @ Exp, up.T @ up]])
-        sum_zpzpT = sum_zpzpT.at[:self.state_dim, :self.state_dim].add(Vxp.sum(0))
-        sum_zpxnT = jnp.block([[Expxn.sum(0)], [up.T @ Exn]])
-        sum_xnxnT = Vxn.sum(0) + Exn.T @ Exn
+        # sum_zpzpT = jnp.block([[Exp.T @ Exp, Exp.T @ up], [up.T @ Exp, up.T @ up]])
+        # sum_zpzpT = sum_zpzpT.at[:self.state_dim, :self.state_dim].add(Vxp.sum(0))
+        # sum_zpxnT = jnp.block([[Expxn.sum(0)], [up.T @ Exn]])
+        # sum_xnxnT = Vxn.sum(0) + Exn.T @ Exn
+        # dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, num_timesteps - 1)
+        # if not self.has_dynamics_bias:
+        #     dynamics_stats = (sum_zpzpT[:-1, :-1], sum_zpxnT[:-1, :], sum_xnxnT,
+        #                         num_timesteps - 1)
+        sum_zpzpT = jnp.block([[jnp.einsum('ti,tj->tij', Exp, Exp),
+                                jnp.einsum('ti,tj->tij', Exp, up)],
+                               [jnp.einsum('ti,tj->tij', up, Exp),
+                                jnp.einsum('ti,tj->tij', up, up)]])
+        sum_zpzpT = sum_zpzpT.at[:, :self.state_dim, :self.state_dim].add(Vxp)
+        sum_zpxnT = jnp.block([[Expxn], [jnp.einsum('ti,tj->tij', up, Exn)]])
+        sum_xnxnT = Vxn + jnp.einsum('ti,tj->tij', Exn, Exn)
         dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, num_timesteps - 1)
         if not self.has_dynamics_bias:
-            dynamics_stats = (sum_zpzpT[:-1, :-1], sum_zpxnT[:-1, :], sum_xnxnT,
+            dynamics_stats = (sum_zpzpT[:, :-1, :-1], sum_zpxnT[:, :-1, :], sum_xnxnT,
                                 num_timesteps - 1)
 
         # more expected sufficient statistics for the emissions
@@ -1024,6 +1035,17 @@ class TimeVaryingLinearGaussianSSM(SSM):
             Sigma = (EyyT - W @ ExyT - ExyT.T @ W.T + W @ ExxT @ W.T) / N
             return W, Sigma
 
+        def fit_time_varying_linear_regression(ExxT, ExyT, EyyT, N):
+            # Solve a linear regression given sufficient statistics
+            # ExxT: T x (state_dim + input_dim + 1) x (state_dim + input_dim + 1)
+            # ExyT: T x (state_dim + input_dim + 1) x state_dim
+            # EyyT: T x state_dim x state_dim
+            # N: T-1 (for dynamics)
+            W = jnp.swapaxes(vmap(psd_solve)(ExxT, ExyT), -1, -2)
+            Sigma = (EyyT.sum(0) - jnp.einsum('tij,tjk->ik', W, ExyT) - jnp.einsum('tij,tjk->ik', ExyT.T, W.T) \
+                     + jnp.einsum('tij,tjk,tkl', W, ExxT, W.T)) / N
+            return W, Sigma
+
         # Sum the statistics across all batches
         stats = tree_map(partial(jnp.sum, axis=0), batch_stats)
         init_stats, dynamics_stats, emission_stats = stats
@@ -1033,10 +1055,16 @@ class TimeVaryingLinearGaussianSSM(SSM):
         S = (sum_x0x0T - jnp.outer(sum_x0, sum_x0)) / N
         m = sum_x0 / N
 
-        FB, Q = fit_linear_regression(*dynamics_stats)
-        F = FB[:, :self.state_dim]
-        B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
-            else (FB[:, self.state_dim:], None)
+        if self.time_varying_dynamics_variance > 0.0:
+            FB, Q = fit_time_varying_linear_regression(*dynamics_stats)
+            F = FB[:, :, :self.state_dim]
+            B, b = (FB[:, :, self.state_dim:-1].mean(0), FB[:, :, -1].mean(0)) if self.has_dynamics_bias \
+            else (FB[:, :, self.state_dim:].mean(0), None)
+        else:
+            FB, Q = fit_linear_regression(*dynamics_stats)
+            F = FB[:, :self.state_dim]
+            B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
+                else (FB[:, self.state_dim:], None)
 
         HD, R = fit_linear_regression(*emission_stats)
         H = HD[:, :self.state_dim]
