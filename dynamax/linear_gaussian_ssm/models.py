@@ -1031,7 +1031,6 @@ class TimeVaryingLinearGaussianSSM(SSM):
 
         def fit_linear_regression(ExxT, ExyT, EyyT, N):
             # Solve a linear regression given sufficient statistics
-            ExxT, ExyT, EyyT = ExxT.sum(0), ExyT.sum(0), EyyT.sum(0)
             W = psd_solve(ExxT, ExyT).T
             Sigma = (EyyT - W @ ExyT - ExyT.T @ W.T + W @ ExxT @ W.T) / N
             return W, Sigma
@@ -1062,6 +1061,10 @@ class TimeVaryingLinearGaussianSSM(SSM):
             B, b = (FB[:, :, self.state_dim:-1].mean(0), FB[:, :, -1].mean(0)) if self.has_dynamics_bias \
             else (FB[:, :, self.state_dim:].mean(0), None)
         else:
+            dynamics_stats = (dynamics_stats[0].sum(0),
+                              dynamics_stats[1].sum(0),
+                              dynamics_stats[2].sum(0),
+                              dynamics_stats[3])
             FB, Q = fit_linear_regression(*dynamics_stats)
             F = FB[:, :self.state_dim]
             B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
