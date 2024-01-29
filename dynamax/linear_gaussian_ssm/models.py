@@ -934,6 +934,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
             print(smoothed_emissions_cov.shape)
         else:
             smoothed_emissions = posterior.smoothed_means @ H.T
+            print(posterior.smoothed_covariances.shape)
             smoothed_emissions_cov = H @ posterior.smoothed_covariances @ H.T + R
 
         if self.has_emissions_bias:
@@ -1058,8 +1059,7 @@ class TimeVaryingLinearGaussianSSM(SSM):
         if self.time_varying_dynamics_variance > 0.0:
             FB, Q = fit_time_varying_linear_regression(*dynamics_stats)
             F = FB[:, :, :self.state_dim]
-            B, b = (FB[:, :, self.state_dim:-1].mean(0), FB[:, :, -1].mean(0)) if self.has_dynamics_bias \
-            else (FB[:, :, self.state_dim:].mean(0), None)
+            B, b = (FB[:, :, self.state_dim:-1].mean(0), FB[:, :, -1].mean(0)) if self.has_dynamics_bias else (FB[:, :, self.state_dim:].mean(0), None)
         else:
             dynamics_stats = (dynamics_stats[0].sum(0),
                               dynamics_stats[1].sum(0),
