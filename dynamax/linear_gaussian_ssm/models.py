@@ -693,6 +693,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     scale=jnp.eye(self.state_dim ** 2)))
 
             key, this_key = jr.split(key, 2)
+            print(key, this_key)
+            print(type(key), type(this_key))
             self.initial_dynamics_cov, self.initial_dynamics_mean = self.dynamics_prior.sample(this_key)
         else:
             self.dynamics_prior = default_prior(
