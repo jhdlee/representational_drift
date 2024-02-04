@@ -692,7 +692,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     df=self.state_dim ** 2 + 0.1,
                     scale=jnp.eye(self.state_dim ** 2)))
 
-            key, this_key = jr.split(2)
+            key, this_key = jr.split(key, 2)
             self.initial_dynamics_cov, self.initial_dynamics_mean = self.dynamics_prior.sample(this_key)
         else:
             self.dynamics_prior = default_prior(
@@ -709,7 +709,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     mean_concentration=1.,
                     df=self.emission_dim * self.state_dim + 0.1,
                     scale=jnp.eye(self.emission_dim * self.state_dim)))
-            key, this_key = jr.split(2)
+            key, this_key = jr.split(key, 2)
             self.initial_emissions_cov, self.initial_emissions_mean = self.emission_prior.sample(this_key)
         else:
             self.emission_prior = default_prior(
