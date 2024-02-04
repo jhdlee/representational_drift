@@ -19,4 +19,4 @@ from dynamax.linear_gaussian_ssm.parallel_inference import lgssm_filter as paral
 from dynamax.linear_gaussian_ssm.parallel_inference import lgssm_smoother as parallel_lgssm_smoother
 from dynamax.linear_gaussian_ssm.parallel_inference import lgssm_posterior_sample as parallel_lgssm_posterior_sample
 
-from dynamax.linear_gaussian_ssm.models import LinearGaussianConjugateSSM, LinearGaussianSSM, TimeVaryingLinearGaussianSSM
+from dynamax.linear_gaussian_ssm.models import LinearGaussianConjugateSSM, LinearGaussianSSM, TimeVaryingLinearGaussianConjugateSSM
