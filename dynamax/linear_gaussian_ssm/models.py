@@ -1024,13 +1024,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
 
         # dynamics
-        dynamics_bias = params.dynamics.bias if self.has_dynamics_bias else jnp.zeros((self.state_dim, 0))
-        dynamics_matrix = jnp.column_stack((params.dynamics.weights[0] if self.time_varying_dynamics else params.dynamics.weights,
-                                            params.dynamics.input_weights,
-                                            dynamics_bias))
-        print(params.dynamics.cov.shape, jnp.ravel(dynamics_matrix).shape)
-        lp += self.dynamics_prior.log_prob((params.dynamics.cov, jnp.ravel(dynamics_matrix)))
-
         if self.time_varying_dynamics:
             def _compute_dynamics_lp(prev_lp, current_t):
                 current_param = params.dynamics.weights[current_t]
@@ -1042,14 +1035,16 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 return current_lp, None
 
             lp, _ = jax.lax.scan(_compute_dynamics_lp, lp, jnp.arange(1, self.sequence_length-2))
+            lp += self.dynamics_prior.log_prob((self.initial_dynamics_cov, self.initial_dynamics_mean))
+        else:
+            dynamics_bias = params.dynamics.bias if self.has_dynamics_bias else jnp.zeros((self.state_dim, 0))
+            dynamics_matrix = jnp.column_stack(
+                (params.dynamics.weights if self.time_varying_dynamics else params.dynamics.weights,
+                 params.dynamics.input_weights,
+                 dynamics_bias))
+            lp += self.dynamics_prior.log_prob((params.dynamics.cov, dynamics_matrix))
 
         # emissions
-        emission_bias = params.emissions.bias if self.has_emissions_bias else jnp.zeros((self.emission_dim, 0))
-        emission_matrix = jnp.column_stack((params.emissions.weights[0] if self.time_varying_emissions else params.emissions.weights,
-                                            params.emissions.input_weights,
-                                            emission_bias))
-        lp += self.emission_prior.log_prob((params.emissions.cov, jnp.raveL(emission_matrix)))
-
         if self.time_varying_emissions:
             def _compute_emissions_lp(prev_lp, current_t):
                 current_param = params.emissions.weights[current_t]
@@ -1060,6 +1055,15 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 return current_lp, None
 
             lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(1, self.sequence_length - 1))
+            lp += self.emission_prior.log_prob((self.initial_emissions_cov, self.initial_emissions_mean))
+
+        else:
+            emission_bias = params.emissions.bias if self.has_emissions_bias else jnp.zeros((self.emission_dim, 0))
+            emission_matrix = jnp.column_stack(
+                (params.emissions.weights if self.time_varying_emissions else params.emissions.weights,
+                 params.emissions.input_weights,
+                 emission_bias))
+            lp += self.emission_prior.log_prob((params.emissions.cov, emission_matrix))
 
         return lp
 
