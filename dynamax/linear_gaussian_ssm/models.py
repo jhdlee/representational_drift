@@ -562,14 +562,14 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
             Q, FB = dynamics_posterior.sample(seed=next(rngs))
             F = FB[:, :self.state_dim]
             B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
-                else (FB[:, self.state_dim:], jnp.zeros(self.state_dim))
+                else (FB[:, self.state_dim:], None)
 
             # Sample the emission params
             emission_posterior = mniw_posterior_update(self.emission_prior, emission_stats)
             R, HD = emission_posterior.sample(seed=next(rngs))
             H = HD[:, :self.state_dim]
             D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
-                else (HD[:, self.state_dim:], jnp.zeros(self.emission_dim))
+                else (HD[:, self.state_dim:], None)
 
             params = ParamsLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
@@ -582,7 +582,7 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         def one_sample(_params, rng):
             rngs = jr.split(rng, 2)
             # Sample latent states
-            print(_params.dynamics.bias)
+            #print(_params.dynamics.bias)
             states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
             # Sample parameters
             _stats = sufficient_stats_from_sample(states)
@@ -596,8 +596,8 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
             sample_of_params.append(current_params)
             current_params = one_sample(current_params, next(keys))
 
-        print(sample_of_params[0])
-        print(sample_of_params[-1])
+        #print(sample_of_params[0])
+        #print(sample_of_params[-1])
         return pytree_stack(sample_of_params)
 
 class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
