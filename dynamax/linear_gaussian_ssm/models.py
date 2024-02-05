@@ -1302,5 +1302,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         for _ in progress_bar(range(sample_size)):
             sample_of_params.append(current_params)
             current_params = one_sample(current_params, next(keys))
+        sample_of_params.append(current_params)
 
         return pytree_stack(sample_of_params)
