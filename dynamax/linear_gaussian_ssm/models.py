@@ -1106,7 +1106,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             sample_size: int,
             emissions: Float[Array, "nbatch ntime emission_dim"],
             inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None
-    ) -> ParamsTVLGSSM:
+    ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
         Args:
@@ -1261,14 +1261,23 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
             # Sample parameters
             _stats = sufficient_stats_from_sample(states)
-            return lgssm_params_sample(rngs[1], _stats, states, _params)
+
+            new_params = lgssm_params_sample(rngs[1], _stats, states, _params)
+            _, _ll = self.e_step(new_params, emissions, inputs)
+            _ll = self.log_prior(new_params) + _ll.sum()
+            return new_params, _ll
 
         sample_of_params = []
+        lls = []
         keys = iter(jr.split(key, sample_size))
         current_params = initial_params
+        _, ll = self.e_step(current_params, emissions, inputs)
+        ll = self.log_prior(current_params) + ll.sum()
         for _ in progress_bar(range(sample_size)):
             sample_of_params.append(current_params)
-            current_params = one_sample(current_params, next(keys))
+            lls.append(ll)
+            current_params, ll = one_sample(current_params, next(keys))
         sample_of_params.append(current_params)
+        lls.append(ll)
 
-        return pytree_stack(sample_of_params)
+        return pytree_stack(sample_of_params), lls
