@@ -1028,6 +1028,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         dynamics_matrix = jnp.column_stack((params.dynamics.weights[0] if self.time_varying_dynamics else params.dynamics.weights,
                                             params.dynamics.input_weights,
                                             dynamics_bias))
+        print(params.dynamics.cov.shape, jnp.ravel(dynamics_matrix).shape)
         lp += self.dynamics_prior.log_prob((params.dynamics.cov, jnp.ravel(dynamics_matrix)))
 
         if self.time_varying_dynamics:
