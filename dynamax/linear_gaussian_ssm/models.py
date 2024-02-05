@@ -1074,7 +1074,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 next_param = params.emissions.weights[current_t + 1]
                 current_lp = prev_lp + MVN(loc=jnp.ravel(current_param),
                                            covariance_matrix=jnp.eye(
-                                               self.state_dim ** 2) * self.emissions_param_ar_dependency_variance).log_prob(jnp.ravel(next_param))
+                                               self.emission_dim * self.state_dim) * self.emissions_param_ar_dependency_variance).log_prob(jnp.ravel(next_param))
                 return current_lp, None
 
             lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(1, self.sequence_length - 1))
