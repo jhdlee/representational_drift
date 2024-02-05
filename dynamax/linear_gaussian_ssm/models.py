@@ -1214,7 +1214,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                  cov=self.dynamics_param_ar_dependency_variance*jnp.eye(self.state_dim**2)),
                     emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.state_dim), jnp.expand_dims(xp, 1)), ### kron xp
                                                    bias=None,
-                                                   input_weights=jnp.zeros((self.emission_dim*self.state_dim, 0)),
+                                                   input_weights=jnp.zeros((self.state_dim, 0)),
                                                    cov=0.1 * jnp.eye(self.state_dim))
                 )
 
