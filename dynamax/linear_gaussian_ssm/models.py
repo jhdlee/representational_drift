@@ -276,6 +276,7 @@ class LinearGaussianSSM(SSM):
         if inputs is None:
             inputs = jnp.zeros((num_timesteps, 0))
 
+        print(params.dynamics.bias)
         # Run the smoother to get posterior expectations
         posterior = lgssm_smoother(params, emissions, inputs)
 
@@ -581,6 +582,7 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         def one_sample(_params, rng):
             rngs = jr.split(rng, 2)
             # Sample latent states
+            print(_params.dynamics.bias)
             states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
             # Sample parameters
             _stats = sufficient_stats_from_sample(states)
