@@ -596,6 +596,8 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
             sample_of_params.append(current_params)
             current_params = one_sample(current_params, next(keys))
 
+        print(sample_of_params[0])
+        print(sample_of_params[-1])
         return pytree_stack(sample_of_params)
 
 class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
