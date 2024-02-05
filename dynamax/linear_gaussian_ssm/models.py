@@ -1028,7 +1028,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         dynamics_matrix = jnp.column_stack((params.dynamics.weights[0] if self.time_varying_dynamics else params.dynamics.weights,
                                             params.dynamics.input_weights,
                                             dynamics_bias))
-        lp += self.dynamics_prior.log_prob((params.dynamics.cov, dynamics_matrix))
+        lp += self.dynamics_prior.log_prob((params.dynamics.cov, jnp.ravel(dynamics_matrix)))
 
         if self.time_varying_dynamics:
             def _compute_dynamics_lp(prev_lp, current_t):
@@ -1047,7 +1047,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         emission_matrix = jnp.column_stack((params.emissions.weights[0] if self.time_varying_emissions else params.emissions.weights,
                                             params.emissions.input_weights,
                                             emission_bias))
-        lp += self.emission_prior.log_prob((params.emissions.cov, emission_matrix))
+        lp += self.emission_prior.log_prob((params.emissions.cov, jnp.raveL(emission_matrix)))
 
         if self.time_varying_emissions:
             def _compute_emissions_lp(prev_lp, current_t):
