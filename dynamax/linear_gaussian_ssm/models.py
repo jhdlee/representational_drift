@@ -14,7 +14,7 @@ from typing_extensions import Protocol
 
 from dynamax.ssm import SSM
 from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother, lgssm_posterior_sample
-from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitial, ParamsLGSSMDynamics, ParamsLGSSMEmissions
+from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitial, ParamsLGSSMDynamics, ParamsLGSSMEmissions, ParamsTVLGSSM
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 from dynamax.parameters import ParameterProperties, ParameterSet
 from dynamax.types import PRNGKey, Scalar
@@ -748,7 +748,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         emission_bias=None,
         emission_input_weights=None,
         emission_covariance=None
-    ) -> Tuple[ParamsLGSSM, ParamsLGSSM]:
+    ) -> Tuple[ParamsTVLGSSM, ParamsTVLGSSM]:
         r"""Initialize model parameters that are set to None, and their corresponding properties.
 
         Args:
@@ -828,7 +828,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         default = lambda x, x0: x if x is not None else x0
 
         # Create nested dictionary of params
-        params = ParamsLGSSM(
+        params = ParamsTVLGSSM(
             initial=ParamsLGSSMInitial(
                 mean=default(initial_mean, _initial_mean),
                 cov=default(initial_covariance, _initial_covariance)),
@@ -851,7 +851,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             )
 
         # The keys of param_props must match those of params!
-        props = ParamsLGSSM(
+        props = ParamsTVLGSSM(
             initial=ParamsLGSSMInitial(
                 mean=ParameterProperties(),
                 cov=ParameterProperties(constrainer=RealToPSDBijector())),
@@ -934,7 +934,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
     def transition_distribution(
         self,
         timestep: int,
-        params: ParamsLGSSM,
+        params: ParamsTVLGSSM,
         state: Float[Array, "state_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]]=None
     ) -> tfd.Distribution:
@@ -950,7 +950,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
     def emission_distribution(
         self,
         timestep: int,
-        params: ParamsLGSSM,
+        params: ParamsTVLGSSM,
         state: Float[Array, "state_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]]=None
     ) -> tfd.Distribution:
@@ -1039,7 +1039,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
     def log_prior(
         self,
-        params: ParamsLGSSM
+        params: ParamsTVLGSSM
     ) -> Scalar:
 
         """"""""
@@ -1094,19 +1094,19 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
     def initialize_m_step_state(
         self,
-        params: ParamsLGSSM,
-        props: ParamsLGSSM
+        params: ParamsTVLGSSM,
+        props: ParamsTVLGSSM
     ) -> Any:
         return None
 
     def fit_blocked_gibbs(
             self,
             key: PRNGKey,
-            initial_params: ParamsLGSSM,
+            initial_params: ParamsTVLGSSM,
             sample_size: int,
             emissions: Float[Array, "nbatch ntime emission_dim"],
             inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None
-    ) -> ParamsLGSSM:
+    ) -> ParamsTVLGSSM:
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
         Args:
@@ -1245,7 +1245,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                 initial_emissions_cov, initial_emissions_mean = None, None
 
-            params = ParamsLGSSM(
+            params = ParamsTVLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
                 dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=0.1 * jnp.eye(self.state_dim)),
                 emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=0.1 * jnp.eye(self.emission_dim)),
