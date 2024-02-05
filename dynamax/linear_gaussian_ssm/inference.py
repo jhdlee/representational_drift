@@ -108,7 +108,7 @@ class ParamsLGSSM(NamedTuple):
     dynamics: ParamsLGSSMDynamics
     emissions: ParamsLGSSMEmissions
 
-class ParamsTVLGSSM(ParamsLGSSM):
+class ParamsTVLGSSM(NamedTuple):
     r"""Parameters of a linear Gaussian SSM.
 
     :param initial: initial distribution parameters
