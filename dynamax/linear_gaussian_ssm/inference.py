@@ -360,6 +360,27 @@ def preprocess_args(f):
         return f(full_params, emissions, inputs=inputs)
     return wrapper
 
+def preprocess_args_for_sampler(f):
+    """Preprocess the parameter and input arguments in case some are set to None."""
+    sig = inspect.signature(f)
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        # Extract the arguments by name
+        bound_args = sig.bind(*args, **kwargs)
+        bound_args.apply_defaults()
+        params = bound_args.arguments['params']
+        emissions = bound_args.arguments['emissions']
+        inputs = bound_args.arguments['inputs']
+        key = bound_args.arguments['key']
+        jitter = bound_args.arguments['jitter']
+
+        num_timesteps = len(emissions)
+        full_params, inputs = preprocess_params_and_inputs(params, num_timesteps, inputs)
+
+        return f(key=key, params=full_params, emissions=emissions, inputs=inputs, jitter=jitter)
+    return wrapper
+
 
 
 
