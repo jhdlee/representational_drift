@@ -1195,7 +1195,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         def lgssm_params_sample(rng, stats, states):
             """Sample parameters of the model given sufficient statistics from observed states and emissions."""
             init_stats, dynamics_stats, emission_stats = stats
-            rngs = iter(jr.split(rng, 3))
+            rngs = iter(jr.split(rng, 5))
 
             # Sample the initial params
             initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
