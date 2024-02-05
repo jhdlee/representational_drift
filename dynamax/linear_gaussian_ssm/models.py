@@ -276,7 +276,6 @@ class LinearGaussianSSM(SSM):
         if inputs is None:
             inputs = jnp.zeros((num_timesteps, 0))
 
-        print(params.dynamics.bias)
         # Run the smoother to get posterior expectations
         posterior = lgssm_smoother(params, emissions, inputs)
 
@@ -657,7 +656,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         has_dynamics_bias: bool=False,
         has_emissions_bias: bool=False,
         update_initial_and_covariance: bool=True,
-        key: PRNGKey=jr.PRNGKey(0),
         **kw_priors
     ):
         super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
@@ -778,7 +776,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _initial_dynamics_cov, _initial_dynamics_mean = None, None
 
         if self.time_varying_emissions:
-            _initial_emissions_cov, _initial_emissions_mean = jnp.eye(self.emissions_dim*self.state_dim), jnp.zeros(self.emissions_dim*self.state_dim)
+            _initial_emissions_cov, _initial_emissions_mean = jnp.eye(self.emission_dim*self.state_dim), jnp.zeros(self.emission_dim*self.state_dim)
         else:
             _initial_emissions_cov, _initial_emissions_mean = None, None
 
