@@ -577,7 +577,7 @@ def lgssm_smoother(
         smoothed_cross_covariances=smoothed_cross,
     )
 
-@preprocess_args
+@preprocess_args_for_sampler
 def lgssm_posterior_sample(
     key: PRNGKey,
     params: ParamsLGSSM,
