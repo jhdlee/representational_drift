@@ -695,9 +695,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     mean_concentration=1.,
                     df=self.state_dim ** 2 + 0.1,
                     scale=jnp.eye(self.state_dim ** 2)))
-
-            key, this_key = jr.split(key, 2)
-            self.initial_dynamics_cov, self.initial_dynamics_mean = self.dynamics_prior.sample(seed=this_key)
+            #
+            # key, this_key = jr.split(key, 2)
+            # self.initial_dynamics_cov, self.initial_dynamics_mean = self.dynamics_prior.sample(seed=this_key)
         else:
             self.dynamics_prior = default_prior(
                 'dynamics_prior',
@@ -706,6 +706,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                      df=self.state_dim + 0.1,
                      scale=jnp.eye(self.state_dim)))
 
+            # self.initial_dynamics_cov, self.initial_dynamics_mean = None, None
+
         if time_varying_emissions:
             self.emission_prior = default_prior(
                 'emission_prior',
@@ -713,8 +715,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     mean_concentration=1.,
                     df=self.emission_dim * self.state_dim + 0.1,
                     scale=jnp.eye(self.emission_dim * self.state_dim)))
-            key, this_key = jr.split(key, 2)
-            self.initial_emissions_cov, self.initial_emissions_mean = self.emission_prior.sample(seed=this_key)
+            # key, this_key = jr.split(key, 2)
+            # self.initial_emissions_cov, self.initial_emissions_mean = self.emission_prior.sample(seed=this_key)
         else:
             self.emission_prior = default_prior(
                 'emission_prior',
@@ -722,6 +724,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                      col_precision=jnp.eye(self.state_dim + self.input_dim + self.has_emissions_bias),
                      df=self.emission_dim + 0.1,
                      scale=jnp.eye(self.emission_dim)))
+            # self.initial_emissions_cov, self.initial_emissions_mean = None, None
 
 
     @property
@@ -768,6 +771,16 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         # Arbitrary default values, for demo purposes.
         _initial_mean = jnp.ones(self.state_dim) #jnp.zeros(self.state_dim)
         _initial_covariance = jnp.eye(self.state_dim)
+
+        if self.time_varying_dynamics:
+            _initial_dynamics_cov, _initial_dynamics_mean = jnp.eye(self.state_dim**2), jnp.zeros(self.state_dim**2)
+        else:
+            _initial_dynamics_cov, _initial_dynamics_mean = None, None
+
+        if self.time_varying_emissions:
+            _initial_emissions_cov, _initial_emissions_mean = jnp.eye(self.emissions_dim*self.state_dim), jnp.zeros(self.emissions_dim*self.state_dim)
+        else:
+            _initial_emissions_cov, _initial_emissions_mean = None, None
 
         if self.time_varying_dynamics:
             keys = jr.split(key, self.sequence_length-1)
@@ -828,7 +841,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 weights=default(emission_weights, _emission_weights),
                 bias=default(emission_bias, _emission_bias),
                 input_weights=default(emission_input_weights, _emission_input_weights),
-                cov=default(emission_covariance, _emission_covariance))
+                cov=default(emission_covariance, _emission_covariance)),
+            initial_dynamics=ParamsLGSSMInitial(
+                mean=_initial_dynamics_mean,
+                cov=_initial_dynamics_cov),
+            initial_emissions=ParamsLGSSMInitial(
+                mean=_initial_emissions_mean,
+                cov=_initial_emissions_cov)
             )
 
         # The keys of param_props must match those of params!
@@ -845,9 +864,15 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 weights=ParameterProperties(),
                 bias=ParameterProperties(),
                 input_weights=ParameterProperties(),
+                cov=ParameterProperties(constrainer=RealToPSDBijector())),
+            initial_dynamics=ParamsLGSSMInitial(
+                mean=ParameterProperties(),
+                cov=ParameterProperties(constrainer=RealToPSDBijector())),
+            initial_emissions=ParamsLGSSMInitial(
+                mean=ParameterProperties(),
                 cov=ParameterProperties(constrainer=RealToPSDBijector()))
             )
-        return params, props
+        return params, props,
 
     # All SSMs support sampling
     def sample(
@@ -1035,7 +1060,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 return current_lp, None
 
             lp, _ = jax.lax.scan(_compute_dynamics_lp, lp, jnp.arange(1, self.sequence_length-2))
-            lp += self.dynamics_prior.log_prob((self.initial_dynamics_cov, self.initial_dynamics_mean))
+            lp += self.dynamics_prior.log_prob((params.initial_dynamics.cov, params.initial_dynamics.mean))
         else:
             dynamics_bias = params.dynamics.bias if self.has_dynamics_bias else jnp.zeros((self.state_dim, 0))
             dynamics_matrix = jnp.column_stack(
@@ -1055,7 +1080,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 return current_lp, None
 
             lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(1, self.sequence_length - 1))
-            lp += self.emission_prior.log_prob((self.initial_emissions_cov, self.initial_emissions_mean))
+            lp += self.emission_prior.log_prob((params.initial_emissions.cov, params.initial_emissions.mean))
 
         else:
             emission_bias = params.emissions.bias if self.has_emissions_bias else jnp.zeros((self.emission_dim, 0))
@@ -1130,7 +1155,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
             return init_stats, dynamics_stats, emission_stats
 
-        def lgssm_params_sample(rng, stats, states):
+        def lgssm_params_sample(rng, stats, states, params):
             """Sample parameters of the model given sufficient statistics from observed states and emissions."""
             init_stats, dynamics_stats, emission_stats = stats
             rngs = iter(jr.split(rng, 5))
@@ -1144,8 +1169,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 xp, xn = states[:-1], states[1:]
 
                 _dynamics_params = ParamsLGSSM(
-                    initial=ParamsLGSSMInitial(mean=self.initial_dynamics_mean,
-                                               cov=self.initial_dynamics_cov),
+                    initial=ParamsLGSSMInitial(mean=params.initial_dynamics.mean,
+                                               cov=params.initial_dynamics.cov),
                     dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.state_dim**2),
                                                  bias=None,
                                                  input_weights=jnp.zeros((self.state_dim**2, 0)),
@@ -1168,7 +1193,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                 dynamics_stats = (_dynamics_weights[0], jnp.outer(_dynamics_weights[0], _dynamics_weights[0]), 1)
                 dynamics_posterior = niw_posterior_update(self.dynamics_prior, dynamics_stats)
-                self.initial_dynamics_cov, self.initial_dynamics_mean = dynamics_posterior.sample(seed=next(rngs))
+                initial_dynamics_cov, initial_dynamics_mean = dynamics_posterior.sample(seed=next(rngs))
 
             else:
                 dynamics_posterior = mniw_posterior_update(self.dynamics_prior, dynamics_stats)
@@ -1177,7 +1202,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
                     else (FB[:, self.state_dim:], None)
 
-                _dynamics_weights = None
+                initial_dynamics_cov, initial_dynamics_mean = None, None
 
             # Sample the emission params
             if self.time_varying_emissions:
@@ -1185,13 +1210,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 y = emissions
 
                 _emissions_params = ParamsLGSSM(
-                    initial=ParamsLGSSMInitial(mean=self.initial_emissions_mean,
-                                               cov=self.initial_emissions_cov),
+                    initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
+                                               cov=params.initial_emissions.cov),
                     dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim*self.state_dim),
                                                  bias=None,
                                                  input_weights=jnp.zeros((self.emission_dim*self.state_dim, 0)),
                                                  cov=self.emissions_param_ar_dependency_variance*jnp.eye(self.emission_dim*self.state_dim)),
-                    emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.emission_dim), jnp.expand_dims(x, 1)), ### kron xp
+                    emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.emission_dim), jnp.expand_dims(x, 1)),
                                                    bias=None,
                                                    input_weights=jnp.zeros((self.emission_dim, 0)),
                                                    cov=0.1 * jnp.eye(self.emission_dim))
@@ -1209,7 +1234,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                 emissions_stats = (_emissions_weights[0], jnp.outer(_emissions_weights[0], _emissions_weights[0]), 1)
                 emissions_posterior = niw_posterior_update(self.emission_prior, emissions_stats)
-                self.initial_emissions_cov, self.initial_emissions_mean = emissions_posterior.sample(seed=next(rngs))
+                initial_emissions_cov, initial_emissions_mean = emissions_posterior.sample(seed=next(rngs))
 
             else:
                 emission_posterior = mniw_posterior_update(self.emission_prior, emission_stats)
@@ -1218,10 +1243,14 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
                     else (HD[:, self.state_dim:], None)
 
+                initial_emissions_cov, initial_emissions_mean = None, None
+
             params = ParamsLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
                 dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=0.1 * jnp.eye(self.state_dim)),
-                emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=0.1 * jnp.eye(self.emission_dim))
+                emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=0.1 * jnp.eye(self.emission_dim)),
+                initial_dynamics = ParamsLGSSMInitial(mean=initial_dynamics_mean, cov=initial_dynamics_cov),
+                initial_emissions = ParamsLGSSMInitial(mean=initial_emissions_mean, cov=initial_emissions_cov),
             )
             return params
 
@@ -1232,7 +1261,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
             # Sample parameters
             _stats = sufficient_stats_from_sample(states)
-            return lgssm_params_sample(rngs[1], _stats, states)
+            return lgssm_params_sample(rngs[1], _stats, states, _params)
 
         sample_of_params = []
         keys = iter(jr.split(key, sample_size))
