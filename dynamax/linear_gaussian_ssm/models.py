@@ -785,7 +785,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _dynamics_weights = jnp.concatenate([initial_dynamics_weights[None], _dynamics_weights])
             if stabilize_dynamics:
                 #_dynamics_weights = _dynamics_weights / (1e-4 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
-                _dynamics_weights = _dynamics_weights / (1e-4 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights)), axis=-1))[:, None]
+                _dynamics_weights = _dynamics_weights / (1e-4 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights)), axis=-1))[:, None, None]
         else:
             key1, key = jr.split(key, 2)
             _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
