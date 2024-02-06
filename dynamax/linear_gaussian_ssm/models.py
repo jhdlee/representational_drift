@@ -1213,6 +1213,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
                     else (FB[:, self.state_dim:], None)
 
+                Q = params.dynamics.cov
+
                 initial_dynamics_cov, initial_dynamics_mean = None, None
 
             # Sample the emission params
@@ -1254,6 +1256,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 H = HD[:, :self.state_dim]
                 D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
                     else (HD[:, self.state_dim:], None)
+
+                R = params.emissions.cov
 
                 initial_emissions_cov, initial_emissions_mean = None, None
 
