@@ -655,6 +655,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         sequence_length: int=0,
         has_dynamics_bias: bool=False,
         has_emissions_bias: bool=False,
+        fix_dynamics: bool=False,
+        fix_emissions: bool=False,
         **kw_priors
     ):
         super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
@@ -672,6 +674,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             assert emissions_param_ar_dependency_variance > 0.0
         self.dynamics_param_ar_dependency_variance = dynamics_param_ar_dependency_variance
         self.emissions_param_ar_dependency_variance = emissions_param_ar_dependency_variance
+
+        self.fix_dynamics = fix_dynamics
+        self.fix_emissions = fix_emissions
 
         # Initialize prior distributions
         def default_prior(arg, default):
@@ -1177,91 +1182,107 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             S, m = initial_posterior.sample(seed=next(rngs))
 
             # Sample the dynamics params
-            if self.time_varying_dynamics:
-                xp, xn = states[:-1], states[1:]
-
-                _dynamics_params = ParamsLGSSM(
-                    initial=ParamsLGSSMInitial(mean=params.initial_dynamics.mean,
-                                               cov=params.initial_dynamics.cov),
-                    dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.state_dim**2),
-                                                 bias=None,
-                                                 input_weights=jnp.zeros((self.state_dim**2, 0)),
-                                                 cov=self.dynamics_param_ar_dependency_variance*jnp.eye(self.state_dim**2)),
-                    emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.state_dim), jnp.expand_dims(xp, 1)), ### kron xp
-                                                   bias=None,
-                                                   input_weights=jnp.zeros((self.state_dim, 0)),
-                                                   cov=params.dynamics.cov)
-                )
-
-                _dynamics_weights = lgssm_posterior_sample(next(rngs),
-                                                           _dynamics_params,
-                                                           xn,
-                                                           jnp.zeros((num_timesteps-1, 0)))
-
-                F = _dynamics_weights.reshape(num_timesteps-1, self.state_dim, self.state_dim)
-
-                b = None
-                B = jnp.zeros((self.state_dim, 0))
+            if self.fix_dynamics:
+                F = params.dynamics.weights
+                b = params.dynamics.bias
+                B = params.dynamics.input_weights
                 Q = params.dynamics.cov
-
-                dynamics_stats = (_dynamics_weights[0], jnp.outer(_dynamics_weights[0], _dynamics_weights[0]), 1)
-                dynamics_posterior = niw_posterior_update(self.dynamics_prior, dynamics_stats)
-                initial_dynamics_cov, initial_dynamics_mean = dynamics_posterior.sample(seed=next(rngs))
-
+                initial_dynamics_cov = params.initial_dynamics.cov
+                initial_dynamics_mean = params.initial_dynamics.mean
             else:
-                dynamics_posterior = mniw_posterior_update(self.dynamics_prior, dynamics_stats)
-                Q, FB = dynamics_posterior.sample(seed=next(rngs))
-                F = FB[:, :self.state_dim]
-                B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
-                    else (FB[:, self.state_dim:], None)
+                if self.time_varying_dynamics:
+                    xp, xn = states[:-1], states[1:]
 
-                Q = params.dynamics.cov
+                    _dynamics_params = ParamsLGSSM(
+                        initial=ParamsLGSSMInitial(mean=params.initial_dynamics.mean,
+                                                   cov=params.initial_dynamics.cov),
+                        dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.state_dim**2),
+                                                     bias=None,
+                                                     input_weights=jnp.zeros((self.state_dim**2, 0)),
+                                                     cov=self.dynamics_param_ar_dependency_variance*jnp.eye(self.state_dim**2)),
+                        emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.state_dim), jnp.expand_dims(xp, 1)), ### kron xp
+                                                       bias=None,
+                                                       input_weights=jnp.zeros((self.state_dim, 0)),
+                                                       cov=params.dynamics.cov)
+                    )
 
-                initial_dynamics_cov, initial_dynamics_mean = None, None
+                    _dynamics_weights = lgssm_posterior_sample(next(rngs),
+                                                               _dynamics_params,
+                                                               xn,
+                                                               jnp.zeros((num_timesteps-1, 0)))
+
+                    F = _dynamics_weights.reshape(num_timesteps-1, self.state_dim, self.state_dim)
+
+                    b = None
+                    B = jnp.zeros((self.state_dim, 0))
+                    Q = params.dynamics.cov
+
+                    dynamics_stats = (_dynamics_weights[0], jnp.outer(_dynamics_weights[0], _dynamics_weights[0]), 1)
+                    dynamics_posterior = niw_posterior_update(self.dynamics_prior, dynamics_stats)
+                    initial_dynamics_cov, initial_dynamics_mean = dynamics_posterior.sample(seed=next(rngs))
+
+                else:
+                    dynamics_posterior = mniw_posterior_update(self.dynamics_prior, dynamics_stats)
+                    Q, FB = dynamics_posterior.sample(seed=next(rngs))
+                    F = FB[:, :self.state_dim]
+                    B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
+                        else (FB[:, self.state_dim:], None)
+
+                    Q = params.dynamics.cov
+
+                    initial_dynamics_cov, initial_dynamics_mean = None, None
 
             # Sample the emission params
-            if self.time_varying_emissions:
-                x, xp, xn = states, states[:-1], states[1:]
-                y = emissions
-
-                _emissions_params = ParamsLGSSM(
-                    initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
-                                               cov=params.initial_emissions.cov),
-                    dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim*self.state_dim),
-                                                 bias=None,
-                                                 input_weights=jnp.zeros((self.emission_dim*self.state_dim, 0)),
-                                                 cov=self.emissions_param_ar_dependency_variance*jnp.eye(self.emission_dim*self.state_dim)),
-                    emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.emission_dim), jnp.expand_dims(x, 1)),
-                                                   bias=None,
-                                                   input_weights=jnp.zeros((self.emission_dim, 0)),
-                                                   cov=params.emissions.cov)
-                )
-
-                _emissions_weights = lgssm_posterior_sample(next(rngs),
-                                                           _emissions_params,
-                                                           emissions,
-                                                           jnp.zeros((num_timesteps, 0)))
-
-                H = _emissions_weights.reshape(num_timesteps, self.emission_dim, self.state_dim)
-
-                d = None
-                D = jnp.zeros((self.emission_dim, 0))
+            if self.fix_emissions:
+                H = params.emissions.weights
+                d = params.emissions.bias
+                D = params.emissions.input_weights
                 R = params.emissions.cov
-
-                emissions_stats = (_emissions_weights[0], jnp.outer(_emissions_weights[0], _emissions_weights[0]), 1)
-                emissions_posterior = niw_posterior_update(self.emission_prior, emissions_stats)
-                initial_emissions_cov, initial_emissions_mean = emissions_posterior.sample(seed=next(rngs))
-
+                initial_emissions_cov = params.initial_emissions.cov
+                initial_emissions_mean = params.initial_emissions.mean
             else:
-                emission_posterior = mniw_posterior_update(self.emission_prior, emission_stats)
-                R, HD = emission_posterior.sample(seed=next(rngs))
-                H = HD[:, :self.state_dim]
-                D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
-                    else (HD[:, self.state_dim:], None)
+                if self.time_varying_emissions:
+                    x, xp, xn = states, states[:-1], states[1:]
+                    y = emissions
 
-                R = params.emissions.cov
+                    _emissions_params = ParamsLGSSM(
+                        initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
+                                                   cov=params.initial_emissions.cov),
+                        dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim*self.state_dim),
+                                                     bias=None,
+                                                     input_weights=jnp.zeros((self.emission_dim*self.state_dim, 0)),
+                                                     cov=self.emissions_param_ar_dependency_variance*jnp.eye(self.emission_dim*self.state_dim)),
+                        emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.emission_dim), jnp.expand_dims(x, 1)),
+                                                       bias=None,
+                                                       input_weights=jnp.zeros((self.emission_dim, 0)),
+                                                       cov=params.emissions.cov)
+                    )
 
-                initial_emissions_cov, initial_emissions_mean = None, None
+                    _emissions_weights = lgssm_posterior_sample(next(rngs),
+                                                               _emissions_params,
+                                                               emissions,
+                                                               jnp.zeros((num_timesteps, 0)))
+
+                    H = _emissions_weights.reshape(num_timesteps, self.emission_dim, self.state_dim)
+
+                    d = None
+                    D = jnp.zeros((self.emission_dim, 0))
+                    R = params.emissions.cov
+
+                    emissions_stats = (_emissions_weights[0], jnp.outer(_emissions_weights[0], _emissions_weights[0]), 1)
+                    emissions_posterior = niw_posterior_update(self.emission_prior, emissions_stats)
+                    initial_emissions_cov, initial_emissions_mean = emissions_posterior.sample(seed=next(rngs))
+
+                else:
+                    emission_posterior = mniw_posterior_update(self.emission_prior, emission_stats)
+                    R, HD = emission_posterior.sample(seed=next(rngs))
+                    H = HD[:, :self.state_dim]
+                    D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
+                        else (HD[:, self.state_dim:], None)
+
+                    R = params.emissions.cov
+
+                    initial_emissions_cov, initial_emissions_mean = None, None
 
             params = ParamsTVLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
