@@ -658,6 +658,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         fix_initial: bool=False,
         fix_dynamics: bool=False,
         fix_emissions: bool=False,
+        orthonormal_emissions: bool=False,
         **kw_priors
     ):
         super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
@@ -679,6 +680,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.fix_initial = fix_initial
         self.fix_dynamics = fix_dynamics
         self.fix_emissions = fix_emissions
+        self.orthonormal_emissions = orthonormal_emissions
 
         # Initialize prior distributions
         def default_prior(arg, default):
@@ -818,6 +820,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         else:
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
+
+        if self.orthonormal_emissions:
+            _emission_weights = jnp.linalg.qr(_emission_weights)[0]
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
@@ -1288,6 +1293,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     R = params.emissions.cov
 
                     initial_emissions_cov, initial_emissions_mean = None, None
+
+                if self.orthonormal_emissions:
+                    _emission_weights = jnp.linalg.qr(H)[0]
 
             params = ParamsTVLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
