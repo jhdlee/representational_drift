@@ -655,6 +655,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         sequence_length: int=0,
         has_dynamics_bias: bool=False,
         has_emissions_bias: bool=False,
+        fix_initial: bool=False,
         fix_dynamics: bool=False,
         fix_emissions: bool=False,
         **kw_priors
@@ -675,6 +676,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.dynamics_param_ar_dependency_variance = dynamics_param_ar_dependency_variance
         self.emissions_param_ar_dependency_variance = emissions_param_ar_dependency_variance
 
+        self.fix_initial = fix_initial
         self.fix_dynamics = fix_dynamics
         self.fix_emissions = fix_emissions
 
@@ -1178,8 +1180,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             rngs = iter(jr.split(rng, 5))
 
             # Sample the initial params
-            initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
-            S, m = initial_posterior.sample(seed=next(rngs))
+            if self.fix_initial:
+                S, m = params.initial.cov, params.initial.mean
+            else:
+                initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
+                S, m = initial_posterior.sample(seed=next(rngs))
 
             # Sample the dynamics params
             if self.fix_dynamics:
