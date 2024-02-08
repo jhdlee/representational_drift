@@ -711,7 +711,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         if time_varying_emissions:
             self.emission_prior = default_prior(
                 'emission_prior',
-                NIW(loc=jnp.ones(self.emission_dim * self.state_dim),
+                NIW(loc=jnp.zeros(self.emission_dim * self.state_dim),
                     mean_concentration=1.,
                     df=self.emission_dim * self.state_dim + 0.1,
                     scale=jnp.eye(self.emission_dim * self.state_dim)))
