@@ -1331,4 +1331,4 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         sample_of_params.append(current_params)
         lls.append(ll)
 
-        return pytree_stack(sample_of_params), lls, current_params
+        return pytree_stack(sample_of_params), lls, sample_of_params
