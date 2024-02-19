@@ -284,7 +284,7 @@ class MatrixNormalInverseWishart(tfd.JointDistributionSequential):
 
 def mvn_posterior_update(mvn_prior, sufficient_stats):
 
-    loc_pri, cov_pri = mvn_prior.parameters.values()
+    loc_pri, cov_pri = mvn_prior.mean(), mvn_prior.covariance()
     A, B = sufficient_stats
 
     cov_pri_inv = jnp.linalg.inv(cov_pri)
