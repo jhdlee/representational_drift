@@ -2,6 +2,7 @@ import jax.numpy as jnp
 from jax import vmap
 from jax.scipy.linalg import solve_triangular
 from tensorflow_probability.substrates import jax as tfp
+from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
 
 tfd = tfp.distributions
 tfb = tfp.bijectors
@@ -280,6 +281,18 @@ class MatrixNormalInverseWishart(tfd.JointDistributionSequential):
 
 ###############################################################################
 
+
+def mvn_posterior_update(mvn_prior, sufficient_stats):
+
+    loc_pri, cov_pri = mvn_prior.parameters.values()
+    A, B = sufficient_stats
+
+    cov_pri_inv = jnp.linalg.inv(cov_pri)
+
+    cov_pos = jnp.linalg.inv(cov_pri_inv + A)
+    loc_pos = cov_pos @ B
+
+    return MVN(loc=loc_pos, covariance_matrix=cov_pos)
 
 def niw_posterior_update(niw_prior, sufficient_stats):
     r"""Update the NormalInverseWishart (NIW) distribution using sufficient statistics
