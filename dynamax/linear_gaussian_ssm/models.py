@@ -828,9 +828,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
 
-        if self.orthonormal_emissions:
-            _emission_weights = jnp.linalg.qr(_emission_weights)[0]
-
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
         _emission_covariance = 0.1 * jnp.eye(self.emission_dim)
