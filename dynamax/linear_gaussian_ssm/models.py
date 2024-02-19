@@ -1338,7 +1338,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     D = jnp.zeros((self.emission_dim, 0))
                     R = params.emissions.cov
 
-                    initial_dynamics_cov, initial_dynamics_mean = None, None
+                    initial_emissions_cov, initial_emissions_mean = None, None
 
             params = ParamsTVLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
