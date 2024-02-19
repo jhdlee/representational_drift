@@ -1077,7 +1077,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 (params.dynamics.weights,
                  params.dynamics.input_weights,
                  dynamics_bias))
-            lp += self.dynamics_prior.log_prob((params.dynamics.cov, jnp.ravel(dynamics_matrix)))
+            lp += self.dynamics_prior.log_prob(jnp.ravel(dynamics_matrix))
             def _compute_dynamics_lp(prev_lp, current_t):
                 current_lp = prev_lp + MVN(params.dynamics.weights @ states[current_t], params.dynamics.cov).log_prob(states[current_t+1])
                 return current_lp, None
@@ -1110,7 +1110,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 (params.emissions.weights,
                  params.emissions.input_weights,
                  emission_bias))
-            lp += self.emission_prior.log_prob((params.emissions.cov, jnp.ravel(emission_matrix)))
+            lp += self.emission_prior.log_prob(jnp.ravel(emission_matrix))
 
             def _compute_emissions_lp(prev_lp, current_t):
                 current_lp = prev_lp + MVN(params.emissions.weights @ states[current_t], params.emissions.cov).log_prob(emissions[current_t])
