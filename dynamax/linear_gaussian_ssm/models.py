@@ -1341,7 +1341,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     emissions_stats_2 = emissions_stats_1 @ _emissions_weights[0]
                     emissions_stats = (emissions_stats_1, emissions_stats_2)
 
-                    emissions_posterior = mvn_posterior_update(self.emissions_prior, emissions_stats)
+                    emissions_posterior = mvn_posterior_update(self.emission_prior, emissions_stats)
                     initial_emissions_mean = emissions_posterior.sample(seed=next(rngs))
                     initial_emissions_cov = emissions_ar_dep_cov
 
