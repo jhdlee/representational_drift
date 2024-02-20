@@ -659,6 +659,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         fix_dynamics: bool=False,
         fix_emissions: bool=False,
         normalize_emissions: bool=False,
+        lower_triangular_emissions: bool=False,
+        # update_emissions_covariance: bool=False,
+        # update_emissions_param_ar_dependency_variance: bool=False,
         **kw_priors
     ):
         super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
@@ -681,6 +684,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.fix_dynamics = fix_dynamics
         self.fix_emissions = fix_emissions
         self.normalize_emissions = normalize_emissions
+        self.lower_triangular_emissions = lower_triangular_emissions
 
         # Initialize prior distributions
         def default_prior(arg, default):
@@ -837,12 +841,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             if self.normalize_emissions:
-                _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[:, None]
+                _emission_weights = _emission_weights / (jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[:, None] / 2)
         else:
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
             if self.normalize_emissions:
-                _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[None]
+                _emission_weights = _emission_weights / (jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[None] / 2)
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
