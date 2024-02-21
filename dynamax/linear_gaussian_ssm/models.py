@@ -1123,7 +1123,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 next_param = params.emissions.weights[current_t + 1]
                 current_lp = prev_lp + MVN(loc=jnp.ravel(current_param),
                                            covariance_matrix=jnp.eye(
-                                               self.emission_dim * self.state_dim) * self.emissions_param_ar_dependency_variance).log_prob(jnp.ravel(next_param))
+                                               self.emission_dim * self.state_dim) * params.emissions.ar_dependency).log_prob(jnp.ravel(next_param))
                 current_lp += MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
                     emissions[current_t])
                 return current_lp, None
@@ -1385,6 +1385,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim) * emissions_ar_dependency
                     else:
                         initial_emissions_cov = emissions_ar_dep_cov
+                        emissions_ar_dependency = params.emissions.ar_dependency
 
 
                 else:
