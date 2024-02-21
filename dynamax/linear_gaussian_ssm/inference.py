@@ -95,6 +95,8 @@ class ParamsLGSSMEmissions(NamedTuple):
         Float[Array, "ntime emission_dim"], 
         Float[Array, "emission_dim_triu"]]
 
+    ar_dependency: Union[Float]
+
 
 class ParamsLGSSM(NamedTuple):
     r"""Parameters of a linear Gaussian SSM.
