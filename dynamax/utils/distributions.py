@@ -3,6 +3,7 @@ from jax import vmap
 from jax.scipy.linalg import solve_triangular
 from tensorflow_probability.substrates import jax as tfp
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
+from tensorflow_probability.substrates.jax.distributions import InverseGamma as IG
 
 tfd = tfp.distributions
 tfb = tfp.bijectors
@@ -293,6 +294,18 @@ def mvn_posterior_update(mvn_prior, sufficient_stats):
     loc_pos = cov_pos @ (cov_pri_inv @ loc_pri + B)
 
     return MVN(loc=loc_pos, covariance_matrix=cov_pos)
+
+def ig_posterior_update(ig_prior, sufficient_stats):
+
+    alpha_pri = ig_prior.parameters['concentration']
+    beta_pri = ig_prior.parameters['scale']
+
+    n2, x2 = sufficient_stats
+
+    alpha_pos = alpha_pri + n2
+    beta_pos = beta_pri + x2
+
+    return IG(alpha_pos, beta_pos)
 
 def niw_posterior_update(niw_prior, sufficient_stats):
     r"""Update the NormalInverseWishart (NIW) distribution using sufficient statistics
