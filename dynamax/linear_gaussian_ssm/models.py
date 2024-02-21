@@ -1344,7 +1344,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.emission_dim), jnp.expand_dims(x, 1)),
                                                        bias=None,
                                                        input_weights=jnp.zeros((self.emission_dim, 0)),
-                                                       cov=params.emissions.cov)
+                                                       cov=params.emissions.cov,
+                                                       ar_dependency=None)
                     )
 
                     _emissions_weights = lgssm_posterior_sample(next(rngs),
