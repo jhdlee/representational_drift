@@ -660,6 +660,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         fix_dynamics: bool=False,
         fix_emissions: bool=False,
         normalize_emissions: bool=False,
+        emission_weights_scale: float=1.0,
         lower_triangular_emissions: bool=False,
         # update_emissions_covariance: bool=False,
         update_emissions_param_ar_dependency_variance: bool=False,
@@ -685,6 +686,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.fix_dynamics = fix_dynamics
         self.fix_emissions = fix_emissions
         self.normalize_emissions = normalize_emissions
+        self.emission_weights_scale = emission_weights_scale
         self.lower_triangular_emissions = lower_triangular_emissions # not implemented
         self.update_emissions_param_ar_dependency_variance = update_emissions_param_ar_dependency_variance
 
@@ -849,12 +851,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             if self.normalize_emissions:
-                _emission_weights = _emission_weights / (jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[:, None] / 2)
+                _emission_weights = self.emission_weights_scale * _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[:, None]
         else:
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
             if self.normalize_emissions:
-                _emission_weights = _emission_weights / (jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[None] / 2)
+                _emission_weights = self.emission_weights_scale * _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[None]
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
