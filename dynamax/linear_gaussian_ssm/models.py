@@ -1482,29 +1482,29 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             rngs = jr.split(rng, 2)
             # Sample latent states
             states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
-            # compute the log joint
-            _ll = self.log_joint(_params, states, _emissions, _inputs)
+            # # compute the log joint
+            # _ll = self.log_joint(_params, states, _emissions, _inputs)
 
             # Sample parameters
             _stats = sufficient_stats_from_sample(states, _params)
             _new_params = lgssm_params_sample(rngs[1], _stats, states, _params)
-            # # compute the log joint
-            # _ll = self.log_joint(new_params, states, _emissions, _inputs)
+            # compute the log joint
+            _ll = self.log_joint(_new_params, states, _emissions, _inputs)
             return _new_params, _ll
 
         sample_of_params = []
         lls = []
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
-        # current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs)
-        # ll = self.log_joint(current_params, current_states, emissions, inputs)
+        current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs)
+        ll = self.log_joint(current_params, current_states, emissions, inputs)
         for _ in progress_bar(range(sample_size)):
-            # sample_of_params.append(current_params)
-            # lls.append(ll)
-            new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
             sample_of_params.append(current_params)
             lls.append(ll)
-            current_params = new_params
+            new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
+            # sample_of_params.append(current_params)
+            # lls.append(ll)
+            # current_params = new_params
         # sample_of_params.append(current_params)
         # lls.append(ll)
 
