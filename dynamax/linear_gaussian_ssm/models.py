@@ -796,7 +796,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         emission_weights=None,
         emission_bias=None,
         emission_input_weights=None,
-        emission_covariance=None
+        emission_covariance=None,
+        initial_dynamics_mean=None,
+        initial_dynamics_cov=None,
+        initial_emissions_mean=None,
+        initial_emissions_cov=None
     ) -> Tuple[ParamsTVLGSSM, ParamsTVLGSSM]:
         r"""Initialize model parameters that are set to None, and their corresponding properties.
 
@@ -900,11 +904,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 cov=default(emission_covariance, _emission_covariance),
                 ar_dependency=self.emissions_param_ar_dependency_variance),
             initial_dynamics=ParamsLGSSMInitial(
-                mean=_initial_dynamics_mean,
-                cov=_initial_dynamics_cov),
+                mean=default(initial_dynamics_mean, _initial_dynamics_mean),
+                cov=default(initial_dynamics_cov, _initial_dynamics_cov)),
             initial_emissions=ParamsLGSSMInitial(
-                mean=_initial_emissions_mean,
-                cov=_initial_emissions_cov)
+                mean=default(initial_emissions_mean, _initial_emissions_mean),
+                cov=default(initial_emissions_cov, _initial_emissions_cov))
             )
 
         # The keys of param_props must match those of params!
