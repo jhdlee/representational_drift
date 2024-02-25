@@ -694,16 +694,16 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         def default_prior(arg, default):
             return kw_priors[arg] if arg in kw_priors else default
 
-        # self.initial_prior = default_prior(
-        #     'initial_prior',
-        #     NIW(loc=jnp.zeros(self.state_dim),
-        #         mean_concentration=1.,
-        #         df=self.state_dim + 0.1,
-        #         scale=jnp.eye(self.state_dim)))
         self.initial_prior = default_prior(
             'initial_prior',
-            MVN(loc=jnp.zeros(self.state_dim),
-                covariance_matrix=jnp.eye(self.state_dim)))
+            NIW(loc=jnp.zeros(self.state_dim),
+                mean_concentration=1.,
+                df=self.state_dim + 0.1,
+                scale=jnp.eye(self.state_dim)))
+        # self.initial_prior = default_prior(
+        #     'initial_prior',
+        #     MVN(loc=jnp.zeros(self.state_dim),
+        #         covariance_matrix=jnp.eye(self.state_dim)))
 
         if update_emissions_param_ar_dependency_variance:
             self.emissions_ar_dependency_prior = default_prior(
@@ -1106,8 +1106,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         """"""""
 
         # initial state
-        # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
-        lp = self.initial_prior.log_prob(params.initial.mean)
+        lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
+        # lp = self.initial_prior.log_prob(params.initial.mean)
         lp += MVN(params.initial.mean, params.initial.cov).log_prob(states[0])
 
         # dynamics & states
@@ -1219,8 +1219,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             u, up = inputs_joint, inputs_joint[:-1]
             y = emissions
 
-            # init_stats = (x[0], jnp.outer(x[0], x[0]), 1)
-            init_stats = (x[0],)
+            init_stats = (x[0], jnp.outer(x[0], x[0]), 1)
+            # init_stats = (x[0],)
 
             # # Quantities for the dynamics distribution
             # # Let zp[t] = [x[t], u[t]] for t = 0...T-2
@@ -1269,16 +1269,16 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_initial:
                 S, m = params.initial.cov, params.initial.mean
             else:
-                # initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
-                # S, m = initial_posterior.sample(seed=next(rngs))
+                initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
+                S, m = initial_posterior.sample(seed=next(rngs))
 
-                initial_stats_1 = jnp.linalg.inv(params.initial.cov)
-                initial_stats_2 = initial_stats_1 @ init_stats[0]
-                initial_stats = (initial_stats_1, initial_stats_2)
-
-                initial_posterior = mvn_posterior_update(self.initial_prior, initial_stats)
-                m = initial_posterior.sample(seed=next(rngs))
-                S = params.initial.cov
+                # initial_stats_1 = jnp.linalg.inv(params.initial.cov)
+                # initial_stats_2 = initial_stats_1 @ init_stats[0]
+                # initial_stats = (initial_stats_1, initial_stats_2)
+                #
+                # initial_posterior = mvn_posterior_update(self.initial_prior, initial_stats)
+                # m = initial_posterior.sample(seed=next(rngs))
+                # S = params.initial.cov
 
             # Sample the dynamics params
             if self.fix_dynamics:
