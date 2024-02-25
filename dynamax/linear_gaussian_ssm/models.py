@@ -1105,7 +1105,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         """"""""
 
         # initial state
-        lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
+        # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
+        lp = self.initial_prior.log_prob(params.initial.mean)
         lp += MVN(params.initial.mean, params.initial.cov).log_prob(states[0])
 
         # dynamics & states
