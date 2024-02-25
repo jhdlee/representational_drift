@@ -1501,7 +1501,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         for _ in progress_bar(range(sample_size)):
             sample_of_params.append(current_params)
             lls.append(ll)
-            new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
+            current_params, ll = one_sample(current_params, emissions, inputs, next(keys))
+            # new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
             # sample_of_params.append(current_params)
             # lls.append(ll)
             # current_params = new_params
