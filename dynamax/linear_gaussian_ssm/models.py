@@ -1478,30 +1478,35 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             return params
 
         @jit
-        def one_sample(_params, _emissions, _inputs, rng):
+        def one_sample(_params, _states, _emissions, _inputs, rng):
             rngs = jr.split(rng, 2)
-            # Sample latent states
-            states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
+            # # Sample latent states
+            # _states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
             # # compute the log joint
             # _ll = self.log_joint(_params, states, _emissions, _inputs)
 
             # Sample parameters
-            _stats = sufficient_stats_from_sample(states, _params)
-            _new_params = lgssm_params_sample(rngs[1], _stats, states, _params)
+            _stats = sufficient_stats_from_sample(_states, _params)
+            _new_params = lgssm_params_sample(rngs[1], _stats, _states, _params)
+
+            _new_states = lgssm_posterior_sample(rngs[0], _new_params, emissions, inputs)
             # compute the log joint
-            _ll = self.log_joint(_new_params, states, _emissions, _inputs)
-            return _new_params, _ll
+            # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
+            _ll = self.log_joint(_new_params, _new_states, _emissions, _inputs)
+            return _new_params, _new_states, _ll
 
         sample_of_params = []
+        sample_of_states = []
         lls = []
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
         current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs)
-        ll = self.log_joint(current_params, current_states, emissions, inputs)
+        # ll = self.log_joint(current_params, current_states, emissions, inputs)
         for _ in progress_bar(range(sample_size)):
             sample_of_params.append(current_params)
+            sample_of_states.append(current_states)
             lls.append(ll)
-            current_params, ll = one_sample(current_params, emissions, inputs, next(keys))
+            current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             # new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
             # sample_of_params.append(current_params)
             # lls.append(ll)
@@ -1509,4 +1514,4 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         # sample_of_params.append(current_params)
         # lls.append(ll)
 
-        return pytree_stack(sample_of_params), lls, sample_of_params
+        return pytree_stack(sample_of_params), lls, sample_of_params, sample_of_states
