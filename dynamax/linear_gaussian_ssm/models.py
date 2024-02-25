@@ -831,7 +831,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _initial_dynamics_cov, _initial_dynamics_mean = None, None
 
         if self.time_varying_emissions:
-            _initial_emissions_cov, _initial_emissions_mean = jnp.eye(self.emission_dim*self.state_dim), jnp.zeros(self.emission_dim*self.state_dim)
+            _initial_emissions_cov = self.emissions_param_ar_dependency_variance * jnp.eye(self.emission_dim*self.state_dim)
+            _initial_emissions_mean = jnp.zeros(self.emission_dim * self.state_dim)
         else:
             _initial_emissions_cov, _initial_emissions_mean = None, None
 
@@ -1364,9 +1365,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             else:
                 if self.time_varying_emissions:
                     x, xp, xn = states, states[:-1], states[1:]
-                    y = emissions
-
-                    emissions_ar_dependency = params.emissions.ar_dependency
 
                     _emissions_params = ParamsLGSSM(
                         initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
@@ -1374,7 +1372,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim*self.state_dim),
                                                      bias=None,
                                                      input_weights=jnp.zeros((self.emission_dim*self.state_dim, 0)),
-                                                     cov=emissions_ar_dependency*jnp.eye(self.emission_dim*self.state_dim)),
+                                                     cov=params.emissions.ar_dependency*jnp.eye(self.emission_dim*self.state_dim)),
                         emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.emission_dim), jnp.expand_dims(x, 1)),
                                                        bias=None,
                                                        input_weights=jnp.zeros((self.emission_dim, 0)),
@@ -1384,7 +1382,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                     _emissions_weights = lgssm_posterior_sample(next(rngs),
                                                                 _emissions_params,
-                                                                y,
+                                                                emissions,
                                                                 jnp.zeros((num_timesteps, 0)))
 
                     H = _emissions_weights.reshape(num_timesteps, self.emission_dim, self.state_dim)
@@ -1396,14 +1394,14 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     # emissions_posterior = niw_posterior_update(self.emission_prior, emissions_stats)
                     # initial_emissions_cov, initial_emissions_mean = emissions_posterior.sample(seed=next(rngs))
 
-                    emissions_ar_dep_cov = jnp.eye(self.emission_dim * self.state_dim) * emissions_ar_dependency
-                    emissions_stats_1 = jnp.linalg.inv(emissions_ar_dep_cov)
+                    emissions_ar_dep_cov = jnp.eye(self.emission_dim * self.state_dim) * params.emissions.ar_dependency
+                    init_emissions_stats_1 = jnp.linalg.inv(emissions_ar_dep_cov)
                     # emissions_stats_1 = jnp.linalg.inv(params.initial_emissions.cov)
-                    emissions_stats_2 = emissions_stats_1 @ _emissions_weights[0]
-                    emissions_stats = (emissions_stats_1, emissions_stats_2)
+                    init_emissions_stats_2 = init_emissions_stats_1 @ _emissions_weights[0]
+                    init_emissions_stats = (init_emissions_stats_1, init_emissions_stats_2)
 
-                    emissions_posterior = mvn_posterior_update(self.emission_prior, emissions_stats)
-                    initial_emissions_mean = emissions_posterior.sample(seed=next(rngs))
+                    init_emissions_posterior = mvn_posterior_update(self.emission_prior, init_emissions_stats)
+                    initial_emissions_mean = init_emissions_posterior.sample(seed=next(rngs))
                     # initial_emissions_cov = params.initial_emissions.cov
 
                     if self.update_emissions_param_ar_dependency_variance:
@@ -1484,24 +1482,30 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             rngs = jr.split(rng, 2)
             # Sample latent states
             states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
+            # compute the log joint
+            _ll = self.log_joint(_params, states, _emissions, _inputs)
+
             # Sample parameters
             _stats = sufficient_stats_from_sample(states, _params)
-            new_params = lgssm_params_sample(rngs[1], _stats, states, _params)
-            # compute the log joint
-            _ll = self.log_joint(new_params, states, _emissions, _inputs)
-            return new_params, _ll
+            _new_params = lgssm_params_sample(rngs[1], _stats, states, _params)
+            # # compute the log joint
+            # _ll = self.log_joint(new_params, states, _emissions, _inputs)
+            return _new_params, _ll
 
         sample_of_params = []
         lls = []
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
-        current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs)
-        ll = self.log_joint(current_params, current_states, emissions, inputs)
+        # current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs)
+        # ll = self.log_joint(current_params, current_states, emissions, inputs)
         for _ in progress_bar(range(sample_size)):
+            # sample_of_params.append(current_params)
+            # lls.append(ll)
+            new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
             sample_of_params.append(current_params)
             lls.append(ll)
-            current_params, ll = one_sample(current_params, emissions, inputs, next(keys))
-        sample_of_params.append(current_params)
-        lls.append(ll)
+            current_params = new_params
+        # sample_of_params.append(current_params)
+        # lls.append(ll)
 
         return pytree_stack(sample_of_params), lls, sample_of_params
