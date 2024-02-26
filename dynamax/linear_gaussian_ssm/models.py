@@ -1501,10 +1501,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
         current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs)
-        ll = self.log_joint(current_params, current_states, emissions, inputs)
-        sample_of_params.append(current_params)
-        sample_of_states.append(current_states)
-        lls.append(ll)
+        # ll = self.log_joint(current_params, current_states, emissions, inputs)
+        # sample_of_params.append(current_params)
+        # sample_of_states.append(current_states)
+        # lls.append(ll)
         for _ in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             sample_of_params.append(current_params)
