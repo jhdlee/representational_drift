@@ -943,7 +943,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         params: ParameterSet,
         key: PRNGKey,
         num_timesteps: int,
-        inputs: Optional[Float[Array, "num_timesteps input_dim"]]=None
+        inputs: Optional[Float[Array, "num_timesteps input_dim"]]=None,
+        return_signal: bool=False
     ) -> Tuple[Float[Array, "num_timesteps state_dim"],
               Float[Array, "num_timesteps emission_dim"]]:
         r"""Sample states $z_{1:T}$ and emissions $y_{1:T}$ given parameters $\theta$ and (optionally) inputs $u_{1:T}$.
@@ -966,26 +967,38 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             key, inpt, idx = args
             key1, key2 = jr.split(key, 2)
             state = self.transition_distribution(idx-1, params, prev_state, inpt).sample(seed=key2)
-            emission = self.emission_distribution(idx, params, state, inpt).sample(seed=key1)
-            return state, (state, emission)
+            emission_distribution = self.emission_distribution(idx, params, state, inpt)
+            emission = emission_distribution.sample(seed=key1)
+            if return_signal:
+                signal = emission_distribution.mean()
+            else:
+                signal = jnp.zeros_like(emission)
+            return state, (state, emission, signal)
 
         # Sample the initial state
         key1, key2, key = jr.split(key, 3)
         initial_input = tree_map(lambda x: x[0], inputs)
         initial_state = self.initial_distribution(params, initial_input).sample(seed=key1)
-        initial_emission = self.emission_distribution(0, params, initial_state, initial_input).sample(seed=key2)
+        initial_emission_distribution = self.emission_distribution(0, params, initial_state, initial_input)
+        initial_emission = initial_emission_distribution.sample(seed=key2)
+        if return_signal:
+            initial_signal = initial_emission_distribution.mean()
+        else:
+            initial_signal = jnp.zeros_like(initial_emission)
 
         # Sample the remaining emissions and states
         next_keys = jr.split(key, num_timesteps - 1)
         next_inputs = tree_map(lambda x: x[1:], inputs)
         next_indices = jnp.arange(1, num_timesteps)
-        _, (next_states, next_emissions) = lax.scan(_step, initial_state, (next_keys, next_inputs, next_indices))
+        _, (next_states, next_emissions, next_signals) = lax.scan(_step, initial_state,
+                                                                  (next_keys, next_inputs, next_indices))
 
         # Concatenate the initial state and emission with the following ones
         expand_and_cat = lambda x0, x1T: jnp.concatenate((jnp.expand_dims(x0, 0), x1T))
         states = tree_map(expand_and_cat, initial_state, next_states)
         emissions = tree_map(expand_and_cat, initial_emission, next_emissions)
-        return states, emissions
+        signals = tree_map(expand_and_cat, initial_signal, next_signals)
+        return states, emissions, signals
 
     def initial_distribution(
         self,
