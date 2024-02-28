@@ -1560,9 +1560,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         # sample_of_params.append(current_params)
         # sample_of_states.append(current_states)
         # lls.append(ll)
-        for _ in progress_bar(range(sample_size)):
+        for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
-            sample_of_params.append(current_params)
+            if sample_itr >= sample_size - return_n_samples:
+                sample_of_params.append(current_params)
             if return_states:
                 sample_of_states.append(current_states)
             lls.append(ll)
@@ -1573,4 +1574,4 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         # sample_of_params.append(current_params)
         # lls.append(ll)
 
-        return pytree_stack(sample_of_params[-return_n_samples:]), lls, sample_of_params[-return_n_samples:], sample_of_states[-return_n_samples:]
+        return pytree_stack(sample_of_params), lls, sample_of_params, sample_of_states
