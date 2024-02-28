@@ -1220,7 +1220,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             initial_params: ParamsTVLGSSM,
             sample_size: int,
             emissions: Float[Array, "nbatch ntime emission_dim"],
-            inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None
+            inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None,
+            return_states: bool=False
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
@@ -1561,7 +1562,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         for _ in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             sample_of_params.append(current_params)
-            sample_of_states.append(current_states)
+            if return_states:
+                sample_of_states.append(current_states)
             lls.append(ll)
             # new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
             # sample_of_params.append(current_params)
