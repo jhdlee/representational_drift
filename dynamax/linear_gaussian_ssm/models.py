@@ -1221,7 +1221,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             sample_size: int,
             emissions: Float[Array, "nbatch ntime emission_dim"],
             inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None,
-            return_states: bool=False
+            return_states: bool=False,
+            return_n_samples: int=100
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
@@ -1572,4 +1573,4 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         # sample_of_params.append(current_params)
         # lls.append(ll)
 
-        return pytree_stack(sample_of_params), lls, sample_of_params, sample_of_states
+        return pytree_stack(sample_of_params[-return_n_samples:]), lls, sample_of_params[-return_n_samples:], sample_of_states[-return_n_samples:]
