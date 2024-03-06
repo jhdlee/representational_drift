@@ -1564,7 +1564,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             if sample_itr >= sample_size - return_n_samples:
                 sample_of_params.append(current_params)
-            if return_states:
+            if return_states and (sample_itr >= sample_size - return_n_samples):
                 sample_of_states.append(current_states)
             lls.append(ll)
             # new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
