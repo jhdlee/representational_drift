@@ -62,6 +62,8 @@ class ParamsLGSSMDynamics(NamedTuple):
         Float[Array, "ntime state_dim state_dim"], 
         Float[Array, "state_dim_triu"]]
 
+    ar_dependency: Union[Float]
+
 
 class ParamsLGSSMEmissions(NamedTuple):
     r"""Parameters of the emission distribution
@@ -347,7 +349,8 @@ def preprocess_params_and_inputs(params, num_timesteps, inputs):
             weights=params.dynamics.weights,
             bias=dynamics_bias,
             input_weights=dynamics_input_weights,
-            cov=params.dynamics.cov),
+            cov=params.dynamics.cov,
+            ar_dependency=params.dynamics.ar_dependency),
         emissions=ParamsLGSSMEmissions(
             weights=params.emissions.weights,
             bias=emissions_bias,
