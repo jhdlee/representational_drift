@@ -1395,8 +1395,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     dynamics_ar_dependency = params.dynamics.ar_dependency
                     initial_dynamics_cov = dynamics_ar_dep_cov
 
-
-
                     if self.update_dynamics_covariance:
                         dynamics_cov_stats_1 = jnp.ones((self.state_dim, 1)) * (num_timesteps / 2)
                         dynamics_mean = jnp.einsum('tx,tyx->ty', xp, F)
@@ -1443,7 +1441,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         Q = params.emissions.cov
 
                     initial_dynamics_cov, initial_dynamics_mean = None, None
-
+                    dynamics_ar_dependency = None
 
             # Sample the emission params
             if self.fix_emissions:
