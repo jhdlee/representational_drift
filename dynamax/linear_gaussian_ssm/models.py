@@ -145,12 +145,14 @@ class LinearGaussianSSM(SSM):
                 weights=default(dynamics_weights, _dynamics_weights),
                 bias=default(dynamics_bias, _dynamics_bias),
                 input_weights=default(dynamics_input_weights, _dynamics_input_weights),
-                cov=default(dynamics_covariance, _dynamics_covariance)),
+                cov=default(dynamics_covariance, _dynamics_covariance),
+                ar_dependency=None),
             emissions=ParamsLGSSMEmissions(
                 weights=default(emission_weights, _emission_weights),
                 bias=default(emission_bias, _emission_bias),
                 input_weights=default(emission_input_weights, _emission_input_weights),
-                cov=default(emission_covariance, _emission_covariance))
+                cov=default(emission_covariance, _emission_covariance),
+                ar_dependency=None)
             )
 
         # The keys of param_props must match those of params!
@@ -162,12 +164,14 @@ class LinearGaussianSSM(SSM):
                 weights=ParameterProperties(),
                 bias=ParameterProperties(),
                 input_weights=ParameterProperties(),
-                cov=ParameterProperties(constrainer=RealToPSDBijector())),
+                cov=ParameterProperties(constrainer=RealToPSDBijector()),
+                ar_dependency=ParameterProperties()),
             emissions=ParamsLGSSMEmissions(
                 weights=ParameterProperties(),
                 bias=ParameterProperties(),
                 input_weights=ParameterProperties(),
-                cov=ParameterProperties(constrainer=RealToPSDBijector()))
+                cov=ParameterProperties(constrainer=RealToPSDBijector()),
+                ar_dependency=ParameterProperties())
             )
         return params, props
 
@@ -366,8 +370,10 @@ class LinearGaussianSSM(SSM):
 
         params = ParamsLGSSM(
             initial=ParamsLGSSMInitial(mean=m, cov=S),
-            dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q),
-            emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R)
+            dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q,
+                                         ar_dependency=None),
+            emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R,
+                                           ar_dependency=None)
         )
         return params, m_step_state
 
@@ -487,8 +493,10 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
 
         params = ParamsLGSSM(
             initial=ParamsLGSSMInitial(mean=m, cov=S),
-            dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q),
-            emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R)
+            dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q,
+                                         ar_dependency=None),
+            emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R,
+                                           ar_dependency=None)
         )
         return params, m_step_state
 
@@ -573,8 +581,10 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
 
             params = ParamsLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
-                dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q),
-                emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R)
+                dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q,
+                                             ar_dependency=None),
+                emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R,
+                                               ar_dependency=None)
             )
             return params
 
