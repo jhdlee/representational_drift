@@ -1303,18 +1303,33 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
             # Quantities for the dynamics distribution
             # Let zp[t] = [x[t], u[t]] for t = 0...T-2
-            xp_kron = jnp.kron(jnp.eye(self.state_dim), xp[:, None]) # T-1 x D x D^2
-            Qinv = jnp.linalg.inv(params.dynamics.cov)
-            dynamics_stats_1 = jnp.einsum('tai,ab,tbj->ij', xp_kron, Qinv, xp_kron)
-            dynamics_stats_2 = jnp.einsum('ta,ab,tbj->j', xn, Qinv, xp_kron)
-            dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
+            # Old code
+            # xp_kron = jnp.kron(jnp.eye(self.state_dim), xp[:, None]) # T-1 x D x D^2
+            # Qinv = jnp.linalg.inv(params.dynamics.cov)
+            # dynamics_stats_1 = jnp.einsum('tai,ab,tbj->ij', xp_kron, Qinv, xp_kron)
+            # dynamics_stats_2 = jnp.einsum('ta,ab,tbj->j', xn, Qinv, xp_kron)
+            # dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
 
             # Quantities for the emissions
             # Let z[t] = [x[t], u[t]] for t = 0...T-1
-            x_kron = jnp.kron(jnp.eye(self.emission_dim), x[:, None]) # T x N x ND
+            # Old code
+            # x_kron = jnp.kron(jnp.eye(self.emission_dim), x[:, None]) # T x N x ND
+            # Rinv = jnp.linalg.inv(params.emissions.cov)
+            # emissions_stats_1 = jnp.einsum('tai,ab,tbj->ij', x_kron, Rinv, x_kron)
+            # emissions_stats_2 = jnp.einsum('ta,ab,tbj->j', y, Rinv, x_kron)
+            # emission_stats = (emissions_stats_1, emissions_stats_2)
+
+            N, D = y.shape[-1], states.shape[-1]
+            # Optimized Code
+            Qinv = jnp.linalg.inv(params.dynamics.cov)
+            dynamics_stats_1 = jnp.einsum('ti,jk,tl->ijkl', xp, Qinv, xp).reshape(D*D, D*D)
+            dynamics_stats_2 = jnp.einsum('ti,ik,tl->kl', xn, Qinv, xp).reshape(-1)
+            dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
+
+            # Quantities for the emissions
             Rinv = jnp.linalg.inv(params.emissions.cov)
-            emissions_stats_1 = jnp.einsum('tai,ab,tbj->ij', x_kron, Rinv, x_kron)
-            emissions_stats_2 = jnp.einsum('ta,ab,tbj->j', y, Rinv, x_kron)
+            emissions_stats_1 = jnp.einsum('ti,jk,tl->ijkl', x, Rinv, x).reshape(N*D, N*D)
+            emissions_stats_2 = jnp.einsum('ti,ik,tl->kl', y, Rinv, x).reshape(-1)
             emission_stats = (emissions_stats_1, emissions_stats_2)
 
             return init_stats, dynamics_stats, emission_stats
