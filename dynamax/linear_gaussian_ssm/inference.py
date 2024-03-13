@@ -168,7 +168,7 @@ def _get_one_param(x, dim, t):
     if callable(x):
         return x(t)
     elif isinstance(x, list):
-        return x[t]
+        return x[int(t)]
     elif x.ndim == dim + 1:
         return x[t]
     else:
