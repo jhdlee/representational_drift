@@ -167,6 +167,8 @@ def _get_one_param(x, dim, t):
     """Helper function to get one parameter at time t."""
     if callable(x):
         return x(t)
+    elif isinstance(x, list):
+        return x[t]
     elif x.ndim == dim + 1:
         return x[t]
     else:
@@ -329,10 +331,7 @@ def preprocess_params_and_inputs(params, num_timesteps, inputs):
     assert params.emissions.cov is not None
 
     # Get shapes
-    if isinstance(params.emissions.weights, jnp.ndarray):
-        emission_dim, state_dim = params.emissions.weights.shape[-2:]
-    elif isinstance(params.emissions.weights, list):
-        emission_dim, state_dim = params.emissions.weights[0].shape[-2:]
+    emission_dim, state_dim = params.emissions.weights.shape[-2:]
 
     # Default the inputs to zero
     inputs = _zeros_if_none(inputs, (num_timesteps, 0))
@@ -652,6 +651,175 @@ def lgssm_posterior_sample(
         filtered_means[:-1][::-1],
         filtered_covs[:-1][::-1],
         jnp.arange(num_timesteps - 2, -1, -1),
+    )
+    _, reversed_states = lax.scan(_step, last_state, args)
+    states = jnp.vstack([reversed_states[::-1], last_state])
+    return states
+
+def _get_params_varying_length(params, num_timesteps, t):
+    """Helper function to get parameters at time t."""
+    assert not callable(params.emissions.cov), "Emission covariance cannot be a callable."
+
+    F = _get_one_param(params.dynamics.weights, 2, t)
+    Q = _get_one_param(params.dynamics.cov, 2, t)
+    H = _get_one_param(params.emissions.weights, 2, t)
+
+    R = jnp.eye(F.shape[0]) * params.emissions.cov
+
+    return F, Q, H, R
+
+def _condition_on_varying_length(m, P, H, R, y):
+    r"""Condition a Gaussian potential on a new linear Gaussian observation
+       p(z_t \mid y_t, u_t, y_{1:t-1}, u_{1:t-1})
+         propto p(z_t \mid y_{1:t-1}, u_{1:t-1}) p(y_t \mid z_t, u_t)
+         = N(z_t \mid m, P) N(y_t \mid H_t z_t + D_t u_t + d_t, R_t)
+         = N(z_t \mid mm, PP)
+     where
+         mm = m + K*(y - yhat) = mu_cond
+         yhat = H*m + D*u + d
+         S = (R + H * P * H')
+         K = P * H' * S^{-1}
+         PP = P - K S K' = Sigma_cond
+
+    Args:
+         m (D_hid,): prior mean.
+         P (D_hid,D_hid): prior covariance.
+         H (D_obs,D_hid): emission matrix.
+         D (D_obs,D_in): emission input weights.
+         u (D_in,): inputs.
+         d (D_obs,): emission bias.
+         R (D_obs,D_obs): emission covariance matrix.
+         y (D_obs,): observation.
+
+     Returns:
+         mu_pred (D_hid,): predicted mean.
+         Sigma_pred (D_hid,D_hid): predicted covariance.
+    """
+    S = R + H @ P @ H.T
+    K = psd_solve(S, H @ P).T
+
+    Sigma_cond = P - K @ S @ K.T
+    mu_cond = m + K @ (y - H @ m)
+    return mu_cond, symmetrize(Sigma_cond)
+
+def _predict_varying_length(m, S, F, Q):
+    r"""Predict next mean and covariance under a linear Gaussian model.
+
+        p(z_{t+1}) = int N(z_t \mid m, S) N(z_{t+1} \mid Fz_t + Bu + b, Q)
+                    = N(z_{t+1} \mid Fm + Bu, F S F^T + Q)
+
+    Args:
+        m (D_hid,): prior mean.
+        S (D_hid,D_hid): prior covariance.
+        F (D_hid,D_hid): dynamics matrix.
+        B (D_hid,D_in): dynamics input matrix.
+        u (D_in,): inputs.
+        Q (D_hid,D_hid): dynamics covariance matrix.
+        b (D_hid,): dynamics bias.
+
+    Returns:
+        mu_pred (D_hid,): predicted mean.
+        Sigma_pred (D_hid,D_hid): predicted covariance.
+    """
+    mu_pred = F @ m
+    Sigma_pred = F @ S @ F.T + Q
+    return mu_pred, Sigma_pred
+
+def lgssm_filter_varying_length(
+        params: ParamsLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+) -> PosteriorGSSMFiltered:
+    r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
+
+    Args:
+        params: model parameters
+        emissions: array of observations.
+        inputs: optional array of inputs.
+
+    Returns:
+        PosteriorGSSMFiltered: filtered posterior object
+
+    """
+    ntrials = len(emissions)
+
+    def _log_likelihood(pred_mean, pred_cov, H, R, y):
+        m = H @ pred_mean
+        S = R + H @ pred_cov @ H.T
+        return MVN(m, S).log_prob(y)
+
+    def _step(carry, t):
+        ll, pred_mean, pred_cov = carry
+
+        # Shorthand: get parameters and inputs for time index t
+        F, Q, H, R = _get_params_varying_length(params, ntrials, t)
+        y = emissions[t]
+
+        # Update the log likelihood
+        ll += _log_likelihood(pred_mean, pred_cov, H, R, y)
+
+        # Condition on this emission
+        filtered_mean, filtered_cov = _condition_on_varying_length(pred_mean, pred_cov, H, R, y)
+
+        # Predict the next state
+        pred_mean, pred_cov = _predict_varying_length(filtered_mean, filtered_cov, F, Q)
+
+        return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
+
+    # Run the Kalman filter
+    carry = (0.0, params.initial.mean, params.initial.cov)
+    (ll, _, _), (filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(ntrials))
+    return PosteriorGSSMFiltered(marginal_loglik=ll, filtered_means=filtered_means, filtered_covariances=filtered_covs)
+
+def lgssm_posterior_sample_varying_length(
+        key: PRNGKey,
+        params: ParamsLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        jitter: Optional[Scalar] = 0
+
+) -> Float[Array, "ntime state_dim"]:
+    r"""Run forward-filtering, backward-sampling to draw samples from $p(z_{1:T} \mid y_{1:T}, u_{1:T})$.
+
+    Args:
+        key: random number key.
+        params: parameters.
+        emissions: sequence of observations.
+        inputs: optional sequence of inptus.
+        jitter: padding to add to the diagonal of the covariance matrix before sampling.
+
+    Returns:
+        Float[Array, "ntime state_dim"]: one sample of $z_{1:T}$ from the posterior distribution on latent states.
+    """
+    ntrials = len(emissions)
+
+    # Run the Kalman filter
+    filtered_posterior = lgssm_filter_varying_length(params, emissions)
+    ll, filtered_means, filtered_covs, *_ = filtered_posterior
+
+    # Sample backward in time
+    def _step(carry, args):
+        next_state = carry
+        key, filtered_mean, filtered_cov, t = args
+
+        # Shorthand: get parameters and inputs for time index t
+        F, Q, _, _ = _get_params_varying_length(params, ntrials, t)[:4]
+
+        # Condition on next state
+        smoothed_mean, smoothed_cov = _condition_on_varying_length(filtered_mean, filtered_cov, F, Q, next_state)
+        smoothed_cov = smoothed_cov + jnp.eye(smoothed_cov.shape[-1]) * jitter
+        state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
+        return state, state
+
+    # Initialize the last state
+    key, this_key = jr.split(key, 2)
+    last_state = MVN(filtered_means[-1], filtered_covs[-1]).sample(seed=this_key)
+
+    args = (
+        jr.split(key, ntrials - 1),
+        filtered_means[:-1][::-1],
+        filtered_covs[:-1][::-1],
+        jnp.arange(ntrials - 2, -1, -1),
     )
     _, reversed_states = lax.scan(_step, last_state, args)
     states = jnp.vstack([reversed_states[::-1], last_state])
