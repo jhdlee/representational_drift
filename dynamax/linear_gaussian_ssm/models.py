@@ -1497,7 +1497,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                              cov=params.emissions.ar_dependency * jnp.eye(D*batchN),
                                                              ar_dependency=None),
                                 emissions=ParamsLGSSMEmissions(
-                                    weights=jnp.expand_dims(x, 1),
+                                    weights=jnp.kron(jnp.eye(batchN), jnp.expand_dims(x, 1)),
                                     bias=None,
                                     input_weights=jnp.zeros((batchN, 0)),
                                     cov=lax.dynamic_slice(params.emissions.cov, (n,n), (batchN,batchN)),
