@@ -1328,7 +1328,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # Optimized Code
             if not self.time_varying_dynamics:
                 Qinv = jnp.linalg.inv(params.dynamics.cov)
-                dynamics_stats_1 = jnp.einsum('ti,jk,tl->ijkl', xp, Qinv, xp).reshape(D*D, D*D, order='F')
+                dynamics_stats_1 = jnp.einsum('ti,jk,tl->jikl', xp, Qinv, xp).reshape(D*D, D*D)
                 dynamics_stats_2 = jnp.einsum('ti,ik,tl->kl', xn, Qinv, xp).reshape(-1)
                 dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
             else:
@@ -1337,7 +1337,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # Quantities for the emissions
             if not self.time_varying_emissions:
                 Rinv = jnp.linalg.inv(params.emissions.cov)
-                emissions_stats_1 = jnp.einsum('ti,jk,tl->ijkl', x, Rinv, x).reshape(N*D, N*D)
+                emissions_stats_1 = jnp.einsum('ti,jk,tl->jikl', x, Rinv, x).reshape(N*D, N*D)
                 emissions_stats_2 = jnp.einsum('ti,ik,tl->kl', y, Rinv, x).reshape(-1)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
