@@ -1488,7 +1488,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         batchN = self.batch_size
                         def _update(carry, n):
                             _emissions_params = ParamsLGSSM(
-                                initial=ParamsLGSSMInitial(mean=lax.dynamic_slice(params.initial_emissions.mean, (n*D,), (D*batchN,)),
+                                initial=ParamsLGSSMInitial(mean=lax.dynamic_slice(params.initial_emissions.mean, (n*D*batchN,), (D*batchN,)),
                                                            cov=params.emissions.ar_dependency * jnp.eye(D*batchN)),
                                 dynamics=ParamsLGSSMDynamics(weights=jnp.eye(D*batchN),
                                                              bias=None,
@@ -1500,7 +1500,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                     weights=jnp.kron(jnp.eye(batchN), jnp.expand_dims(x, 1)),
                                     bias=None,
                                     input_weights=jnp.zeros((batchN, 0)),
-                                    cov=lax.dynamic_slice(params.emissions.cov, (n,n), (batchN,batchN)),
+                                    cov=lax.dynamic_slice(params.emissions.cov, (n*batchN,n*batchN), (batchN,batchN)),
                                     ar_dependency=None)
                             )
 
