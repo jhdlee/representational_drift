@@ -1309,11 +1309,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # Quantities for the dynamics distribution
             # Let zp[t] = [x[t], u[t]] for t = 0...T-2
             # Old code
-            xp_kron = jnp.kron(jnp.eye(self.state_dim), xp[:, None]) # T-1 x D x D^2
-            Qinv = jnp.linalg.inv(params.dynamics.cov)
-            dynamics_stats_1 = jnp.einsum('tai,ab,tbj->ij', xp_kron, Qinv, xp_kron)
-            dynamics_stats_2 = jnp.einsum('ta,ab,tbj->j', xn, Qinv, xp_kron)
-            dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
+            # xp_kron = jnp.kron(jnp.eye(self.state_dim), xp[:, None]) # T-1 x D x D^2
+            # Qinv = jnp.linalg.inv(params.dynamics.cov)
+            # dynamics_stats_1 = jnp.einsum('tai,ab,tbj->ij', xp_kron, Qinv, xp_kron)
+            # dynamics_stats_2 = jnp.einsum('ta,ab,tbj->j', xn, Qinv, xp_kron)
+            # dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
 
             # Quantities for the emissions
             # Let z[t] = [x[t], u[t]] for t = 0...T-1
@@ -1326,13 +1326,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
             N, D = y.shape[-1], states.shape[-1]
             # Optimized Code
-            # if not self.time_varying_dynamics:
-            #     Qinv = jnp.linalg.inv(params.dynamics.cov)
-            #     dynamics_stats_1 = jnp.einsum('ti,jk,tl->ijkl', xp, Qinv, xp).reshape(D*D, D*D)
-            #     dynamics_stats_2 = jnp.einsum('ti,ik,tl->kl', xn, Qinv, xp).reshape(-1)
-            #     dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
-            # else:
-            #     dynamics_stats = None
+            if not self.time_varying_dynamics:
+                Qinv = jnp.linalg.inv(params.dynamics.cov)
+                dynamics_stats_1 = jnp.einsum('ti,jk,tl->ijkl', xp, Qinv, xp).reshape(D*D, D*D, order='F')
+                dynamics_stats_2 = jnp.einsum('ti,ik,tl->kl', xn, Qinv, xp).reshape(-1)
+                dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
+            else:
+                dynamics_stats = None
 
             # Quantities for the emissions
             if not self.time_varying_emissions:
