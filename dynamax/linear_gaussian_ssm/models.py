@@ -1254,7 +1254,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             emissions: Float[Array, "nbatch ntime emission_dim"],
             inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None,
             return_states: bool=False,
-            return_n_samples: int=100
+            return_n_samples: int=100,
+            trials: jnp.array=None,
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
@@ -1481,38 +1482,64 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     x, xp, xn = states, states[:-1], states[1:]
 
                     if self.batch_update:
-
                         D, N = x.shape[-1], emissions.shape[-1]
-                        def _update(carry, n):
-                            _emissions_params = ParamsLGSSM(
-                                initial=ParamsLGSSMInitial(mean=lax.dynamic_slice(params.initial_emissions.mean, (n*D,), (D,)),
-                                                           cov=params.emissions.ar_dependency * jnp.eye(self.state_dim)),
-                                dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.state_dim),
-                                                             bias=None,
-                                                             input_weights=jnp.zeros(
-                                                                 (self.state_dim, 0)),
-                                                             cov=params.emissions.ar_dependency * jnp.eye(self.state_dim),
-                                                             ar_dependency=None),
-                                emissions=ParamsLGSSMEmissions(
-                                    weights=jnp.expand_dims(x, 1),
-                                    bias=None,
-                                    input_weights=jnp.zeros((1, 0)),
-                                    cov=lax.dynamic_slice(params.emissions.cov, (n,n), (1,1)),
-                                    ar_dependency=None)
-                            )
 
-                            _emissions_weights = lgssm_posterior_sample(next(rngs),
-                                                                        _emissions_params,
-                                                                        lax.dynamic_slice(emissions, (0, n), (num_timesteps, 1)),
-                                                                        jnp.zeros((num_timesteps, 0)))
-                            return None, _emissions_weights
+                        if trials is not None:
+                            def _update(carry, n):
+                                _emissions_params = ParamsLGSSM(
+                                    initial=ParamsLGSSMInitial(mean=lax.dynamic_slice(params.initial_emissions.mean, (n*D,), (D,)),
+                                                               cov=params.emissions.ar_dependency * jnp.eye(self.state_dim)),
+                                    dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.state_dim),
+                                                                 bias=None,
+                                                                 input_weights=jnp.zeros(
+                                                                     (self.state_dim, 0)),
+                                                                 cov=params.emissions.ar_dependency * jnp.eye(self.state_dim),
+                                                                 ar_dependency=None),
+                                    emissions=ParamsLGSSMEmissions(
+                                        weights=jnp.expand_dims(x, 1),
+                                        bias=None,
+                                        input_weights=jnp.zeros((1, 0)),
+                                        cov=lax.dynamic_slice(params.emissions.cov, (n,n), (1,1)),
+                                        ar_dependency=None)
+                                )
 
-                        _, _emissions_weights = lax.scan(_update, None, jnp.arange(N))
-                        print(_emissions_weights.shape)
-                        _emissions_weights = jnp.swapaxes(_emissions_weights, 0, 1)
-                        print(_emissions_weights.shape)
-                        _emissions_weights = jnp.reshape(_emissions_weights, (num_timesteps, -1))
-                        print(_emissions_weights.shape)
+                                _emissions_weights = lgssm_posterior_sample(next(rngs),
+                                                                            _emissions_params,
+                                                                            lax.dynamic_slice(emissions, (0, n), (num_timesteps, 1)),
+                                                                            jnp.zeros((num_timesteps, 0)))
+                                return None, _emissions_weights
+
+                            _, _emissions_weights = lax.scan(_update, None, jnp.arange(N))
+                            _emissions_weights = jnp.swapaxes(_emissions_weights, 0, 1)
+                            _emissions_weights = jnp.reshape(_emissions_weights, (num_timesteps, -1))
+                        else:
+                            def _update(carry, n):
+                                _emissions_params = ParamsLGSSM(
+                                    initial=ParamsLGSSMInitial(mean=lax.dynamic_slice(params.initial_emissions.mean, (n*D,), (D,)),
+                                                               cov=params.emissions.ar_dependency * jnp.eye(self.state_dim)),
+                                    dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.state_dim),
+                                                                 bias=None,
+                                                                 input_weights=jnp.zeros(
+                                                                     (self.state_dim, 0)),
+                                                                 cov=params.emissions.ar_dependency * jnp.eye(self.state_dim),
+                                                                 ar_dependency=None),
+                                    emissions=ParamsLGSSMEmissions(
+                                        weights=jnp.expand_dims(x, 1),
+                                        bias=None,
+                                        input_weights=jnp.zeros((1, 0)),
+                                        cov=lax.dynamic_slice(params.emissions.cov, (n,n), (1,1)),
+                                        ar_dependency=None)
+                                )
+
+                                _emissions_weights = lgssm_posterior_sample(next(rngs),
+                                                                            _emissions_params,
+                                                                            lax.dynamic_slice(emissions, (0, n), (num_timesteps, 1)),
+                                                                            jnp.zeros((num_timesteps, 0)))
+                                return None, _emissions_weights
+
+                            _, _emissions_weights = lax.scan(_update, None, jnp.arange(N))
+                            _emissions_weights = jnp.swapaxes(_emissions_weights, 0, 1)
+                            _emissions_weights = jnp.reshape(_emissions_weights, (num_timesteps, -1))
 
                     else:
                         _emissions_params = ParamsLGSSM(

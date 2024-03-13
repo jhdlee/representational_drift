@@ -329,7 +329,10 @@ def preprocess_params_and_inputs(params, num_timesteps, inputs):
     assert params.emissions.cov is not None
 
     # Get shapes
-    emission_dim, state_dim = params.emissions.weights.shape[-2:]
+    if isinstance(params.emissions.weights, jnp.ndarray):
+        emission_dim, state_dim = params.emissions.weights.shape[-2:]
+    elif isinstance(params.emissions.weights, list):
+        emission_dim, state_dim = params.emissions.weights[0].shape[-2:]
 
     # Default the inputs to zero
     inputs = _zeros_if_none(inputs, (num_timesteps, 0))
