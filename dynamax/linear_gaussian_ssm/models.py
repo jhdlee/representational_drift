@@ -1509,6 +1509,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                         _, _emissions_weights = lax.scan(_update, None, jnp.arange(N))
                         _emissions_weights = jnp.swapaxes(_emissions_weights, 0, 1)
+                        _emissions_weights = jnp.reshape(num_timesteps, -1)
 
                     else:
                         _emissions_params = ParamsLGSSM(
