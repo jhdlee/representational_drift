@@ -1185,6 +1185,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         # initial state
         # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
         lp = self.initial_prior.log_prob(params.initial.mean)
+        lp += self.initial_cov_prior.log_prob(params.initial.cov)
         lp += MVN(params.initial.mean, params.initial.cov).log_prob(states[0])
 
         # dynamics & states
@@ -1236,6 +1237,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 jnp.ravel(params.emissions.weights[0]))
             # lp += self.emission_prior.log_prob((params.initial_emissions.cov, params.initial_emissions.mean))
             lp += self.emission_prior.log_prob(params.initial_emissions.mean)
+            lp += self.init_emissions_cov_prior.log_prob(params.initial_emissions.cov)
 
             if self.update_emissions_param_ar_dependency_variance:
                 lp += self.emissions_ar_dependency_prior.log_prob(params.emissions.ar_dependency)
