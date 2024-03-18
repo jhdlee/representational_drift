@@ -1399,6 +1399,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 Q = params.dynamics.cov
                 initial_dynamics_cov = params.initial_dynamics.cov
                 initial_dynamics_mean = params.initial_dynamics.mean
+                dynamics_ar_dependency = params.dynamics.ar_dependency
             else:
                 if self.time_varying_dynamics:
                     xp, xn = states[:-1], states[1:]
