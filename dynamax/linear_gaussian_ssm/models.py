@@ -723,6 +723,15 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             MVN(loc=jnp.zeros(self.state_dim),
                 covariance_matrix=jnp.eye(self.state_dim)))
 
+        self.initial_cov_prior = default_prior(
+            'initial_cov_prior',
+            IG(concentration=1.0, scale=1.0))
+
+        self.init_emissions_cov_prior = default_prior(
+                'init_emissions_cov_prior',
+                IG(concentration=1.0, scale=1.0)
+            )
+
         if update_emissions_param_ar_dependency_variance:
             self.emissions_ar_dependency_prior = default_prior(
                 'emissions_ar_dependency_prior',
@@ -1357,7 +1366,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         def lgssm_params_sample(rng, stats, states, params):
             """Sample parameters of the model given sufficient statistics from observed states and emissions."""
             init_stats, dynamics_stats, emission_stats = stats
-            n_splits = 5 + self.update_emissions_param_ar_dependency_variance + self.update_emissions_covariance
+            n_splits = 7 + self.update_emissions_param_ar_dependency_variance + self.update_emissions_covariance
             n_splits += self.batch_update * emissions.shape[-1]
             rngs = iter(jr.split(rng, n_splits))
 
@@ -1374,7 +1383,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                 initial_posterior = mvn_posterior_update(self.initial_prior, initial_stats)
                 m = initial_posterior.sample(seed=next(rngs))
-                S = params.initial.cov
+
+                init_cov_stats_1 = (self.state_dim) / 2
+                init_cov_stats_2 = jnp.sum(jnp.square(init_stats[0] - m)) / 2
+                init_cov_stats = (init_cov_stats_1, init_cov_stats_2)
+                init_cov_posterior = ig_posterior_update(self.init_cov_prior, init_cov_stats)
+                S = init_cov_posterior.sample(seed=next(rngs))
+                # S = params.initial.cov
 
             # Sample the dynamics params
             if self.fix_dynamics:
@@ -1561,14 +1576,15 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                     init_emissions_posterior = mvn_posterior_update(self.emission_prior, init_emissions_stats)
                     initial_emissions_mean = init_emissions_posterior.sample(seed=next(rngs))
-                    # init_emissions_cov_stats_1 = (self.emission_dim * self.state_dim) / 2
-                    # init_emissions_cov_stats_2 = jnp.sum(jnp.square(initial_emissions_mean)) / 2
-                    # init_emissions_cov_stats = (init_emissions_cov_stats_1,
-                    #                                  init_emissions_cov_stats_2)
-                    # init_emissions_cov_posterior = ig_posterior_update(self.emissions_ar_dependency_prior,
-                    #                                                         init_emissions_cov_stats)
-                    # initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
-                    initial_emissions_cov = params.initial_emissions.cov
+
+                    init_emissions_cov_stats_1 = (self.emission_dim * self.state_dim) / 2
+                    init_emissions_cov_stats_2 = jnp.sum(jnp.square(_emissions_weights[0] - initial_emissions_mean)) / 2
+                    init_emissions_cov_stats = (init_emissions_cov_stats_1,
+                                                init_emissions_cov_stats_2)
+                    init_emissions_cov_posterior = ig_posterior_update(self.init_emissions_cov_prior,
+                                                                            init_emissions_cov_stats)
+                    initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
+                    # initial_emissions_cov = params.initial_emissions.cov
 
                     if self.update_emissions_param_ar_dependency_variance:
                         emissions_ar_dependency_stats_1 = (self.emission_dim * self.state_dim * num_timesteps) / 2
