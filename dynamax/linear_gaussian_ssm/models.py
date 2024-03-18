@@ -1384,11 +1384,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 initial_posterior = mvn_posterior_update(self.initial_prior, initial_stats)
                 m = initial_posterior.sample(seed=next(rngs))
 
-                init_cov_stats_1 = (self.state_dim) / 2
-                init_cov_stats_2 = jnp.sum(jnp.square(init_stats[0] - m)) / 2
+                init_cov_stats_1 = jnp.ones((self.state_dim, 1)) / 2
+                init_cov_stats_2 = jnp.square(init_stats[0] - m) / 2
+                init_cov_stats_2 = jnp.expand_dims(init_cov_stats_2, -1)
                 init_cov_stats = (init_cov_stats_1, init_cov_stats_2)
                 init_cov_posterior = ig_posterior_update(self.initial_cov_prior, init_cov_stats)
-                S = init_cov_posterior.sample(seed=next(rngs))
+                init_cov = init_cov_posterior.sample(seed=next(rngs))
+                S = jnp.diag(jnp.ravel(init_cov))
                 # S = params.initial.cov
 
             # Sample the dynamics params
@@ -1578,13 +1580,15 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     init_emissions_posterior = mvn_posterior_update(self.emission_prior, init_emissions_stats)
                     initial_emissions_mean = init_emissions_posterior.sample(seed=next(rngs))
 
-                    init_emissions_cov_stats_1 = (self.emission_dim * self.state_dim) / 2
-                    init_emissions_cov_stats_2 = jnp.sum(jnp.square(_emissions_weights[0] - initial_emissions_mean)) / 2
+                    init_emissions_cov_stats_1 = jnp.ones((self.emission_dim * self.state_dim, 1)) / 2
+                    init_emissions_cov_stats_2 = jnp.square(_emissions_weights[0] - initial_emissions_mean) / 2
+                    init_emissions_cov_stats_2 = jnp.expand_dims(init_emissions_cov_stats_2, -1)
                     init_emissions_cov_stats = (init_emissions_cov_stats_1,
                                                 init_emissions_cov_stats_2)
                     init_emissions_cov_posterior = ig_posterior_update(self.init_emissions_cov_prior,
                                                                             init_emissions_cov_stats)
                     initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
+                    initial_emissions_cov = jnp.diag(jnp.ravel(initial_emissions_cov))
                     # initial_emissions_cov = params.initial_emissions.cov
 
                     if self.update_emissions_param_ar_dependency_variance:
