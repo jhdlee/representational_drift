@@ -14,7 +14,7 @@ from typing import Any, Optional, Tuple, Union
 from typing_extensions import Protocol
 
 from dynamax.ssm import SSM
-from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother, lgssm_posterior_sample
+from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother, lgssm_posterior_sample, lgssm_posterior_sample_identity
 from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitial, ParamsLGSSMDynamics, ParamsLGSSMEmissions, ParamsTVLGSSM
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 from dynamax.parameters import ParameterProperties, ParameterSet
@@ -672,7 +672,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             normalize_emissions: bool=False,
             emission_weights_scale: float=1.0,
             orthogonal_emissions_weights: bool=False,
-            # lower_triangular_emissions: bool=False,
             update_emissions_param_ar_dependency_variance: bool=False,
             update_initial_covariance: bool=False,
             update_dynamics_covariance: bool = False,  # learn diagonal covariance matrix
@@ -680,6 +679,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             update_init_emissions_covariance: bool=False,
             batch_update: bool=False,
             batch_size: int=1,
+            emission_per_trial: bool=False,
             **kw_priors
     ):
         super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
@@ -711,6 +711,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.batch_update = batch_update
         self.batch_size = batch_size
         self.orthogonal_emissions_weights = orthogonal_emissions_weights
+        self.emission_per_trial = emission_per_trial
 
         # Initialize prior distributions
         def default_prior(arg, default):
@@ -1517,58 +1518,98 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             else:
                 if self.time_varying_emissions:
                     x, xp, xn = states, states[:-1], states[1:]
+                    y = emissions
+                    N, D = y.shape[-1], x.shape[-1]
 
-                    if self.batch_update:
-                        D, N = x.shape[-1], emissions.shape[-1]
-                        batchN = self.batch_size
-                        def _update(carry, n):
+                    if self.emission_per_trial:
+                        assert trials is not None
+
+                        ntrials = trials.shape[-1]
+
+                        Rinv = jnp.linalg.inv(params.emissions.cov)
+                        emissions_stats_1 = jnp.einsum('tn,ti,jk,tl->njikl', trials, x, Rinv, x).reshape(ntrials, N * D, N * D)
+                        emissions_covs = jnp.linalg.inv(emissions_stats_1)
+                        emissions_stats_2 = jnp.einsum('tn,ti,ik,tl->nkl', trials, y, Rinv, x).reshape(ntrials, -1)
+                        emissions_y = jnp.einsum('nij,nj->ni', emissions_covs, emissions_stats_2)
+
+                        _emissions_params = ParamsLGSSM(
+                            initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
+                                                       cov=params.initial_emissions.cov),
+                            dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim * self.state_dim),
+                                                         bias=None,
+                                                         input_weights=None,
+                                                         cov=params.emissions.ar_dependency * jnp.eye(
+                                                             self.emission_dim * self.state_dim),
+                                                         ar_dependency=None),
+                            emissions=ParamsLGSSMEmissions(
+                                weights=jnp.eye(self.emission_dim * self.state_dim),
+                                bias=None,
+                                input_weights=None,
+                                cov=emissions_covs,
+                                ar_dependency=None)
+                        )
+
+                        _emissions_weights = lgssm_posterior_sample_identity(next(rngs),
+                                                                    _emissions_params,
+                                                                    emissions_y,
+                                                                    jnp.zeros((ntrials, 0)))
+
+                        # expand emission weights to the original shape
+                        # (ntrials, ND) -> (ntimesteps, ND)
+                        _emissions_weights = jnp.einsum('tn,ni->ti', trials, _emissions_weights)
+
+                    else:
+                        if self.batch_update:
+                            D, N = x.shape[-1], emissions.shape[-1]
+                            batchN = self.batch_size
+                            def _update(carry, n):
+                                _emissions_params = ParamsLGSSM(
+                                    initial=ParamsLGSSMInitial(mean=lax.dynamic_slice(params.initial_emissions.mean, (n*D*batchN,), (D*batchN,)),
+                                                               cov=lax.dynamic_slice(params.initial_emissions.cov, (n*D*batchN,n*D*batchN), (D*batchN,D*batchN))),
+                                                               #params.emissions.ar_dependency * jnp.eye(D*batchN)),
+                                    dynamics=ParamsLGSSMDynamics(weights=jnp.eye(D*batchN),
+                                                                 bias=None,
+                                                                 input_weights=jnp.zeros((D*batchN, 0)),
+                                                                 cov=params.emissions.ar_dependency * jnp.eye(D*batchN),
+                                                                 ar_dependency=None),
+                                    emissions=ParamsLGSSMEmissions(
+                                        weights=jnp.kron(jnp.eye(batchN), jnp.expand_dims(x, 1)),
+                                        bias=None,
+                                        input_weights=jnp.zeros((batchN, 0)),
+                                        cov=lax.dynamic_slice(params.emissions.cov, (n*batchN,n*batchN), (batchN,batchN)),
+                                        ar_dependency=None)
+                                )
+
+                                _emissions_weights = lgssm_posterior_sample(next(rngs),
+                                                                            _emissions_params,
+                                                                            lax.dynamic_slice(emissions, (0, n*batchN), (num_timesteps, batchN)),
+                                                                            jnp.zeros((num_timesteps, 0)))
+                                return None, _emissions_weights
+
+                            _, _emissions_weights = lax.scan(_update, None, jnp.arange(N//batchN))
+                            _emissions_weights = jnp.swapaxes(_emissions_weights, 0, 1)
+                            _emissions_weights = jnp.reshape(_emissions_weights, (num_timesteps, -1))
+
+                        else:
                             _emissions_params = ParamsLGSSM(
-                                initial=ParamsLGSSMInitial(mean=lax.dynamic_slice(params.initial_emissions.mean, (n*D*batchN,), (D*batchN,)),
-                                                           cov=lax.dynamic_slice(params.initial_emissions.cov, (n*D*batchN,n*D*batchN), (D*batchN,D*batchN))),
-                                                           #params.emissions.ar_dependency * jnp.eye(D*batchN)),
-                                dynamics=ParamsLGSSMDynamics(weights=jnp.eye(D*batchN),
+                                initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
+                                                           cov=params.initial_emissions.cov),
+                                dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim*self.state_dim),
                                                              bias=None,
-                                                             input_weights=jnp.zeros((D*batchN, 0)),
-                                                             cov=params.emissions.ar_dependency * jnp.eye(D*batchN),
+                                                             input_weights=jnp.zeros((self.emission_dim*self.state_dim, 0)),
+                                                             cov=params.emissions.ar_dependency*jnp.eye(self.emission_dim*self.state_dim),
                                                              ar_dependency=None),
-                                emissions=ParamsLGSSMEmissions(
-                                    weights=jnp.kron(jnp.eye(batchN), jnp.expand_dims(x, 1)),
-                                    bias=None,
-                                    input_weights=jnp.zeros((batchN, 0)),
-                                    cov=lax.dynamic_slice(params.emissions.cov, (n*batchN,n*batchN), (batchN,batchN)),
-                                    ar_dependency=None)
+                                emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.emission_dim), jnp.expand_dims(x, 1)),
+                                                               bias=None,
+                                                               input_weights=jnp.zeros((self.emission_dim, 0)),
+                                                               cov=params.emissions.cov,
+                                                               ar_dependency=None)
                             )
 
                             _emissions_weights = lgssm_posterior_sample(next(rngs),
                                                                         _emissions_params,
-                                                                        lax.dynamic_slice(emissions, (0, n*batchN), (num_timesteps, batchN)),
+                                                                        emissions,
                                                                         jnp.zeros((num_timesteps, 0)))
-                            return None, _emissions_weights
-
-                        _, _emissions_weights = lax.scan(_update, None, jnp.arange(N//batchN))
-                        _emissions_weights = jnp.swapaxes(_emissions_weights, 0, 1)
-                        _emissions_weights = jnp.reshape(_emissions_weights, (num_timesteps, -1))
-
-                    else:
-                        _emissions_params = ParamsLGSSM(
-                            initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
-                                                       cov=params.initial_emissions.cov),
-                            dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim*self.state_dim),
-                                                         bias=None,
-                                                         input_weights=jnp.zeros((self.emission_dim*self.state_dim, 0)),
-                                                         cov=params.emissions.ar_dependency*jnp.eye(self.emission_dim*self.state_dim),
-                                                         ar_dependency=None),
-                            emissions=ParamsLGSSMEmissions(weights=jnp.kron(jnp.eye(self.emission_dim), jnp.expand_dims(x, 1)),
-                                                           bias=None,
-                                                           input_weights=jnp.zeros((self.emission_dim, 0)),
-                                                           cov=params.emissions.cov,
-                                                           ar_dependency=None)
-                        )
-
-                        _emissions_weights = lgssm_posterior_sample(next(rngs),
-                                                                    _emissions_params,
-                                                                    emissions,
-                                                                    jnp.zeros((num_timesteps, 0)))
 
                     H = _emissions_weights.reshape(num_timesteps, self.emission_dim, self.state_dim)
 
