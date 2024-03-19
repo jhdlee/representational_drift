@@ -1314,6 +1314,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             return_states: bool=False,
             return_n_samples: int=100,
             trials: jnp.array=None,
+            print_ll: bool=False,
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
@@ -1796,6 +1797,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 sample_of_params.append(current_params)
             if return_states and (sample_itr >= sample_size - return_n_samples):
                 sample_of_states.append(current_states)
+            if print_ll:
+                print(ll)
             lls.append(ll)
             # new_params, ll = one_sample(current_params, emissions, inputs, next(keys))
             # sample_of_params.append(current_params)
