@@ -1531,7 +1531,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         def _compute_emissions_stats(carry, trial):
                             emissions_stats_1 = jnp.einsum('t,ti,jk,tl->jikl', trial, x, Rinv, x).reshape(N * D, N * D)
                             emissions_covs = jnp.linalg.inv(emissions_stats_1)
-                            emissions_stats_2 = jnp.einsum('t,ti,ik,tl->nkl', trial, y, Rinv, x).reshape(-1)
+                            emissions_stats_2 = jnp.einsum('t,ti,ik,tl->kl', trial, y, Rinv, x).reshape(-1)
                             emissions_y = jnp.einsum('ij,j->i', emissions_covs, emissions_stats_2)
                             return None, (emissions_covs, emissions_y)
 
