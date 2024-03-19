@@ -680,6 +680,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             batch_update: bool=False,
             batch_size: int=1,
             emission_per_trial: bool=False,
+            scan_emissions_stats: bool=False,
             **kw_priors
     ):
         super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
@@ -712,6 +713,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.batch_size = batch_size
         self.orthogonal_emissions_weights = orthogonal_emissions_weights
         self.emission_per_trial = emission_per_trial
+        self.scan_emissions_stats = scan_emissions_stats
 
         # Initialize prior distributions
         def default_prior(arg, default):
@@ -1528,19 +1530,21 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                         Rinv = jnp.linalg.inv(params.emissions.cov)
 
-                        def _compute_emissions_stats(carry, trial):
-                            emissions_stats_1 = jnp.einsum('t,ti,jk,tl->jikl', trial, x, Rinv, x).reshape(N * D, N * D)
-                            emissions_covs = jnp.linalg.inv(emissions_stats_1)
-                            emissions_stats_2 = jnp.einsum('t,ti,ik,tl->kl', trial, y, Rinv, x).reshape(-1)
-                            emissions_y = jnp.einsum('ij,j->i', emissions_covs, emissions_stats_2)
-                            return None, (emissions_covs, emissions_y)
+                        if self.scan_emissions_stats:
+                            def _compute_emissions_stats(carry, trial):
+                                emissions_stats_1 = jnp.einsum('t,ti,jk,tl->jikl', trial, x, Rinv, x).reshape(N * D, N * D)
+                                emissions_covs = jnp.linalg.inv(emissions_stats_1)
+                                emissions_stats_2 = jnp.einsum('t,ti,ik,tl->kl', trial, y, Rinv, x).reshape(-1)
+                                emissions_y = jnp.einsum('ij,j->i', emissions_covs, emissions_stats_2)
+                                return None, (emissions_covs, emissions_y)
 
-                        _, emissions_stats = lax.scan(_compute_emissions_stats, None, trials.T)
-                        emissions_covs, emissions_y = emissions_stats
-                        # emissions_stats_1 = jnp.einsum('tn,ti,jk,tl->njikl', trials, x, Rinv, x).reshape(ntrials, N * D, N * D)
-                        # emissions_covs = jnp.linalg.inv(emissions_stats_1)
-                        # emissions_stats_2 = jnp.einsum('tn,ti,ik,tl->nkl', trials, y, Rinv, x).reshape(ntrials, -1)
-                        # emissions_y = jnp.einsum('nij,nj->ni', emissions_covs, emissions_stats_2)
+                            _, emissions_stats = lax.scan(_compute_emissions_stats, None, trials.T)
+                            emissions_covs, emissions_y = emissions_stats
+                        else:
+                            emissions_stats_1 = jnp.einsum('tn,ti,jk,tl->njikl', trials, x, Rinv, x).reshape(ntrials, N * D, N * D)
+                            emissions_covs = jnp.linalg.inv(emissions_stats_1)
+                            emissions_stats_2 = jnp.einsum('tn,ti,ik,tl->nkl', trials, y, Rinv, x).reshape(ntrials, -1)
+                            emissions_y = jnp.einsum('nij,nj->ni', emissions_covs, emissions_stats_2)
 
                         _emissions_params = ParamsLGSSM(
                             initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
