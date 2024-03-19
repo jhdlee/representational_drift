@@ -1527,10 +1527,20 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         ntrials = trials.shape[-1]
 
                         Rinv = jnp.linalg.inv(params.emissions.cov)
-                        emissions_stats_1 = jnp.einsum('tn,ti,jk,tl->njikl', trials, x, Rinv, x).reshape(ntrials, N * D, N * D)
-                        emissions_covs = jnp.linalg.inv(emissions_stats_1)
-                        emissions_stats_2 = jnp.einsum('tn,ti,ik,tl->nkl', trials, y, Rinv, x).reshape(ntrials, -1)
-                        emissions_y = jnp.einsum('nij,nj->ni', emissions_covs, emissions_stats_2)
+
+                        def _compute_emissions_stats(carry, trial):
+                            emissions_stats_1 = jnp.einsum('t,ti,jk,tl->jikl', trial, x, Rinv, x).reshape(N * D, N * D)
+                            emissions_covs = jnp.linalg.inv(emissions_stats_1)
+                            emissions_stats_2 = jnp.einsum('t,ti,ik,tl->nkl', trial, y, Rinv, x).reshape(-1)
+                            emissions_y = jnp.einsum('ij,j->i', emissions_covs, emissions_stats_2)
+                            return None, (emissions_covs, emissions_y)
+
+                        _, emissions_stats = lax.scan(_compute_emissions_stats, None, trials.T)
+                        emissions_covs, emissions_y = emissions_stats
+                        # emissions_stats_1 = jnp.einsum('tn,ti,jk,tl->njikl', trials, x, Rinv, x).reshape(ntrials, N * D, N * D)
+                        # emissions_covs = jnp.linalg.inv(emissions_stats_1)
+                        # emissions_stats_2 = jnp.einsum('tn,ti,ik,tl->nkl', trials, y, Rinv, x).reshape(ntrials, -1)
+                        # emissions_y = jnp.einsum('nij,nj->ni', emissions_covs, emissions_stats_2)
 
                         _emissions_params = ParamsLGSSM(
                             initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
