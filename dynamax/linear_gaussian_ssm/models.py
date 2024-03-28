@@ -1533,7 +1533,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         dynamics_cov = dynamics_cov_posterior.sample(seed=next(rngs))
                         Q = jnp.diag(jnp.ravel(dynamics_cov))
                     else:
-                        Q = params.emissions.cov
+                        Q = params.dynamics.cov
 
                     initial_dynamics_cov, initial_dynamics_mean = None, None
                     dynamics_ar_dependency = None
