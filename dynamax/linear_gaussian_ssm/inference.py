@@ -642,7 +642,7 @@ def lgssm_posterior_sample(
         u = inputs[t]
 
         # Condition on next state
-        smoothed_mean, smoothed_cov = _condition_on(filtered_mean, filtered_cov, F, B, b, Q, u, next_state)
+        smoothed_mean, smoothed_cov = _condition_on(filtered_mean, filtered_cov, F, B, b, Q, u, next_state, 1.0)
         smoothed_cov = smoothed_cov + jnp.eye(smoothed_cov.shape[-1]) * jitter
         state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
         return state, state
@@ -810,7 +810,7 @@ def lgssm_posterior_sample_identity(
         u = inputs[t]
 
         # Condition on next state
-        smoothed_mean, smoothed_cov = _condition_on_identity(filtered_mean, filtered_cov, F, B, b, Q, u, next_state)
+        smoothed_mean, smoothed_cov = _condition_on_identity(filtered_mean, filtered_cov, F, B, b, Q, u, next_state, 1.0)
         smoothed_cov = smoothed_cov + jnp.eye(smoothed_cov.shape[-1]) * jitter
         state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
         return state, state
