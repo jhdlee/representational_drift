@@ -268,7 +268,7 @@ def _predict(m, S, F, B, b, Q, u):
     return mu_pred, Sigma_pred
 
 
-def _condition_on(m, P, H, D, d, R, u, y):
+def _condition_on(m, P, H, D, d, R, u, y, mask):
     r"""Condition a Gaussian potential on a new linear Gaussian observation
        p(z_t \mid y_t, u_t, y_{1:t-1}, u_{1:t-1})
          propto p(z_t \mid y_{1:t-1}, u_{1:t-1}) p(y_t \mid z_t, u_t)
@@ -314,8 +314,8 @@ def _condition_on(m, P, H, D, d, R, u, y):
         K = P @ H.T @ S_inv  
         S = jnp.diag(R) + H @ P @ H.T
 
-    Sigma_cond = P - K @ S @ K.T
-    mu_cond = m + K @ (y - D @ u - d - H @ m)
+    Sigma_cond = P - mask * K @ S @ K.T
+    mu_cond = m + mask * K @ (y - D @ u - d - H @ m)
     return mu_cond, symmetrize(Sigma_cond)
 
 
@@ -520,22 +520,16 @@ def lgssm_filter(
         mask = masks[t]
 
         # Update the log likelihood
-        if mask:
-            ll += _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
+        ll += mask * _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
 
-            # Condition on this emission
-            filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, H, D, d, R, u, y)
+        # Condition on this emission
+        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, H, D, d, R, u, y, mask)
 
-            # Predict the next state
-            pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u)
-        else:
-            filtered_mean, filtered_cov = pred_mean, pred_cov
-
-            pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u)
+        # Predict the next state
+        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u)
 
         return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
 
-    print(masks)
     # Run the Kalman filter
     carry = (0.0, params.initial.mean, params.initial.cov)
     (ll, _, _), (filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
@@ -635,7 +629,6 @@ def lgssm_posterior_sample(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    print(masks)
     filtered_posterior = lgssm_filter(params, emissions, inputs, masks)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
@@ -693,7 +686,7 @@ def _predict_identity(m, S, F, B, b, Q, u):
     return mu_pred, Sigma_pred
 
 
-def _condition_on_identity(m, P, H, D, d, R, u, y):
+def _condition_on_identity(m, P, H, D, d, R, u, y, mask):
     r"""Condition a Gaussian potential on a new linear Gaussian observation
        p(z_t \mid y_t, u_t, y_{1:t-1}, u_{1:t-1})
          propto p(z_t \mid y_{1:t-1}, u_{1:t-1}) p(y_t \mid z_t, u_t)
@@ -723,8 +716,8 @@ def _condition_on_identity(m, P, H, D, d, R, u, y):
     S = R + P
     K = psd_solve(S, P).T
 
-    Sigma_cond = P - K @ S @ K.T
-    mu_cond = m + K @ (y - D @ u - d - m)
+    Sigma_cond = P - mask * K @ S @ K.T
+    mu_cond = m + mask * K @ (y - D @ u - d - m)
     return mu_cond, symmetrize(Sigma_cond)
 
 @preprocess_args
@@ -762,20 +755,14 @@ def lgssm_filter_identity(
         y = emissions[t]
         mask = masks[t]
 
-        if mask:
-            # Update the log likelihood
-            ll += _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
+        # Update the log likelihood
+        ll += mask * _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
 
-            # Condition on this emission
-            filtered_mean, filtered_cov = _condition_on_identity(pred_mean, pred_cov, H, D, d, R, u, y)
+        # Condition on this emission
+        filtered_mean, filtered_cov = _condition_on_identity(pred_mean, pred_cov, H, D, d, R, u, y, mask)
 
-            # Predict the next state
-            pred_mean, pred_cov = _predict_identity(filtered_mean, filtered_cov, F, B, b, Q, u)
-        else:
-            filtered_mean, filtered_cov = pred_mean, pred_cov
-
-            # Predict the next state
-            pred_mean, pred_cov = _predict_identity(filtered_mean, filtered_cov, F, B, b, Q, u)
+        # Predict the next state
+        pred_mean, pred_cov = _predict_identity(filtered_mean, filtered_cov, F, B, b, Q, u)
 
         return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
 

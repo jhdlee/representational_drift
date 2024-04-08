@@ -1233,12 +1233,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if self.emission_per_trial:
                 # also need to edit ar dependency variance update step.
                 def _compute_emissions_lp(prev_lp, current_t):
-                    if trial_masks[current_t]:
-                        current_param = params.emissions.weights[current_t]
-                        current_lp = prev_lp + MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
-                            emissions[current_t])
-                    else:
-                        current_lp = prev_lp
+                    current_param = params.emissions.weights[current_t]
+                    current_lp = prev_lp + trial_masks[current_t] * MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
+                        emissions[current_t])
                     return current_lp, None
 
                 lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(self.sequence_length))
@@ -1798,7 +1795,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         lls = []
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
-        print(masks)
         current_states = lgssm_posterior_sample(key=next(keys),
                                                 params=current_params,
                                                 emissions=emissions,
