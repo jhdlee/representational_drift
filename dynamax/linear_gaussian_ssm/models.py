@@ -1794,6 +1794,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         lls = []
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
+        print(masks)
         current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs, masks)
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))

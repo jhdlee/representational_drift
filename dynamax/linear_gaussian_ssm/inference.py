@@ -533,6 +533,7 @@ def lgssm_filter(
 
         return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
 
+    print(masks)
     # Run the Kalman filter
     carry = (0.0, params.initial.mean, params.initial.cov)
     (ll, _, _), (filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
@@ -632,6 +633,7 @@ def lgssm_posterior_sample(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
+    print(masks)
     filtered_posterior = lgssm_filter(params, emissions, inputs, masks)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
