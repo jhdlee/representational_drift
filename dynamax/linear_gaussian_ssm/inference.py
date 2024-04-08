@@ -481,7 +481,8 @@ def lgssm_joint_sample(
 def lgssm_filter(
     params: ParamsLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
-    inputs: Optional[Float[Array, "ntime input_dim"]]=None
+    inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+    masks: jnp.array=None,
 ) -> PosteriorGSSMFiltered:
     r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
 
@@ -514,15 +515,21 @@ def lgssm_filter(
         F, B, b, Q, H, D, d, R = _get_params(params, num_timesteps, t)
         u = inputs[t]
         y = emissions[t]
+        mask = masks[t]
 
         # Update the log likelihood
-        ll += _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
+        if mask:
+            ll += _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
 
-        # Condition on this emission
-        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, H, D, d, R, u, y)
+            # Condition on this emission
+            filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, H, D, d, R, u, y)
 
-        # Predict the next state
-        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u)
+            # Predict the next state
+            pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u)
+        else:
+            filtered_mean, filtered_cov = pred_mean, pred_cov
+
+            pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u)
 
         return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
 
@@ -605,6 +612,7 @@ def lgssm_posterior_sample(
     params: ParamsLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
     inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+    masks: jnp.array=None,
     jitter: Optional[Scalar]=0
     
 ) -> Float[Array, "ntime state_dim"]:
@@ -624,7 +632,7 @@ def lgssm_posterior_sample(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs)
+    filtered_posterior = lgssm_filter(params, emissions, inputs, masks)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Sample backward in time
@@ -719,7 +727,8 @@ def _condition_on_identity(m, P, H, D, d, R, u, y):
 def lgssm_filter_identity(
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        trial_masks: jnp.array=None,
 ) -> PosteriorGSSMFiltered:
     r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
 
@@ -747,15 +756,22 @@ def lgssm_filter_identity(
         F, B, b, Q, H, D, d, R = _get_params(params, num_timesteps, t)
         u = inputs[t]
         y = emissions[t]
+        trial_mask = trial_masks[t]
 
-        # Update the log likelihood
-        ll += _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
+        if trial_mask:
+            # Update the log likelihood
+            ll += _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
 
-        # Condition on this emission
-        filtered_mean, filtered_cov = _condition_on_identity(pred_mean, pred_cov, H, D, d, R, u, y)
+            # Condition on this emission
+            filtered_mean, filtered_cov = _condition_on_identity(pred_mean, pred_cov, H, D, d, R, u, y)
 
-        # Predict the next state
-        pred_mean, pred_cov = _predict_identity(filtered_mean, filtered_cov, F, B, b, Q, u)
+            # Predict the next state
+            pred_mean, pred_cov = _predict_identity(filtered_mean, filtered_cov, F, B, b, Q, u)
+        else:
+            filtered_mean, filtered_cov = pred_mean, pred_cov
+
+            # Predict the next state
+            pred_mean, pred_cov = _predict_identity(filtered_mean, filtered_cov, F, B, b, Q, u)
 
         return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
 
@@ -770,6 +786,7 @@ def lgssm_posterior_sample_identity(
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        trial_masks: jnp.array=None,
         jitter: Optional[Scalar] = 0
 
 ) -> Float[Array, "ntime state_dim"]:
@@ -789,7 +806,7 @@ def lgssm_posterior_sample_identity(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter_identity(params, emissions, inputs)
+    filtered_posterior = lgssm_filter_identity(params, emissions, inputs, trial_masks)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Sample backward in time
