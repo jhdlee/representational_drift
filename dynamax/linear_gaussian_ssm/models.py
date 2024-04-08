@@ -1783,7 +1783,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _stats = sufficient_stats_from_sample(_states, _params)
             _new_params, _trial_emissions_weights = lgssm_params_sample(rngs[1], _stats, _states, _params)
 
-            _new_states = lgssm_posterior_sample(rngs[0], _new_params, emissions, inputs, masks)
+            _new_states = lgssm_posterior_sample(key=rngs[0],
+                                                 params=_new_params,
+                                                 emissions=emissions,
+                                                 inputs=inputs,
+                                                 masks=masks)
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
             _ll = self.log_joint(_new_params, _trial_emissions_weights, _new_states, _emissions, _inputs, trial_masks)
@@ -1795,7 +1799,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
         print(masks)
-        current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs, masks)
+        current_states = lgssm_posterior_sample(key=next(keys),
+                                                params=current_params,
+                                                emissions=emissions,
+                                                inputs=inputs,
+                                                masks=masks)
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             if sample_itr >= sample_size - return_n_samples:
