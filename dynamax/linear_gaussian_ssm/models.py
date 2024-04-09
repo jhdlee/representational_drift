@@ -1114,41 +1114,54 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        masks: jnp.array=None
     ) -> Scalar:
-        filtered_posterior = lgssm_filter(params, emissions, inputs)
+        if masks is None:
+            masks = jnp.ones(emissions.shape[0], dtype=bool)
+        filtered_posterior = lgssm_filter(params, emissions, inputs, masks)
         return filtered_posterior.marginal_loglik
 
     def filter(
         self,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        masks: jnp.array=None
     ) -> PosteriorGSSMFiltered:
-        return lgssm_filter(params, emissions, inputs)
+        if masks is None:
+            masks = jnp.ones(emissions.shape[0], dtype=bool)
+        return lgssm_filter(params, emissions, inputs, masks)
 
     def smoother(
         self,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        masks: jnp.array=None
     ) -> PosteriorGSSMSmoothed:
-        return lgssm_smoother(params, emissions, inputs)
+        if masks is None:
+            masks = jnp.ones(emissions.shape[0], dtype=bool)
+        return lgssm_smoother(params, emissions, inputs, masks)
 
     def posterior_sample(
         self,
         key: PRNGKey,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]]=None
+        inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+        masks: jnp.array=None
     ) -> Float[Array, "ntime state_dim"]:
-        return lgssm_posterior_sample(key, params, emissions, inputs)
+        if masks is None:
+            masks = jnp.ones(emissions.shape[0], dtype=bool)
+        return lgssm_posterior_sample(key, params, emissions, inputs, masks)
 
     def posterior_predictive(
         self,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]]=None
+        inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+        masks: jnp.array=None
     ) -> Tuple[Float[Array, "ntime emission_dim"], Float[Array, "ntime emission_dim"]]:
         r"""Compute marginal posterior predictive smoothing distribution for each observation.
 
@@ -1161,7 +1174,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             :posterior predictive means $\mathbb{E}[y_{t,d} \mid y_{1:T}]$ and standard deviations $\mathrm{std}[y_{t,d} \mid y_{1:T}]$
 
         """
-        posterior = lgssm_smoother(params, emissions, inputs)
+        if masks is None:
+            masks = jnp.ones(emissions.shape[0], dtype=bool)
+        posterior = lgssm_smoother(params, emissions, inputs, masks)
         H = params.emissions.weights
         b = params.emissions.bias
         R = params.emissions.cov
@@ -1335,6 +1350,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         if inputs is None:
             inputs = jnp.zeros((num_timesteps, 0))
+
+        if masks is None:
+            masks = jnp.ones(emissions.shape[0], dtype=bool)
 
         def sufficient_stats_from_sample(states, params):
             """Convert samples of states to sufficient statistics."""
