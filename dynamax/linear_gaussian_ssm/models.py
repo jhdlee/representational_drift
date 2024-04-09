@@ -1199,7 +1199,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         states,
         emissions,
         inputs,
-        trial_masks
+        masks
     ) -> Scalar:
 
         """"""""
@@ -1249,7 +1249,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 # also need to edit ar dependency variance update step.
                 def _compute_emissions_lp(prev_lp, current_t):
                     current_param = params.emissions.weights[current_t]
-                    current_lp = prev_lp + trial_masks[current_t] * MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
+                    current_lp = prev_lp + masks[current_t] * MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
                         emissions[current_t])
                     return current_lp, None
 
@@ -1278,13 +1278,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     current_lp = prev_lp + MVN(loc=jnp.ravel(current_param),
                                                covariance_matrix=jnp.eye(
                                                    self.emission_dim * self.state_dim) * params.emissions.ar_dependency).log_prob(jnp.ravel(next_param))
-                    current_lp += MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
+                    current_lp += masks[current_t] * MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
                         emissions[current_t])
                     return current_lp, None
 
                 lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(self.sequence_length - 1))
 
-                lp += MVN(params.emissions.weights[-1] @ states[-1], params.emissions.cov).log_prob(emissions[-1])
+                lp += masks[-1] * MVN(params.emissions.weights[-1] @ states[-1], params.emissions.cov).log_prob(emissions[-1])
                 lp += MVN(params.initial_emissions.mean, params.initial_emissions.cov).log_prob(
                     jnp.ravel(params.emissions.weights[0]))
                 # lp += self.emission_prior.log_prob((params.initial_emissions.cov, params.initial_emissions.mean))
@@ -1303,7 +1303,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             lp += self.emission_prior.log_prob(jnp.ravel(emission_matrix))
 
             def _compute_emissions_lp(prev_lp, current_t):
-                current_lp = prev_lp + MVN(params.emissions.weights @ states[current_t], params.emissions.cov).log_prob(emissions[current_t])
+                current_lp = prev_lp + masks[current_t] * MVN(params.emissions.weights @ states[current_t], params.emissions.cov).log_prob(emissions[current_t])
                 return current_lp, None
 
             lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(self.sequence_length))
@@ -1652,7 +1652,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                 _emissions_weights = lgssm_posterior_sample(next(rngs),
                                                                             _emissions_params,
                                                                             lax.dynamic_slice(emissions, (0, n*batchN), (num_timesteps, batchN)),
-                                                                            jnp.zeros((num_timesteps, 0)))
+                                                                            jnp.zeros((num_timesteps, 0)), masks)
                                 return None, _emissions_weights
 
                             _, _emissions_weights = lax.scan(_update, None, jnp.arange(N//batchN))
@@ -1678,7 +1678,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                             _emissions_weights = lgssm_posterior_sample(next(rngs),
                                                                         _emissions_params,
                                                                         emissions,
-                                                                        jnp.zeros((num_timesteps, 0)))
+                                                                        jnp.zeros((num_timesteps, 0)), masks)
 
                     H = _emissions_weights.reshape(num_timesteps, self.emission_dim, self.state_dim)
 
@@ -1728,7 +1728,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         # initial_emissions_cov = emissions_ar_dep_cov
 
                     if self.update_emissions_covariance:
-                        emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (num_timesteps / 2)
+                        emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
                         emissions_mean = jnp.einsum('tx,tyx->ty', states[masks], H[masks])
                         emissions_cov_stats_2 = jnp.sum(jnp.square(emissions[masks]-emissions_mean), axis=0) / 2
                         emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
@@ -1760,7 +1760,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     D = jnp.zeros((self.emission_dim, 0))
 
                     if self.update_emissions_covariance:
-                        emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (num_timesteps / 2)
+                        emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
                         emissions_mean = jnp.einsum('tx,yx->ty', states[masks], H)
                         emissions_cov_stats_2 = jnp.sum(jnp.square(emissions[masks]-emissions_mean), axis=0) / 2
                         emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
@@ -1805,7 +1805,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                  masks=masks)
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
-            _ll = self.log_joint(_new_params, _trial_emissions_weights, _new_states, _emissions, _inputs, trial_masks)
+            _ll = self.log_joint(_new_params, _trial_emissions_weights, _new_states, _emissions, _inputs, masks)
             return _new_params, _new_states, _ll
 
         sample_of_params = []
