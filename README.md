@@ -1,4 +1,4 @@
-# Welcome to DYNAMAX! (This is a fork of DYNAMAX for nonstationary LDS)
+# Welcome to DYNAMAX! (This is a fork of DYNAMAX for nonstationary LDS :))
 
 ![Logo](https://raw.githubusercontent.com/probml/dynamax/main/logo/logo.gif)
 
