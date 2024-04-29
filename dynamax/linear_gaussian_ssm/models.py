@@ -676,6 +676,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             update_initial_covariance: bool=False,
             update_dynamics_covariance: bool = False,  # learn diagonal covariance matrix
             update_emissions_covariance: bool = False, # learn diagonal covariance matrix
+            update_init_emissions_mean: bool = False,
             update_init_emissions_covariance: bool=False,
             batch_update: bool=False,
             batch_size: int=1,
@@ -708,6 +709,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.update_dynamics_covariance = update_dynamics_covariance
         self.update_emissions_covariance = update_emissions_covariance
         self.update_initial_covariance = update_initial_covariance
+        self.update_init_emissions_mean = update_init_emissions_mean
         self.update_init_emissions_covariance = update_init_emissions_covariance
         self.batch_update = batch_update
         self.batch_size = batch_size
@@ -1692,12 +1694,15 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                     # emissions_ar_dep_cov = jnp.eye(self.emission_dim * self.state_dim) * params.emissions.ar_dependency
                     # init_emissions_stats_1 = jnp.linalg.inv(emissions_ar_dep_cov)
-                    init_emissions_stats_1 = jnp.linalg.inv(params.initial_emissions.cov)
-                    init_emissions_stats_2 = init_emissions_stats_1 @ _emissions_weights[0]
-                    init_emissions_stats = (init_emissions_stats_1, init_emissions_stats_2)
+                    if self.update_init_emissions_mean:
+                        init_emissions_stats_1 = jnp.linalg.inv(params.initial_emissions.cov)
+                        init_emissions_stats_2 = init_emissions_stats_1 @ _emissions_weights[0]
+                        init_emissions_stats = (init_emissions_stats_1, init_emissions_stats_2)
 
-                    init_emissions_posterior = mvn_posterior_update(self.emission_prior, init_emissions_stats)
-                    initial_emissions_mean = init_emissions_posterior.sample(seed=next(rngs))
+                        init_emissions_posterior = mvn_posterior_update(self.emission_prior, init_emissions_stats)
+                        initial_emissions_mean = init_emissions_posterior.sample(seed=next(rngs))
+                    else:
+                        initial_emissions_mean = params.initial_emissions.mean
 
                     if self.update_init_emissions_covariance:
                         init_emissions_cov_stats_1 = jnp.ones((self.emission_dim * self.state_dim, 1)) / 2
