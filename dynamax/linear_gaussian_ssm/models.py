@@ -1223,7 +1223,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             def _compute_dynamics_lp(prev_lp, current_t):
                 current_state_mean = jnp.einsum('ij,rj->ri', params.dynamics.weights, states[:, current_t])
                 new_lp = MVN(current_state_mean, params.dynamics.cov).log_prob(states[:, current_t+1])
-                masked_new_lp = (masks[current_t+1] * new_lp).sum()
+                masked_new_lp = (masks[:, current_t+1] * new_lp).sum()
                 current_lp = prev_lp + masked_new_lp
                 return current_lp, None
             lp, _ = jax.lax.scan(_compute_dynamics_lp, lp, jnp.arange(self.sequence_length-1))
@@ -1240,7 +1240,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     current_param = params.emissions.weights[current_t]
                     current_y_mean = jnp.einsum('ij,rj->ri', current_param, states[:, current_t])
                     new_lp = MVN(current_y_mean, params.emissions.cov).log_prob(emissions[:, current_t])
-                    masked_new_lp = (masks[current_t] * new_lp).sum()
+                    masked_new_lp = (masks[:, current_t] * new_lp).sum()
                     current_lp = prev_lp + masked_new_lp
                     return current_lp, None
 
@@ -1268,7 +1268,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     current_lp = prev_lp + MVN(loc=jnp.ravel(current_param),
                                                covariance_matrix=jnp.eye(
                                                    self.emission_dim * self.state_dim) * params.emissions.ar_dependency).log_prob(jnp.ravel(next_param))
-                    current_lp += masks[current_t] * MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
+                    current_lp += masks[:, current_t] * MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
                         emissions[current_t])
                     return current_lp, None
 
@@ -1295,7 +1295,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             def _compute_emissions_lp(prev_lp, current_t):
                 current_y_mean = jnp.einsum('ij,rj->ri', params.emissions.weights, states[:, current_t])
                 new_lp = MVN(current_y_mean, params.emissions.cov).log_prob(emissions[:, current_t])
-                masked_new_lp = (masks[current_t] * new_lp).sum()
+                masked_new_lp = (masks[:, current_t] * new_lp).sum()
                 current_lp = prev_lp + masked_new_lp
                 return current_lp, None
 
