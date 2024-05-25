@@ -735,6 +735,7 @@ def lgssm_filter_identity(
         emissions: Float[Array, "ntime emission_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         masks: jnp.array=None,
+        trial_r: int=0,
 ) -> PosteriorGSSMFiltered:
     r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
 
@@ -787,7 +788,8 @@ def lgssm_posterior_sample_identity(
         emissions: Float[Array, "ntime emission_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         masks: jnp.array=None,
-        jitter: Optional[Scalar] = 0
+        trial_r: int=0,
+        # jitter: Optional[Scalar] = 0
 
 ) -> Float[Array, "ntime state_dim"]:
     r"""Run forward-filtering, backward-sampling to draw samples from $p(z_{1:T} \mid y_{1:T}, u_{1:T})$.
@@ -821,7 +823,7 @@ def lgssm_posterior_sample_identity(
         # Condition on next state
         smoothed_mean, smoothed_cov = _condition_on_identity(filtered_mean, filtered_cov, F, B, b, Q, u,
                                                              next_state, mask=mask)
-        smoothed_cov = smoothed_cov + jnp.eye(smoothed_cov.shape[-1]) * jitter
+        # smoothed_cov = smoothed_cov + jnp.eye(smoothed_cov.shape[-1]) * jitter
         state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
         return state, state
 
