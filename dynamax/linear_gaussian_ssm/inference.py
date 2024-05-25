@@ -612,7 +612,7 @@ def lgssm_posterior_sample(
     inputs: Optional[Float[Array, "ntime input_dim"]]=None,
     masks: jnp.array=None,
     trial_r: int=0,
-    # jitter: Optional[Scalar]=0
+    jitter: Optional[Scalar]=0
     #     args
     
 ) -> Float[Array, "ntime state_dim"]:
