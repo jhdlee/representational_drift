@@ -1055,10 +1055,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
     def initial_distribution(
         self,
+        timestep: int,
         params: ParamsLGSSM,
         inputs: Optional[Float[Array, "ntime input_dim"]]=None
     ) -> tfd.Distribution:
-        return MVN(params.initial.mean, params.initial.cov)
+        return MVN(params.initial.mean[timestep], params.initial.cov[timestep])
 
     def transition_distribution(
         self,
