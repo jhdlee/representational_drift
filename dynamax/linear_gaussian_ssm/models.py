@@ -1774,7 +1774,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             else:
                 # args = (rngs[0], _new_params, emissions,
                 #         inputs, masks, jnp.arange(self.num_trials))
-                _new_states = lgssm_posterior_sample_vmap(rngs[0], _new_params, emissions, inputs, masks, jnp.arange(self.num_trials))
+                _new_states = lgssm_posterior_sample_vmap(rngs[0], _new_params, emissions,
+                                                          inputs, masks, jnp.arange(self.num_trials, dtype=int))
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
             _ll = self.log_joint(_new_params, _trial_emissions_weights, _new_states, _emissions, _inputs, masks)
@@ -1793,7 +1794,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         else:
             # args = (next(keys), current_params, emissions,
             #         inputs, masks, jnp.arange(self.num_trials))
-            current_states = lgssm_posterior_sample_vmap(next(keys), current_params, emissions, inputs, masks, jnp.arange(self.num_trials))
+            current_states = lgssm_posterior_sample_vmap(next(keys), current_params, emissions,
+                                                         inputs, masks, jnp.arange(self.num_trials, dtype=int))
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             if sample_itr >= sample_size - return_n_samples:
