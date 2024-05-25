@@ -1404,7 +1404,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 m = initial_posterior.sample(seed=next(rngs))
 
                 if self.update_initial_covariance:
-                    init_cov_stats_1 = jnp.ones((self.state_dim, 1)) / 2
+                    init_cov_stats_1 = jnp.ones((self.num_trials * self.state_dim, 1)) / 2
                     init_cov_stats_2 = jnp.square(init_stats[0] - m) / 2
                     init_cov_stats_2 = init_cov_stats_2.flatten()
                     init_cov_stats_2 = jnp.expand_dims(init_cov_stats_2, -1)

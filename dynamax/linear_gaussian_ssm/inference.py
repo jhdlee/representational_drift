@@ -533,7 +533,6 @@ def lgssm_filter(
         return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
 
     # Run the Kalman filter
-    print(params.initial.mean[trial_r])
     carry = (0.0, params.initial.mean[trial_r], params.initial.cov[trial_r])
     (ll, _, _), (filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
     return PosteriorGSSMFiltered(marginal_loglik=ll, filtered_means=filtered_means, filtered_covariances=filtered_covs)
