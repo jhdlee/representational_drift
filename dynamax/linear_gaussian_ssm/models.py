@@ -29,7 +29,6 @@ class SuffStatsLGSSM(Protocol):
     """A :class:`NamedTuple` with sufficient statistics for LGSSM parameter estimation."""
     pass
 
-
 class LinearGaussianSSM(SSM):
     r"""
     Linear Gaussian State Space Model.
@@ -659,11 +658,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             state_dim: int,
             emission_dim: int,
             input_dim: int=0,
-            time_varying_dynamics: bool=True,
+            num_trials: int=0, # number of trials
+            sequence_length: int=0, # number of timesteps per trial
+            time_varying_dynamics: bool=False,
             time_varying_emissions: bool=True,
             dynamics_param_ar_dependency_variance: float=1.0,
             emissions_param_ar_dependency_variance: float=1.0,
-            sequence_length: int=0,
             has_dynamics_bias: bool=False,
             has_emissions_bias: bool=False,
             fix_initial: bool=False,
@@ -674,23 +674,23 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             orthogonal_emissions_weights: bool=False,
             update_emissions_param_ar_dependency_variance: bool=False,
             update_initial_covariance: bool=False,
-            update_dynamics_covariance: bool = False,  # learn diagonal covariance matrix
-            update_emissions_covariance: bool = False, # learn diagonal covariance matrix
-            update_init_emissions_mean: bool = False,
+            update_dynamics_covariance: bool=False,  # learn diagonal covariance matrix
+            update_emissions_covariance: bool=False, # learn diagonal covariance matrix
+            update_init_emissions_mean: bool=False,
             update_init_emissions_covariance: bool=False,
             batch_update: bool=False,
             batch_size: int=1,
             emission_per_trial: bool=False,
             scan_emissions_stats: bool=False,
+            connected_dynamics: bool=False,
             **kw_priors
     ):
         super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
                          has_dynamics_bias=has_dynamics_bias, has_emissions_bias=has_emissions_bias)
 
+        self.num_trials = num_trials
         self.time_varying_dynamics = time_varying_dynamics
         self.time_varying_emissions = time_varying_emissions
-        if time_varying_dynamics or time_varying_emissions:
-            assert sequence_length > 0
         self.sequence_length = sequence_length
 
         if time_varying_dynamics:
@@ -716,29 +716,20 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.orthogonal_emissions_weights = orthogonal_emissions_weights
         self.emission_per_trial = emission_per_trial
         self.scan_emissions_stats = scan_emissions_stats
+        self.connected_dynamics = connected_dynamics
 
         # Initialize prior distributions
         def default_prior(arg, default):
             return kw_priors[arg] if arg in kw_priors else default
 
-        # self.initial_prior = default_prior(
-        #     'initial_prior',
-        #     NIW(loc=jnp.zeros(self.state_dim),
-        #         mean_concentration=1.,
-        #         df=self.state_dim + 0.1,
-        #         scale=jnp.eye(self.state_dim)))
-        self.initial_prior = default_prior(
+        self.initial_mean_prior = default_prior(
             'initial_prior',
-            MVN(loc=jnp.zeros(self.state_dim),
+            MVN(loc=jnp.ones(self.state_dim),
                 covariance_matrix=jnp.eye(self.state_dim)))
 
-        self.initial_cov_prior = default_prior(
-            'initial_cov_prior',
-            IG(concentration=1.0, scale=1.0))
-
-        self.init_emissions_cov_prior = default_prior(
-                'init_emissions_cov_prior',
-                IG(concentration=1.0, scale=1.0)
+        self.initial_covariance_prior = default_prior(
+            'initial_covariance_prior',
+            IG(concentration=1.0, scale=1.0)
             )
 
         if update_emissions_param_ar_dependency_variance:
@@ -760,27 +751,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             )
 
         if time_varying_dynamics:
-            # self.dynamics_prior = default_prior(
-            #     'dynamics_prior',
-            #     NIW(loc=jnp.zeros(self.state_dim ** 2),
-            #         mean_concentration=1.,
-            #         df=self.state_dim ** 2 + 0.1,
-            #         scale=jnp.eye(self.state_dim ** 2)))
-
             # prior on initial dynamics
             self.dynamics_prior = default_prior(
                 'dynamics_prior',
                 MVN(loc=jnp.zeros(self.state_dim**2), covariance_matrix=jnp.eye(self.state_dim**2))
             )
-
         else:
-            # self.dynamics_prior = default_prior(
-            #     'dynamics_prior',
-            #     MNIW(loc=jnp.zeros((self.state_dim, self.state_dim + self.input_dim + self.has_dynamics_bias)),
-            #          col_precision=jnp.eye(self.state_dim + self.input_dim + self.has_dynamics_bias),
-            #          df=self.state_dim + 0.1,
-            #          scale=jnp.eye(self.state_dim)))
-
             # prior on dynamics parameters
             self.dynamics_prior = default_prior(
                 'dynamics_prior',
@@ -788,27 +764,17 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             )
 
         if time_varying_emissions:
-            # self.emission_prior = default_prior(
-            #     'emission_prior',
-            #     NIW(loc=jnp.zeros(self.emission_dim * self.state_dim),
-            #         mean_concentration=1.,
-            #         df=self.emission_dim * self.state_dim + 0.1,
-            #         scale=jnp.eye(self.emission_dim * self.state_dim)))
-
             # prior on initial emissions
             self.emission_prior = default_prior(
                 'emission_prior',
                 MVN(loc=jnp.zeros(self.emission_dim * self.state_dim),
                     covariance_matrix=jnp.eye(self.emission_dim * self.state_dim))
             )
+            self.initial_emissions_covariance_prior = default_prior(
+                'init_emissions_cov_prior',
+                IG(concentration=1.0, scale=1.0)
+            )
         else:
-            # self.emission_prior = default_prior(
-            #     'emission_prior',
-            #     MNIW(loc=jnp.zeros((self.emission_dim, self.state_dim + self.input_dim + self.has_emissions_bias)),
-            #          col_precision=jnp.eye(self.state_dim + self.input_dim + self.has_emissions_bias),
-            #          df=self.emission_dim + 0.1,
-            #          scale=jnp.eye(self.emission_dim)))
-
             # prior on emissions parameters
             self.emission_prior = default_prior(
                 'emission_prior',
@@ -864,19 +830,24 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         """
 
         # Arbitrary default values, for demo purposes.
-        _initial_mean = jnp.zeros(self.state_dim)
-        _initial_covariance = jnp.eye(self.state_dim)
+        if self.connected_dynamics:
+            _initial_mean = jnp.ones(self.state_dim)
+            _initial_covariance = jnp.eye(self.state_dim)
+        else:
+            _initial_mean = jnp.ones((self.num_trials, self.state_dim))
+            _initial_covariance = jnp.eye((self.num_trials, self.state_dim))
 
         if self.time_varying_dynamics:
-            _initial_dynamics_cov = self.dynamics_param_ar_dependency_variance * jnp.eye(self.state_dim**2)
+            # _initial_dynamics_cov = self.dynamics_param_ar_dependency_variance * jnp.eye(self.state_dim**2)
             _initial_dynamics_mean = jnp.zeros(self.state_dim**2)
+            _initial_dynamics_cov = jnp.eye(self.state_dim**2)
         else:
             _initial_dynamics_cov, _initial_dynamics_mean = None, None
 
         if self.time_varying_emissions:
             # _initial_emissions_cov = self.emissions_param_ar_dependency_variance * jnp.eye(self.emission_dim*self.state_dim)
-            _initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim)
             _initial_emissions_mean = jnp.zeros(self.emission_dim * self.state_dim)
+            _initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim)
         else:
             _initial_emissions_cov, _initial_emissions_mean = None, None
 
@@ -903,7 +874,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                      normalized_eigvals,
                                      eigenvectors_inv)
                 _dynamics_weights = jnp.array(np.real(dynamics))
-
                 # _dynamics_weights = _dynamics_weights / (1e-8 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
                 #_dynamics_weights = _dynamics_weights / (1e-4 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights)), axis=-1))[:, None, None]
         else:
@@ -915,7 +885,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 eigenvectors = eigdecomp_result.eigenvectors
                 dynamics = eigenvectors @ np.diag(eigenvalues / np.abs(eigenvalues)) @ np.linalg.inv(eigenvectors)
                 _dynamics_weights = jnp.array(np.real(dynamics))
-
                 # _dynamics_weights = _dynamics_weights / (1e-8 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
 
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
@@ -923,17 +892,22 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         _dynamics_covariance = 0.1 * jnp.eye(self.state_dim)
 
         if self.time_varying_emissions:
-            keys = jr.split(key, self.sequence_length)
+            emissions_param_ar_dependency_cov = jnp.eye(self.emission_dim * self.state_dim) * self.emissions_param_ar_dependency_variance
+            keys = jr.split(key, self.num_trials)
             key = keys[-1]
             def _get_emission_weights(prev_weights, current_key):
-                current_weights = prev_weights + jnp.sqrt(self.emissions_param_ar_dependency_variance) \
-                                  * jr.normal(current_key, shape=(self.emission_dim, self.state_dim))
+                # current_weights = prev_weights + jnp.sqrt(self.emissions_param_ar_dependency_variance) \
+                #                   * jr.normal(current_key, shape=(self.emission_dim, self.state_dim))
+                current_weights_dist = MVN(loc=prev_weights,
+                                           covariance_matrix=emissions_param_ar_dependency_cov)
+                current_weights = current_weights_dist.sample(seed=current_key)
                 return current_weights, current_weights
 
             key1, key = jr.split(key, 2)
-            initial_emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
+            initial_emission_weights = jr.normal(key1, shape=(self.emission_dim * self.state_dim, ))
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
+            _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
             if self.orthogonal_emissions_weights:
                 _emission_weights = jnp.linalg.qr(_emission_weights)[0]
                 _emission_weights = self.emission_weights_scale * _emission_weights
@@ -1033,44 +1007,50 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         """
 
-        if self.time_varying_dynamics or self.time_varying_emissions:
-            assert num_timesteps <= self.sequence_length
+        def _outer_step(carry, outer_args):
+            key, t = outer_args
+            def _step(prev_state, args):
+                key, inpt, idx = args
+                key1, key2 = jr.split(key, 2)
+                state = self.transition_distribution(idx-1, params, prev_state, inpt).sample(seed=key2)
+                emission_distribution = self.emission_distribution(t, params, state, inpt)
+                emission = emission_distribution.sample(seed=key1)
+                if return_signal:
+                    signal = emission_distribution.mean()
+                else:
+                    signal = jnp.zeros_like(emission)
+                return state, (state, emission, signal)
 
-        def _step(prev_state, args):
-            key, inpt, idx = args
-            key1, key2 = jr.split(key, 2)
-            state = self.transition_distribution(idx-1, params, prev_state, inpt).sample(seed=key2)
-            emission_distribution = self.emission_distribution(idx, params, state, inpt)
-            emission = emission_distribution.sample(seed=key1)
+            # Sample the initial state
+            key1, key2, key = jr.split(key, 3)
+            initial_input = tree_map(lambda x: x[0], inputs)
+            initial_state = self.initial_distribution(t, params, initial_input).sample(seed=key1)
+            initial_emission_distribution = self.emission_distribution(t, params, initial_state, initial_input)
+            initial_emission = initial_emission_distribution.sample(seed=key2)
             if return_signal:
-                signal = emission_distribution.mean()
+                initial_signal = initial_emission_distribution.mean()
             else:
-                signal = jnp.zeros_like(emission)
-            return state, (state, emission, signal)
+                initial_signal = jnp.zeros_like(initial_emission)
 
-        # Sample the initial state
-        key1, key2, key = jr.split(key, 3)
-        initial_input = tree_map(lambda x: x[0], inputs)
-        initial_state = self.initial_distribution(params, initial_input).sample(seed=key1)
-        initial_emission_distribution = self.emission_distribution(0, params, initial_state, initial_input)
-        initial_emission = initial_emission_distribution.sample(seed=key2)
-        if return_signal:
-            initial_signal = initial_emission_distribution.mean()
-        else:
-            initial_signal = jnp.zeros_like(initial_emission)
+            # Sample the remaining emissions and states
+            next_keys = jr.split(key, num_timesteps - 1)
+            next_inputs = tree_map(lambda x: x[1:], inputs)
+            next_indices = jnp.arange(1, self.sequence_length)
+            _, (next_states, next_emissions, next_signals) = lax.scan(_step, initial_state,
+                                                                      (next_keys, next_inputs, next_indices))
 
-        # Sample the remaining emissions and states
-        next_keys = jr.split(key, num_timesteps - 1)
-        next_inputs = tree_map(lambda x: x[1:], inputs)
-        next_indices = jnp.arange(1, num_timesteps)
-        _, (next_states, next_emissions, next_signals) = lax.scan(_step, initial_state,
-                                                                  (next_keys, next_inputs, next_indices))
+            # Concatenate the initial state and emission with the following ones
+            expand_and_cat = lambda x0, x1T: jnp.concatenate((jnp.expand_dims(x0, 0), x1T))
+            states = tree_map(expand_and_cat, initial_state, next_states)
+            emissions = tree_map(expand_and_cat, initial_emission, next_emissions)
+            signals = tree_map(expand_and_cat, initial_signal, next_signals)
 
-        # Concatenate the initial state and emission with the following ones
-        expand_and_cat = lambda x0, x1T: jnp.concatenate((jnp.expand_dims(x0, 0), x1T))
-        states = tree_map(expand_and_cat, initial_state, next_states)
-        emissions = tree_map(expand_and_cat, initial_emission, next_emissions)
-        signals = tree_map(expand_and_cat, initial_signal, next_signals)
+            return None, (states, emissions, signals)
+
+        keys = jr.split(key, self.num_trials)
+        _, (states, emissions, signals) = lax.scan(_outer_step, None,
+                                                      (keys, jnp.arange(self.num_trials)))
+
         return states, emissions, signals
 
     def initial_distribution(
