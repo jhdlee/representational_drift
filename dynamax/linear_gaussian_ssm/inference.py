@@ -485,6 +485,7 @@ def lgssm_filter(
     emissions:  Float[Array, "ntime emission_dim"],
     inputs: Optional[Float[Array, "ntime input_dim"]]=None,
     masks: jnp.array=None,
+    trial_r: int=0,
 ) -> PosteriorGSSMFiltered:
     r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
 
@@ -508,7 +509,6 @@ def lgssm_filter(
         else:
             L = H @ jnp.linalg.cholesky(pred_cov)
             return MVNLowRank(m, R, L).log_prob(y)
-            
 
     def _step(carry, t):
         ll, pred_mean, pred_cov = carry
@@ -531,7 +531,7 @@ def lgssm_filter(
         return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
 
     # Run the Kalman filter
-    carry = (0.0, params.initial.mean, params.initial.cov)
+    carry = (0.0, params.initial.mean[trial_r], params.initial.cov[trial_r])
     (ll, _, _), (filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
     return PosteriorGSSMFiltered(marginal_loglik=ll, filtered_means=filtered_means, filtered_covariances=filtered_covs)
 
@@ -611,6 +611,7 @@ def lgssm_posterior_sample(
     emissions:  Float[Array, "ntime emission_dim"],
     inputs: Optional[Float[Array, "ntime input_dim"]]=None,
     masks: jnp.array=None,
+    trial_r: int=0,
     jitter: Optional[Scalar]=0
     
 ) -> Float[Array, "ntime state_dim"]:
@@ -630,20 +631,20 @@ def lgssm_posterior_sample(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs, masks)
+    filtered_posterior = lgssm_filter(params, emissions, inputs, masks, trial_r)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Sample backward in time
     def _step(carry, args):
         next_state = carry
-        key, filtered_mean, filtered_cov, t = args
+        key, filtered_mean, filtered_cov, t, mask = args
 
         # Shorthand: get parameters and inputs for time index t
         F, B, b, Q = _get_params(params, num_timesteps, t)[:4]
         u = inputs[t]
 
         # Condition on next state
-        smoothed_mean, smoothed_cov = _condition_on(filtered_mean, filtered_cov, F, B, b, Q, u, next_state, 1.0)
+        smoothed_mean, smoothed_cov = _condition_on(filtered_mean, filtered_cov, F, B, b, Q, u, next_state, mask=mask)
         smoothed_cov = smoothed_cov + jnp.eye(smoothed_cov.shape[-1]) * jitter
         state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
         return state, state
@@ -657,6 +658,7 @@ def lgssm_posterior_sample(
         filtered_means[:-1][::-1],
         filtered_covs[:-1][::-1],
         jnp.arange(num_timesteps - 2, -1, -1),
+        masks[1:],
     )
     _, reversed_states = lax.scan(_step, last_state, args)
     states = jnp.vstack([reversed_states[::-1], last_state])

@@ -1312,8 +1312,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None,
             return_states: bool=False,
             return_n_samples: int=100,
-            trials: jnp.array=None,
             print_ll: bool=False,
+            trials: jnp.array = None,
             masks: jnp.array=None,
             trial_masks: jnp.array=None,
             fixed_states: jnp.array=None,
@@ -1342,67 +1342,28 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             """Convert samples of states to sufficient statistics."""
             inputs_joint = jnp.concatenate((inputs, jnp.ones((num_timesteps, 1))), axis=1)
             # Let xn[t] = x[t+1]          for t = 0...T-2
-            x, xp, xn = states, states[:-1], states[1:]
+            x, xp, xn = states, states[:, :-1], states[:, 1:]
             u, up = inputs_joint, inputs_joint[:-1]
             y = emissions
 
             # init_stats = (x[0], jnp.outer(x[0], x[0]), 1)
-            init_stats = (x[0],)
-
-            # # Quantities for the dynamics distribution
-            # # Let zp[t] = [x[t], u[t]] for t = 0...T-2
-            # sum_zpzpT = jnp.block([[xp.T @ xp, xp.T @ up], [up.T @ xp, up.T @ up]])
-            # sum_zpxnT = jnp.block([[xp.T @ xn], [up.T @ xn]])
-            # sum_xnxnT = xn.T @ xn
-            # dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, num_timesteps - 1)
-            # if not self.has_dynamics_bias:
-            #     dynamics_stats = (sum_zpzpT[:-1, :-1], sum_zpxnT[:-1, :], sum_xnxnT,
-            #                       num_timesteps - 1)
-            #
-            # # Quantities for the emissions
-            # # Let z[t] = [x[t], u[t]] for t = 0...T-1
-            # sum_zzT = jnp.block([[x.T @ x, x.T @ u], [u.T @ x, u.T @ u]])
-            # sum_zyT = jnp.block([[x.T @ y], [u.T @ y]])
-            # sum_yyT = y.T @ y
-            # emission_stats = (sum_zzT, sum_zyT, sum_yyT, num_timesteps)
-            # if not self.has_emissions_bias:
-            #     emission_stats = (sum_zzT[:-1, :-1], sum_zyT[:-1, :], sum_yyT, num_timesteps)
-
-            # Quantities for the dynamics distribution
-            # Let zp[t] = [x[t], u[t]] for t = 0...T-2
-            # Old code
-            # xp_kron = jnp.kron(jnp.eye(self.state_dim), xp[:, None]) # T-1 x D x D^2
-            # Qinv = jnp.linalg.inv(params.dynamics.cov)
-            # dynamics_stats_1 = jnp.einsum('tai,ab,tbj->ij', xp_kron, Qinv, xp_kron)
-            # dynamics_stats_2 = jnp.einsum('ta,ab,tbj->j', xn, Qinv, xp_kron)
-            # dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
-
-            # Quantities for the emissions
-            # Let z[t] = [x[t], u[t]] for t = 0...T-1
-            # Old code
-            # x_kron = jnp.kron(jnp.eye(self.emission_dim), x[:, None]) # T x N x ND
-            # Rinv = jnp.linalg.inv(params.emissions.cov)
-            # emissions_stats_1 = jnp.einsum('tai,ab,tbj->ij', x_kron, Rinv, x_kron)
-            # emissions_stats_2 = jnp.einsum('ta,ab,tbj->j', y, Rinv, x_kron)
-            # emission_stats = (emissions_stats_1, emissions_stats_2)
+            init_stats = (x[:, 0],)
 
             N, D = y.shape[-1], states.shape[-1]
             # Optimized Code
             if not self.time_varying_dynamics:
                 Qinv = jnp.linalg.inv(params.dynamics.cov)
-                dynamics_stats_1 = jnp.einsum('ti,jk,tl->jikl', xp, Qinv, xp).reshape(D*D, D*D)
-                dynamics_stats_2 = jnp.einsum('ti,ik,tl->kl', xn, Qinv, xp).reshape(-1)
+                dynamics_stats_1 = jnp.einsum('bti,jk,btl->jikl', xp, Qinv, xp).reshape(D*D, D*D)
+                dynamics_stats_2 = jnp.einsum('bti,ik,btl->kl', xn, Qinv, xp).reshape(-1)
                 dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
             else:
                 dynamics_stats = None
 
             # Quantities for the emissions
             if not self.time_varying_emissions:
-                x_masked = x[masks]
-                y_masked = y[masks]
                 Rinv = jnp.linalg.inv(params.emissions.cov)
-                emissions_stats_1 = jnp.einsum('ti,jk,tl->jikl', x_masked, Rinv, x_masked).reshape(N*D, N*D)
-                emissions_stats_2 = jnp.einsum('ti,ik,tl->kl', y_masked, Rinv, x_masked).reshape(-1)
+                emissions_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', x, Rinv, x, masks).reshape(N*D, N*D)
+                emissions_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', y, Rinv, x, masks).reshape(-1)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
                 emission_stats = None
@@ -1420,11 +1381,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_initial:
                 S, m = params.initial.cov, params.initial.mean
             else:
-                # initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
-                # S, m = initial_posterior.sample(seed=next(rngs))
-
                 initial_stats_1 = jnp.linalg.inv(params.initial.cov)
-                initial_stats_2 = initial_stats_1 @ init_stats[0]
+                initial_stats_2 = jnp.einsum('bij,bj->bi',
+                                             initial_stats_1,
+                                             init_stats[0])
                 initial_stats = (initial_stats_1, initial_stats_2)
 
                 initial_posterior = mvn_posterior_update(self.initial_prior, initial_stats)
@@ -1433,11 +1393,16 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 if self.update_initial_covariance:
                     init_cov_stats_1 = jnp.ones((self.state_dim, 1)) / 2
                     init_cov_stats_2 = jnp.square(init_stats[0] - m) / 2
+                    init_cov_stats_2 = init_cov_stats_2.flatten()
                     init_cov_stats_2 = jnp.expand_dims(init_cov_stats_2, -1)
                     init_cov_stats = (init_cov_stats_1, init_cov_stats_2)
                     init_cov_posterior = ig_posterior_update(self.initial_cov_prior, init_cov_stats)
                     init_cov = init_cov_posterior.sample(seed=next(rngs))
-                    S = jnp.diag(jnp.ravel(init_cov))
+                    init_cov = jnp.ravel(init_cov).reshape(self.num_trials, self.state_dim)
+                    def _diagonalize(cov):
+                        return jnp.diag(cov)
+
+                    S = vmap(_diagonalize)(init_cov)
                 else:
                     S = params.initial.cov
 
@@ -1520,7 +1485,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     # Q = params.dynamics.cov
                     #
                     # initial_dynamics_cov, initial_dynamics_mean = None, None
-                    xp, xn = states[:-1], states[1:]
+                    xp, xn = states[:, :-1], states[:, 1:]
 
                     dynamics_posterior = mvn_posterior_update(self.dynamics_prior, dynamics_stats)
                     _dynamics_weights = dynamics_posterior.sample(seed=next(rngs))
@@ -1530,9 +1495,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     b = None
                     B = jnp.zeros((self.state_dim, 0))
                     if self.update_dynamics_covariance:
-                        dynamics_cov_stats_1 = jnp.ones((self.state_dim, 1)) * (num_timesteps / 2)
-                        dynamics_mean = jnp.einsum('tx,yx->ty', xp, F)
-                        dynamics_cov_stats_2 = jnp.sum(jnp.square(xn-dynamics_mean), axis=0) / 2
+                        dynamics_cov_stats_1 = jnp.ones((self.state_dim, 1)) * (masks.sum() / 2)
+                        dynamics_mean = jnp.einsum('btx,yx->bty', xp, F)
+                        sqr_err_flattened = jnp.square(xn-dynamics_mean).reshape(-1, self.state_dim)
+                        masks_flattend = masks.reshape(-1)
+                        dynamics_cov_stats_2 = jnp.sum(sqr_err_flattened[masks_flattend], axis=0) / 2
                         dynamics_cov_stats_2 = jnp.expand_dims(dynamics_cov_stats_2, -1)
                         dynamics_cov_stats = (dynamics_cov_stats_1, dynamics_cov_stats_2)
                         dynamics_cov_posterior = ig_posterior_update(self.dynamics_covariance_prior,
@@ -1557,14 +1524,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 emissions_ar_dependency = params.emissions.ar_dependency
             else:
                 if self.time_varying_emissions:
-                    x, xp, xn = states, states[:-1], states[1:]
+                    x, xp, xn = states, states[:, :-1], states[:, 1:]
                     y = emissions
                     N, D = y.shape[-1], x.shape[-1]
 
                     if self.emission_per_trial:
                         assert trials is not None
-
-                        ntrials = trials.shape[-1]
 
                         Rinv = jnp.linalg.inv(params.emissions.cov)
 
@@ -1579,10 +1544,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                             _, emissions_stats = lax.scan(_compute_emissions_stats, None, trials.T)
                             emissions_covs, emissions_y = emissions_stats
                         else:
-                            emissions_stats_1 = jnp.einsum('tn,ti,jk,tl->njikl', trials, x, Rinv, x).reshape(ntrials, N * D, N * D)
+                            emissions_stats_1 = jnp.einsum('bt,bti,jk,btl->bjikl', masks, x, Rinv, x).reshape(self.num_trials, N * D, N * D)
                             emissions_covs = jnp.linalg.inv(emissions_stats_1)
-                            emissions_stats_2 = jnp.einsum('tn,ti,ik,tl->nkl', trials, y, Rinv, x).reshape(ntrials, -1)
-                            emissions_y = jnp.einsum('nij,nj->ni', emissions_covs, emissions_stats_2)
+                            emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
+                            emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
 
                         _emissions_params = ParamsLGSSM(
                             initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
@@ -1604,11 +1569,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         _emissions_weights = lgssm_posterior_sample_identity(next(rngs),
                                                                     _emissions_params,
                                                                     emissions_y,
-                                                                    jnp.zeros((ntrials, 0)), trial_masks)
+                                                                    jnp.zeros((self.num_trials, 0)), trial_masks)
 
                         # expand emission weights to the original shape
                         # (ntrials, ND) -> (ntimesteps, ND)
-                        trial_emissions_weights = _emissions_weights.reshape(ntrials, self.emission_dim, self.state_dim)
+                        trial_emissions_weights = _emissions_weights.reshape(self.num_trials, self.emission_dim, self.state_dim)
                         _emissions_weights = jnp.einsum('tn,ni->ti', trials, _emissions_weights)
 
                     else:
@@ -1748,8 +1713,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                     if self.update_emissions_covariance:
                         emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
-                        emissions_mean = jnp.einsum('tx,yx->ty', states[masks], H)
-                        emissions_cov_stats_2 = jnp.sum(jnp.square(emissions[masks]-emissions_mean), axis=0) / 2
+
+                        emissions_mean = jnp.einsum('btx,yx->bty', states, H)
+                        sqr_err_flattened = jnp.square(emissions-emissions_mean).reshape(-1, self.obs_dim)
+                        masks_flattend = masks.reshape(-1)
+                        emissions_cov_stats_2 = jnp.sum(sqr_err_flattened[masks_flattend], axis=0) / 2
                         emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
                         emissions_cov_stats = (emissions_cov_stats_1, emissions_cov_stats_2)
                         emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
@@ -1792,7 +1760,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                      params=_new_params,
                                                      emissions=emissions,
                                                      inputs=inputs,
-                                                     masks=masks)
+                                                     masks=masks,
+                                                     trial_r=jnp.arange(self.num_trials)))
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
             _ll = self.log_joint(_new_params, _trial_emissions_weights, _new_states, _emissions, _inputs, masks)
@@ -1804,14 +1773,17 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
 
+        lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample, in_axes=(None, None, 0, None, 0, 0))
+
         if fixed_states is not None:
             current_states = fixed_states
         else:
-            current_states = lgssm_posterior_sample(key=next(keys),
-                                                    params=current_params,
-                                                    emissions=emissions,
-                                                    inputs=inputs,
-                                                    masks=masks)
+            current_states = lgssm_posterior_sample_vmap(key=next(keys),
+                                                        params=current_params,
+                                                        emissions=emissions,
+                                                        inputs=inputs,
+                                                        masks=masks,
+                                                        trial_r=jnp.arange(self.num_trials))
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             if sample_itr >= sample_size - return_n_samples:

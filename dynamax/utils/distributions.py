@@ -291,7 +291,10 @@ def mvn_posterior_update(mvn_prior, sufficient_stats):
     cov_pri_inv = jnp.linalg.inv(cov_pri)
 
     cov_pos = jnp.linalg.inv(cov_pri_inv + A)
-    loc_pos = cov_pos @ (cov_pri_inv @ loc_pri + B)
+    # loc_pos = cov_pos @ (cov_pri_inv @ loc_pri + B)
+    loc_pos = jnp.einsum('...ij,...j->...i',
+                         cov_pos,
+                         cov_pri_inv @ loc_pri + B)
 
     return MVN(loc=loc_pos, covariance_matrix=cov_pos)
 
