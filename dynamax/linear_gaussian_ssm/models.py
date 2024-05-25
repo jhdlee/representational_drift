@@ -1696,7 +1696,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                         emissions_mean = jnp.einsum('btx,byx->bty', states, H)
                         sqr_err_flattened = jnp.square(emissions-emissions_mean).reshape(-1, self.emission_dim)
-                        masks_flattened = masks[:, 1:].reshape(-1)
+                        masks_flattened = masks.reshape(-1)
                         sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
                         emissions_cov_stats_2 = jnp.sum(sqr_err_flattened, axis=0) / 2
 
@@ -1733,7 +1733,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                         emissions_mean = jnp.einsum('btx,yx->bty', states, H)
                         sqr_err_flattened = jnp.square(emissions-emissions_mean).reshape(-1, self.emission_dim)
-                        masks_flattened = masks[:, 1:].reshape(-1)
+                        masks_flattened = masks.reshape(-1)
                         sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
                         emissions_cov_stats_2 = jnp.sum(sqr_err_flattened, axis=0) / 2
                         emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
