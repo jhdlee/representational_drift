@@ -397,12 +397,13 @@ def preprocess_args_for_sampler(f):
         inputs = bound_args.arguments['inputs']
         masks = bound_args.arguments['masks']
         key = bound_args.arguments['key']
-        jitter = bound_args.arguments['jitter']
+        trial_r = bound_args.arguments['trial_r']
+        # jitter = bound_args.arguments['jitter']
 
         num_timesteps = len(emissions)
         full_params, inputs = preprocess_params_and_inputs(params, num_timesteps, inputs)
 
-        return f(key=key, params=full_params, emissions=emissions, inputs=inputs, masks=masks, jitter=jitter)
+        return f(key=key, params=full_params, emissions=emissions, inputs=inputs, masks=masks, trial_r=trial_r)
     return wrapper
 
 
