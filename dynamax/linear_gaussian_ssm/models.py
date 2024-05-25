@@ -1033,7 +1033,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 initial_signal = jnp.zeros_like(initial_emission)
 
             # Sample the remaining emissions and states
-            next_keys = jr.split(key, num_timesteps - 1)
+            next_keys = jr.split(key, self.sequence_length - 1)
             next_inputs = tree_map(lambda x: x[1:], inputs)
             next_indices = jnp.arange(1, self.sequence_length)
             _, (next_states, next_emissions, next_signals) = lax.scan(_step, initial_state,
