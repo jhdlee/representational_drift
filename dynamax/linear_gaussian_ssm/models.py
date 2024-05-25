@@ -1542,8 +1542,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     N, D = y.shape[-1], x.shape[-1]
 
                     if self.emission_per_trial:
-                        assert trials is not None
-
                         Rinv = jnp.linalg.inv(params.emissions.cov)
 
                         if self.scan_emissions_stats:
@@ -1586,8 +1584,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                         # expand emission weights to the original shape
                         # (ntrials, ND) -> (ntimesteps, ND)
-                        trial_emissions_weights = _emissions_weights.reshape(self.num_trials, self.emission_dim, self.state_dim)
-                        _emissions_weights = jnp.einsum('tn,ni->ti', trials, _emissions_weights)
+                        _emissions_weights = _emissions_weights.reshape(self.num_trials, self.emission_dim, self.state_dim)
+                        # _emissions_weights = jnp.einsum('tn,ni->ti', trials, _emissions_weights)
 
                     else:
                         if self.batch_update:
@@ -1642,7 +1640,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                                         emissions,
                                                                         jnp.zeros((num_timesteps, 0)), masks)
 
-                    H = _emissions_weights.reshape(num_timesteps, self.emission_dim, self.state_dim)
+                    H = _emissions_weights#.reshape(num_timesteps, self.emission_dim, self.state_dim)
 
                     d = None
                     D = jnp.zeros((self.emission_dim, 0))
@@ -1655,7 +1653,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     # init_emissions_stats_1 = jnp.linalg.inv(emissions_ar_dep_cov)
                     if self.update_init_emissions_mean:
                         init_emissions_stats_1 = jnp.linalg.inv(params.initial_emissions.cov)
-                        init_emissions_stats_2 = init_emissions_stats_1 @ _emissions_weights[0]
+                        init_emissions_stats_2 = init_emissions_stats_1 @ H[0].reshape(-1)
                         init_emissions_stats = (init_emissions_stats_1, init_emissions_stats_2)
 
                         init_emissions_posterior = mvn_posterior_update(self.emission_prior, init_emissions_stats)
@@ -1665,7 +1663,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                     if self.update_init_emissions_covariance:
                         init_emissions_cov_stats_1 = jnp.ones((self.emission_dim * self.state_dim, 1)) / 2
-                        init_emissions_cov_stats_2 = jnp.square(_emissions_weights[0] - initial_emissions_mean) / 2
+                        init_emissions_cov_stats_2 = jnp.square(H[0].reshape(-1) - initial_emissions_mean) / 2
                         init_emissions_cov_stats_2 = jnp.expand_dims(init_emissions_cov_stats_2, -1)
                         init_emissions_cov_stats = (init_emissions_cov_stats_1,
                                                     init_emissions_cov_stats_2)
@@ -1694,8 +1692,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                     if self.update_emissions_covariance:
                         emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
-                        emissions_mean = jnp.einsum('tx,tyx->ty', states[masks], H[masks])
-                        emissions_cov_stats_2 = jnp.sum(jnp.square(emissions[masks]-emissions_mean), axis=0) / 2
+
+                        emissions_mean = jnp.einsum('btx,byx->bty', states, H)
+                        sqr_err_flattened = jnp.square(emissions-emissions_mean).reshape(-1, self.emission_dim)
+                        masks_flattend = masks.reshape(-1)
+
+                        emissions_cov_stats_2 = jnp.sum(sqr_err_flattened[masks_flattend], axis=0) / 2
+
                         emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
                         emissions_cov_stats = (emissions_cov_stats_1, emissions_cov_stats_2)
                         emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
