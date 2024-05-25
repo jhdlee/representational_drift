@@ -606,14 +606,14 @@ def lgssm_smoother(
 
 @preprocess_args_for_sampler
 def lgssm_posterior_sample(
-    # key: PRNGKey,
-    # params: ParamsLGSSM,
-    # emissions:  Float[Array, "ntime emission_dim"],
-    # inputs: Optional[Float[Array, "ntime input_dim"]]=None,
-    # masks: jnp.array=None,
-    # trial_r: int=0,
+    key: PRNGKey,
+    params: ParamsLGSSM,
+    emissions:  Float[Array, "ntime emission_dim"],
+    inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+    masks: jnp.array=None,
+    trial_r: int=0,
     # jitter: Optional[Scalar]=0
-        args
+    #     args
     
 ) -> Float[Array, "ntime state_dim"]:
     r"""Run forward-filtering, backward-sampling to draw samples from $p(z_{1:T} \mid y_{1:T}, u_{1:T})$.
@@ -629,7 +629,7 @@ def lgssm_posterior_sample(
         Float[Array, "ntime state_dim"]: one sample of $z_{1:T}$ from the posterior distribution on latent states.
     """
 
-    key, params, emissions, inputs, masks, trial_r = args
+    # key, params, emissions, inputs, masks, trial_r = args
 
     num_timesteps = len(emissions)
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
