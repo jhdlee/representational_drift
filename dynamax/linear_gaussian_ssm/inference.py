@@ -376,11 +376,12 @@ def preprocess_args(f):
         emissions = bound_args.arguments['emissions']
         inputs = bound_args.arguments['inputs']
         masks = bound_args.arguments['masks']
+        trial_r = bound_args.arguments['trial_r']
 
         num_timesteps = len(emissions)
         full_params, inputs = preprocess_params_and_inputs(params, num_timesteps, inputs)
 
-        return f(full_params, emissions, inputs=inputs, masks=masks)
+        return f(full_params, emissions, inputs=inputs, masks=masks, trial_r=trial_r)
     return wrapper
 
 def preprocess_args_for_sampler(f):
