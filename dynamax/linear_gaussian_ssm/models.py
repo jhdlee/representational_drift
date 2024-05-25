@@ -1256,7 +1256,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                 lp, _ = jax.lax.scan(_compute_trial_emissions_lp, lp, jnp.arange(self.num_trials-1))
 
-                lp += MVN(params.initial_emissions.mean, params.initial_emissions.cov).log_prob(jnp.ravel(trial_emissions_weights[0]))
+                lp += MVN(params.initial_emissions.mean, params.initial_emissions.cov).log_prob(jnp.ravel(params.emissions.weights[0]))
                 # lp += self.emission_prior.log_prob((params.initial_emissions.cov, params.initial_emissions.mean))
                 lp += self.emission_prior.log_prob(params.initial_emissions.mean)
                 lp += self.initial_emissions_covariance_prior.log_prob(jnp.diag(params.initial_emissions.cov)).sum()
