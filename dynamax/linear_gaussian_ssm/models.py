@@ -1772,12 +1772,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if fixed_states is not None:
                 _new_states = fixed_states
             else:
-                _new_states = lgssm_posterior_sample_vmap(key=rngs[0],
-                                                     params=_new_params,
-                                                     emissions=emissions,
-                                                     inputs=inputs,
-                                                     masks=masks,
-                                                     trial_r=jnp.arange(self.num_trials))
+                args = (rngs[0], _new_params, emissions,
+                        inputs, masks, jnp.arange(self.num_trials))
+                _new_states = lgssm_posterior_sample_vmap(args)
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
             _ll = self.log_joint(_new_params, _trial_emissions_weights, _new_states, _emissions, _inputs, masks)
@@ -1794,12 +1791,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         if fixed_states is not None:
             current_states = fixed_states
         else:
-            current_states = lgssm_posterior_sample_vmap(key=next(keys),
-                                                        params=current_params,
-                                                        emissions=emissions,
-                                                        inputs=inputs,
-                                                        masks=masks,
-                                                        trial_r=jnp.arange(self.num_trials))
+            args = (next(keys), current_params, emissions,
+                    inputs, masks, jnp.arange(self.num_trials))
+            current_states = lgssm_posterior_sample_vmap(args)
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             if sample_itr >= sample_size - return_n_samples:
