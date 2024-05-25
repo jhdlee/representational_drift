@@ -1191,9 +1191,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         # initial state
         # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
-        lp = self.initial_prior.log_prob(params.initial.mean)
-        lp += self.initial_cov_prior.log_prob(jnp.diag(params.initial.cov)).sum()
-        lp += MVN(params.initial.mean, params.initial.cov).log_prob(states[0])
+        lp = self.initial_mean_prior.log_prob(params.initial.mean).sum()
+        def undiagonalize(cov):
+            return jnp.diag(cov)
+        flattened_cov = vmap(undiagonalize)(params.initial.cov)
+        lp += self.initial_covariance_prior.log_prob(flattened_cov.flatten()).sum()
+        lp += MVN(params.initial.mean, params.initial.cov).log_prob(states[:, 0]).sum()
 
         # dynamics & states
         if self.time_varying_dynamics:
@@ -1218,7 +1221,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                  dynamics_bias))
             lp += self.dynamics_prior.log_prob(jnp.ravel(dynamics_matrix))
             def _compute_dynamics_lp(prev_lp, current_t):
-                current_lp = prev_lp + MVN(params.dynamics.weights @ states[current_t], params.dynamics.cov).log_prob(states[current_t+1])
+                current_state_mean = jnp.einsum('ij,rj->ri', params.dynamics.weights, states[:, current_t])
+                new_lp = MVN(current_state_mean, params.dynamics.cov).log_prob(states[:, current_t+1])
+                masked_new_lp = (masks[current_t+1] * new_lp).sum()
+                current_lp = prev_lp + masked_new_lp
                 return current_lp, None
             lp, _ = jax.lax.scan(_compute_dynamics_lp, lp, jnp.arange(self.sequence_length-1))
 
@@ -1232,13 +1238,14 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 # also need to edit ar dependency variance update step.
                 def _compute_emissions_lp(prev_lp, current_t):
                     current_param = params.emissions.weights[current_t]
-                    current_lp = prev_lp + masks[current_t] * MVN(current_param @ states[current_t], params.emissions.cov).log_prob(
-                        emissions[current_t])
+                    current_y_mean = jnp.einsum('ij,rj->ri', current_param, states[:, current_t])
+                    new_lp = MVN(current_y_mean, params.emissions.cov).log_prob(emissions[:, current_t])
+                    masked_new_lp = (masks[current_t] * new_lp).sum()
+                    current_lp = prev_lp + masked_new_lp
                     return current_lp, None
 
                 lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(self.sequence_length))
 
-                ntrials = trial_emissions_weights.shape[0]
                 def _compute_trial_emissions_lp(prev_lp, current_t):
                     current_param = trial_emissions_weights[current_t]
                     next_param = trial_emissions_weights[current_t + 1]
@@ -1247,7 +1254,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                    self.emission_dim * self.state_dim) * params.emissions.ar_dependency).log_prob(jnp.ravel(next_param))
                     return current_lp, None
 
-                lp, _ = jax.lax.scan(_compute_trial_emissions_lp, lp, jnp.arange(ntrials-1))
+                lp, _ = jax.lax.scan(_compute_trial_emissions_lp, lp, jnp.arange(self.num_trials-1))
 
                 lp += MVN(params.initial_emissions.mean, params.initial_emissions.cov).log_prob(jnp.ravel(trial_emissions_weights[0]))
                 # lp += self.emission_prior.log_prob((params.initial_emissions.cov, params.initial_emissions.mean))
@@ -1286,7 +1293,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             lp += self.emission_prior.log_prob(jnp.ravel(emission_matrix))
 
             def _compute_emissions_lp(prev_lp, current_t):
-                current_lp = prev_lp + masks[current_t] * MVN(params.emissions.weights @ states[current_t], params.emissions.cov).log_prob(emissions[current_t])
+                current_y_mean = jnp.einsum('ij,rj->ri', params.emissions.weights, states[:, current_t])
+                new_lp = MVN(current_y_mean, params.emissions.cov).log_prob(emissions[:, current_t])
+                masked_new_lp = (masks[current_t] * new_lp).sum()
+                current_lp = prev_lp + masked_new_lp
                 return current_lp, None
 
             lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(self.sequence_length))
@@ -1336,7 +1346,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             inputs = jnp.zeros((num_timesteps, 0))
 
         if masks is None:
-            masks = jnp.ones(emissions.shape[0], dtype=bool)
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+
+        if trial_masks is None:
+            trial_masks = jnp.ones(emissions.shape[0], dtype=bool)
 
         def sufficient_stats_from_sample(states, params):
             """Convert samples of states to sufficient statistics."""
@@ -1387,7 +1400,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                              init_stats[0])
                 initial_stats = (initial_stats_1, initial_stats_2)
 
-                initial_posterior = mvn_posterior_update(self.initial_prior, initial_stats)
+                initial_posterior = mvn_posterior_update(self.initial_mean_prior, initial_stats)
                 m = initial_posterior.sample(seed=next(rngs))
 
                 if self.update_initial_covariance:
@@ -1396,7 +1409,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     init_cov_stats_2 = init_cov_stats_2.flatten()
                     init_cov_stats_2 = jnp.expand_dims(init_cov_stats_2, -1)
                     init_cov_stats = (init_cov_stats_1, init_cov_stats_2)
-                    init_cov_posterior = ig_posterior_update(self.initial_cov_prior, init_cov_stats)
+                    init_cov_posterior = ig_posterior_update(self.initial_covariance_prior, init_cov_stats)
                     init_cov = init_cov_posterior.sample(seed=next(rngs))
                     init_cov = jnp.ravel(init_cov).reshape(self.num_trials, self.state_dim)
                     def _diagonalize(cov):
@@ -1656,7 +1669,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         init_emissions_cov_stats_2 = jnp.expand_dims(init_emissions_cov_stats_2, -1)
                         init_emissions_cov_stats = (init_emissions_cov_stats_1,
                                                     init_emissions_cov_stats_2)
-                        init_emissions_cov_posterior = ig_posterior_update(self.init_emissions_cov_prior,
+                        init_emissions_cov_posterior = ig_posterior_update(self.initial_emissions_covariance_prior,
                                                                                 init_emissions_cov_stats)
                         initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
                         initial_emissions_cov = jnp.diag(jnp.ravel(initial_emissions_cov))
@@ -1715,7 +1728,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
 
                         emissions_mean = jnp.einsum('btx,yx->bty', states, H)
-                        sqr_err_flattened = jnp.square(emissions-emissions_mean).reshape(-1, self.obs_dim)
+                        sqr_err_flattened = jnp.square(emissions-emissions_mean).reshape(-1, self.emission_dim)
                         masks_flattend = masks.reshape(-1)
                         emissions_cov_stats_2 = jnp.sum(sqr_err_flattened[masks_flattend], axis=0) / 2
                         emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
@@ -1756,7 +1769,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if fixed_states is not None:
                 _new_states = fixed_states
             else:
-                _new_states = lgssm_posterior_sample(key=rngs[0],
+                _new_states = lgssm_posterior_sample_vmap(key=rngs[0],
                                                      params=_new_params,
                                                      emissions=emissions,
                                                      inputs=inputs,
