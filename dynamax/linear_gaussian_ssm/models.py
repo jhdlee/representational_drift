@@ -1774,7 +1774,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                      emissions=emissions,
                                                      inputs=inputs,
                                                      masks=masks,
-                                                     trial_r=jnp.arange(self.num_trials)))
+                                                     trial_r=jnp.arange(self.num_trials))
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
             _ll = self.log_joint(_new_params, _trial_emissions_weights, _new_states, _emissions, _inputs, masks)
