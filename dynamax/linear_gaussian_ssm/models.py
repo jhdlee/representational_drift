@@ -835,7 +835,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _initial_covariance = jnp.eye(self.state_dim)
         else:
             _initial_mean = jnp.ones((self.num_trials, self.state_dim))
-            _initial_covariance = jnp.eye((self.num_trials, self.state_dim))
+            _initial_covariance = jnp.tile(jnp.eye(self.state_dim)[None], (self.num_trials, 1, 1))
 
         if self.time_varying_dynamics:
             # _initial_dynamics_cov = self.dynamics_param_ar_dependency_variance * jnp.eye(self.state_dim**2)
