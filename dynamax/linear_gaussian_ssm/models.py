@@ -1237,8 +1237,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if self.emission_per_trial:
                 # also need to edit ar dependency variance update step.
                 def _compute_emissions_lp(prev_lp, current_t):
-                    current_param = params.emissions.weights[current_t]
-                    current_y_mean = jnp.einsum('ij,rj->ri', current_param, states[:, current_t])
+                    # current_param = params.emissions.weights[current_t]
+                    current_y_mean = jnp.einsum('rij,rj->ri', params.emissions.weights, states[:, current_t])
                     new_lp = MVN(current_y_mean, params.emissions.cov).log_prob(emissions[:, current_t])
                     masked_new_lp = (masks[:, current_t] * new_lp).sum()
                     current_lp = prev_lp + masked_new_lp
@@ -1260,7 +1260,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 # lp += self.emission_prior.log_prob((params.initial_emissions.cov, params.initial_emissions.mean))
                 lp += self.emission_prior.log_prob(params.initial_emissions.mean)
                 lp += self.initial_emissions_covariance_prior.log_prob(jnp.diag(params.initial_emissions.cov)).sum()
-
             else:
                 def _compute_emissions_lp(prev_lp, current_t):
                     current_param = params.emissions.weights[current_t]
