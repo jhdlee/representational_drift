@@ -503,6 +503,8 @@ def lgssm_filter(
     num_timesteps = len(emissions)
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
+    H = params.emissions.weights[trial_r]
+
     def _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y):
         m = H @ pred_mean + D @ u + d
         if R.ndim==2:
@@ -516,7 +518,7 @@ def lgssm_filter(
         ll, pred_mean, pred_cov = carry
 
         # Shorthand: get parameters and inputs for time index t
-        F, B, b, Q, H, D, d, R = _get_params(params, num_timesteps, t)
+        F, B, b, Q, _, D, d, R = _get_params(params, num_timesteps, t)
         u = inputs[t]
         y = emissions[t]
         mask = masks[t]

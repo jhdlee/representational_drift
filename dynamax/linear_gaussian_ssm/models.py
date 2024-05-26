@@ -1776,7 +1776,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             else:
                 # args = (rngs[0], _new_params, emissions,
                 #         inputs, masks, jnp.arange(self.num_trials))
-                _new_states = lgssm_posterior_sample_vmap(rngs[0], _new_params, emissions,
+                _new_states = lgssm_posterior_sample_vmap(rngs[0], _new_params, _emissions,
                                                           inputs, masks, jnp.arange(self.num_trials, dtype=int))
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
