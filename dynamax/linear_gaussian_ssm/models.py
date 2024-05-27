@@ -1375,11 +1375,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # Optimized Code
             if not self.time_varying_dynamics:
                 Qinv = jnp.linalg.inv(params.dynamics.cov)
-                xp_masked = xp[masks[:, :-1]]
-                xn_masked = xn[masks[:, 1:]]
 
-                dynamics_stats_1 = jnp.einsum('ti,jk,tl->jikl', xp_masked, Qinv, xp_masked).reshape(D*D, D*D)
-                dynamics_stats_2 = jnp.einsum('ti,ik,tl->kl', xn_masked, Qinv, xp_masked).reshape(-1)
+                dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, :-1]).reshape(D*D, D*D)
+                dynamics_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', xn, Qinv, xp, masks[:, 1:]).reshape(-1)
                 dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
             else:
                 dynamics_stats = None
@@ -1387,10 +1385,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # Quantities for the emissions
             if not self.time_varying_emissions:
                 Rinv = jnp.linalg.inv(params.emissions.cov)
-                x_masked = x[masks]
-                y_masked = y[masks]
-                emissions_stats_1 = jnp.einsum('ti,jk,tl->jikl', x_masked, Rinv, x_masked).reshape(N*D, N*D)
-                emissions_stats_2 = jnp.einsum('ti,ik,tl->kl', y_masked, Rinv, x_masked).reshape(-1)
+                emissions_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', x, Rinv, x, masks).reshape(N*D, N*D)
+                emissions_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', y, Rinv, x, masks).reshape(-1)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
                 emission_stats = None
