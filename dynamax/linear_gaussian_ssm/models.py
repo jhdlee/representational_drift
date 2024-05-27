@@ -1101,9 +1101,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         masks: jnp.array=None
     ) -> Scalar:
         if masks is None:
-            masks = jnp.ones(emissions.shape[0], dtype=bool)
-        filtered_posterior = lgssm_filter(params, emissions, inputs, masks)
-        return filtered_posterior.marginal_loglik
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        trials = jnp.arange(self.num_trials, dtype=int)
+        def _get_marginal_ll(emission, input, mask, trial_r)
+            return lgssm_filter(params, emission, input, mask, trial_r).marginal_loglik
+        _get_marginal_ll_vmap = vmap(_get_marginal_ll, in_axes=(0, 0, 0, 0))
+        marginal_lls = _get_marginal_ll_vmap(emissions, inputs, masks, trials)
+        return marginal_lls.sum()
 
     def filter(
         self,
@@ -1113,8 +1117,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         masks: jnp.array=None
     ) -> PosteriorGSSMFiltered:
         if masks is None:
-            masks = jnp.ones(emissions.shape[0], dtype=bool)
-        return lgssm_filter(params, emissions, inputs, masks)
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        trials = jnp.arange(self.num_trials, dtype=int)
+        lgssm_filter_vmap = vmap(lgssm_filter, in_axes=(None, 0, 0, 0, 0))
+        filters = lgssm_filter_vmap(params, emissions, inputs, masks, trials)
+        return filters
 
     def smoother(
         self,
@@ -1124,8 +1131,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         masks: jnp.array=None
     ) -> PosteriorGSSMSmoothed:
         if masks is None:
-            masks = jnp.ones(emissions.shape[0], dtype=bool)
-        return lgssm_smoother(params, emissions, inputs, masks)
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        trials = jnp.arange(self.num_trials, dtype=int)
+        lgssm_smoother_vmap = vmap(lgssm_smoother, in_axes=(None, 0, 0, 0, 0))
+        smoothers = lgssm_smoother_vmap(params, emissions, inputs, masks, trials)
+        return smoothers
 
     def posterior_sample(
         self,
@@ -1158,8 +1168,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         """
         if masks is None:
-            masks = jnp.ones(emissions.shape[0], dtype=bool)
-        posterior = lgssm_smoother(params, emissions, inputs, masks)
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        posterior = self.smoother(params, emissions, inputs, masks)
         H = params.emissions.weights
         b = params.emissions.bias
         R = params.emissions.cov
@@ -1413,7 +1423,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     init_cov = jnp.ravel(init_cov).reshape(self.num_trials, self.state_dim)
                     def _diagonalize(cov):
                         return jnp.diag(cov)
-
                     S = vmap(_diagonalize)(init_cov)
                 else:
                     S = params.initial.cov

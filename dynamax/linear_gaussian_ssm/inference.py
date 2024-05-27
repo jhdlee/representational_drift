@@ -549,6 +549,7 @@ def lgssm_smoother(
     emissions: Float[Array, "ntime emission_dim"],
     inputs: Optional[Float[Array, "ntime input_dim"]]=None,
     masks: jnp.array=None,
+    trial_r: int=0,
 ) -> PosteriorGSSMSmoothed:
     r"""Run forward-filtering, backward-smoother to compute expectations
     under the posterior distribution on latent states. Technically, this
@@ -567,14 +568,14 @@ def lgssm_smoother(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs, masks)
+    filtered_posterior = lgssm_filter(params, emissions, inputs, masks, trial_r)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Run the smoother backward in time
     def _step(carry, args):
         # Unpack the inputs
         smoothed_mean_next, smoothed_cov_next = carry
-        t, filtered_mean, filtered_cov = args
+        t, filtered_mean, filtered_cov, mask = args
 
         # Get parameters and inputs for time index t
         F, B, b, Q = _get_params(params, num_timesteps, t)[:4]
@@ -585,8 +586,8 @@ def lgssm_smoother(
         G = psd_solve(Q + F @ filtered_cov @ F.T, F @ filtered_cov).T
 
         # Compute the smoothed mean and covariance
-        smoothed_mean = filtered_mean + G @ (smoothed_mean_next - F @ filtered_mean - B @ u - b)
-        smoothed_cov = filtered_cov + G @ (smoothed_cov_next - F @ filtered_cov @ F.T - Q) @ G.T
+        smoothed_mean = filtered_mean + mask * G @ (smoothed_mean_next - F @ filtered_mean - B @ u - b)
+        smoothed_cov = filtered_cov + mask * G @ (smoothed_cov_next - F @ filtered_cov @ F.T - Q) @ G.T
 
         # Compute the smoothed expectation of z_t z_{t+1}^T
         smoothed_cross = G @ smoothed_cov_next + jnp.outer(smoothed_mean, smoothed_mean_next)
@@ -595,7 +596,10 @@ def lgssm_smoother(
 
     # Run the Kalman smoother
     init_carry = (filtered_means[-1], filtered_covs[-1])
-    args = (jnp.arange(num_timesteps - 2, -1, -1), filtered_means[:-1][::-1], filtered_covs[:-1][::-1])
+    args = (jnp.arange(num_timesteps - 2, -1, -1),
+            filtered_means[:-1][::-1],
+            filtered_covs[:-1][::-1],
+            masks[1:][::-1])
     _, (smoothed_means, smoothed_covs, smoothed_cross) = lax.scan(_step, init_carry, args)
 
     # Reverse the arrays and return
@@ -669,7 +673,7 @@ def lgssm_posterior_sample(
         filtered_means[:-1][::-1],
         filtered_covs[:-1][::-1],
         jnp.arange(num_timesteps - 2, -1, -1),
-        masks[1:],
+        masks[1:][::-1],
     )
     _, reversed_states = lax.scan(_step, last_state, args)
     states = jnp.vstack([reversed_states[::-1], last_state])
