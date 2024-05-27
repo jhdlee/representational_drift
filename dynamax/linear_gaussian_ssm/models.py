@@ -1103,7 +1103,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         if masks is None:
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
         trials = jnp.arange(self.num_trials, dtype=int)
-        def _get_marginal_ll(emission, input, mask, trial_r)
+        def _get_marginal_ll(emission, input, mask, trial_r):
             return lgssm_filter(params, emission, input, mask, trial_r).marginal_loglik
         _get_marginal_ll_vmap = vmap(_get_marginal_ll, in_axes=(0, 0, 0, 0))
         marginal_lls = _get_marginal_ll_vmap(emissions, inputs, masks, trials)
