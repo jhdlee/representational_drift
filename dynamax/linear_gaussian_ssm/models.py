@@ -904,7 +904,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 return current_weights, current_weights
 
             key1, key = jr.split(key, 2)
-            initial_emission_weights = jr.normal(key1, shape=(self.emission_dim * self.state_dim, ))
+            # initial_emission_weights = jr.normal(key1, shape=(self.emission_dim * self.state_dim,))
+            initial_emission_weights = MVN(loc=jnp.zeros(self.emission_dim * self.state_dim,),
+                                           covariance_matrix=self.num_trials*emissions_param_ar_dependency_cov).sample(seed=key1)
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
