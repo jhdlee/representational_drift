@@ -1375,8 +1375,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # Optimized Code
             if not self.time_varying_dynamics:
                 Qinv = jnp.linalg.inv(params.dynamics.cov)
-                dynamics_stats_1 = jnp.einsum('bti,jk,btl->jikl', xp, Qinv, xp).reshape(D*D, D*D)
-                dynamics_stats_2 = jnp.einsum('bti,ik,btl->kl', xn, Qinv, xp).reshape(-1)
+                xp_masked = xp[masks[:, :-1]]
+                xn_masked = xn[masks[:, 1:]]
+
+                dynamics_stats_1 = jnp.einsum('ti,jk,tl->jikl', xp_masked, Qinv, xp_masked).reshape(D*D, D*D)
+                dynamics_stats_2 = jnp.einsum('ti,ik,tl->kl', xn_masked, Qinv, xp_masked).reshape(-1)
                 dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
             else:
                 dynamics_stats = None
@@ -1384,8 +1387,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # Quantities for the emissions
             if not self.time_varying_emissions:
                 Rinv = jnp.linalg.inv(params.emissions.cov)
-                emissions_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', x, Rinv, x, masks).reshape(N*D, N*D)
-                emissions_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', y, Rinv, x, masks).reshape(-1)
+                x_masked = x[masks]
+                y_masked = y[masks]
+                emissions_stats_1 = jnp.einsum('ti,jk,tl->jikl', x_masked, Rinv, x_masked).reshape(N*D, N*D)
+                emissions_stats_2 = jnp.einsum('ti,ik,tl->kl', y_masked, Rinv, x_masked).reshape(-1)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
                 emission_stats = None
@@ -1749,7 +1754,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
                                                                       emissions_cov_stats)
                         emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
-                        # emissions_cov += 1e-4
+                        emissions_cov += 1e-4
                         R = jnp.diag(jnp.ravel(emissions_cov))
                     else:
                         R = params.emissions.cov
