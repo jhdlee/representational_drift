@@ -723,7 +723,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             return kw_priors[arg] if arg in kw_priors else default
 
         self.initial_mean_prior = default_prior(
-            'initial_prior',
+            'initial_mean_prior',
             MVN(loc=jnp.ones(self.state_dim),
                 covariance_matrix=jnp.eye(self.state_dim)))
 
