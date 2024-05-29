@@ -672,6 +672,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             normalize_emissions: bool=False,
             emission_weights_scale: float=1.0,
             orthogonal_emissions_weights: bool=False,
+            init_emissions_with_standard_normal: bool=True,
             update_emissions_param_ar_dependency_variance: bool=False,
             update_initial_covariance: bool=False,
             update_dynamics_covariance: bool=False,  # learn diagonal covariance matrix
@@ -714,6 +715,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.batch_update = batch_update
         self.batch_size = batch_size
         self.orthogonal_emissions_weights = orthogonal_emissions_weights
+        self.init_emissions_with_standard_normal = init_emissions_with_standard_normal
         self.emission_per_trial = emission_per_trial
         self.scan_emissions_stats = scan_emissions_stats
         self.connected_dynamics = connected_dynamics
@@ -904,8 +906,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 return current_weights, current_weights
 
             key1, key = jr.split(key, 2)
-            # initial_emission_weights = jr.normal(key1, shape=(self.emission_dim * self.state_dim,))
-            initial_emission_weights = MVN(loc=jnp.zeros(self.emission_dim * self.state_dim,),
+            if self.init_emissions_with_standard_normal:
+                initial_emission_weights = jr.normal(key1, shape=(self.emission_dim * self.state_dim,))
+            else:
+                initial_emission_weights = MVN(loc=jnp.zeros(self.emission_dim * self.state_dim,),
                                            covariance_matrix=self.num_trials*emissions_param_ar_dependency_cov).sample(seed=key1)
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
