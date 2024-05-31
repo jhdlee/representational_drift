@@ -919,15 +919,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 _emission_weights = jnp.linalg.qr(_emission_weights)[0]
                 _emission_weights = self.emission_weights_scale * _emission_weights
 
-                emissions_ar_dependency_stats_1 = (self.emission_dim * self.state_dim * (self.num_trials - 1)) / 2
                 concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
-                emissions_ar_dependency_stats_2 = jnp.diff(concatenated_emissions_weights, axis=0)
-                emissions_ar_dependency_stats_2 = jnp.nansum(jnp.square(emissions_ar_dependency_stats_2)) / 2
-                emissions_ar_dependency_stats = (emissions_ar_dependency_stats_1,
-                                                 emissions_ar_dependency_stats_2)
-                emissions_ar_dependency_posterior = ig_posterior_update(self.emissions_ar_dependency_prior,
-                                                                        emissions_ar_dependency_stats)
-                emissions_param_ar_dependency_variance = emissions_ar_dependency_posterior.mode()
+                emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
+                emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
             elif self.normalize_emissions:
                 _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[:, None]
                 # _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord='fro', axis=(-2, -1))[:, None, None]
