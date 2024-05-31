@@ -914,14 +914,26 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
+            emissions_param_ar_dependency_variance = self.emissions_param_ar_dependency_variance
             if self.orthogonal_emissions_weights:
                 _emission_weights = jnp.linalg.qr(_emission_weights)[0]
                 _emission_weights = self.emission_weights_scale * _emission_weights
+
+                emissions_ar_dependency_stats_1 = (self.emission_dim * self.state_dim * (self.num_trials - 1)) / 2
+                concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
+                emissions_ar_dependency_stats_2 = jnp.diff(concatenated_emissions_weights, axis=0)
+                emissions_ar_dependency_stats_2 = jnp.nansum(jnp.square(emissions_ar_dependency_stats_2)) / 2
+                emissions_ar_dependency_stats = (emissions_ar_dependency_stats_1,
+                                                 emissions_ar_dependency_stats_2)
+                emissions_ar_dependency_posterior = ig_posterior_update(self.emissions_ar_dependency_prior,
+                                                                        emissions_ar_dependency_stats)
+                emissions_param_ar_dependency_variance = emissions_ar_dependency_posterior.mode()
             elif self.normalize_emissions:
                 _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[:, None]
                 # _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord='fro', axis=(-2, -1))[:, None, None]
                 _emission_weights = self.emission_weights_scale * _emission_weights
         else:
+            emissions_param_ar_dependency_variance = 0.0
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
             if self.orthogonal_emissions_weights:
@@ -955,7 +967,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 bias=default(emission_bias, _emission_bias),
                 input_weights=default(emission_input_weights, _emission_input_weights),
                 cov=default(emission_covariance, _emission_covariance),
-                ar_dependency=self.emissions_param_ar_dependency_variance),
+                ar_dependency=emissions_param_ar_dependency_variance),
             initial_dynamics=ParamsLGSSMInitial(
                 mean=default(initial_dynamics_mean, _initial_dynamics_mean),
                 cov=default(initial_dynamics_cov, _initial_dynamics_cov)),
