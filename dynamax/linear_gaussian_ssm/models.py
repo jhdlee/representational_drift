@@ -672,6 +672,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             normalize_emissions: bool=False,
             emission_weights_scale: float=1.0,
             orthogonal_emissions_weights: bool=False,
+            standardize_states: bool=False,
             init_emissions_with_standard_normal: bool=True,
             update_emissions_param_ar_dependency_variance: bool=False,
             update_initial_covariance: bool=False,
@@ -715,6 +716,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.batch_update = batch_update
         self.batch_size = batch_size
         self.orthogonal_emissions_weights = orthogonal_emissions_weights
+        self.standardize_states = standardize_states
         self.init_emissions_with_standard_normal = init_emissions_with_standard_normal
         self.emission_per_trial = emission_per_trial
         self.scan_emissions_stats = scan_emissions_stats
@@ -996,6 +998,75 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             )
         return params, props,
 
+    # # All SSMs support sampling
+    # def sample(
+    #     self,
+    #     params: ParameterSet,
+    #     key: PRNGKey,
+    #     num_timesteps: int,
+    #     inputs: Optional[Float[Array, "num_timesteps input_dim"]]=None,
+    #     return_signal: bool=False
+    # ) -> Tuple[Float[Array, "num_timesteps state_dim"],
+    #           Float[Array, "num_timesteps emission_dim"]]:
+    #     r"""Sample states $z_{1:T}$ and emissions $y_{1:T}$ given parameters $\theta$ and (optionally) inputs $u_{1:T}$.
+    #
+    #     Args:
+    #         params: model parameters $\theta$
+    #         key: random number generator
+    #         num_timesteps: number of timesteps $T$
+    #         inputs: inputs $u_{1:T}$
+    #
+    #     Returns:
+    #         latent states and emissions
+    #
+    #     """
+    #
+    #     def _outer_step(carry, outer_args):
+    #         key, t = outer_args
+    #         def _step(prev_state, args):
+    #             key, inpt, idx = args
+    #             key1, key2 = jr.split(key, 2)
+    #             state = self.transition_distribution(idx-1, params, prev_state, inpt).sample(seed=key2)
+    #             emission_distribution = self.emission_distribution(t, params, state, inpt)
+    #             emission = emission_distribution.sample(seed=key1)
+    #             if return_signal:
+    #                 signal = emission_distribution.mean()
+    #             else:
+    #                 signal = jnp.zeros_like(emission)
+    #             return state, (state, emission, signal)
+    #
+    #         # Sample the initial state
+    #         key1, key2, key = jr.split(key, 3)
+    #         initial_input = tree_map(lambda x: x[0], inputs)
+    #         initial_state = self.initial_distribution(t, params, initial_input).sample(seed=key1)
+    #         initial_emission_distribution = self.emission_distribution(t, params, initial_state, initial_input)
+    #         initial_emission = initial_emission_distribution.sample(seed=key2)
+    #         if return_signal:
+    #             initial_signal = initial_emission_distribution.mean()
+    #         else:
+    #             initial_signal = jnp.zeros_like(initial_emission)
+    #
+    #         # Sample the remaining emissions and states
+    #         next_keys = jr.split(key, self.sequence_length - 1)
+    #         next_inputs = tree_map(lambda x: x[1:], inputs)
+    #         next_indices = jnp.arange(1, self.sequence_length)
+    #         _, (next_states, next_emissions, next_signals) = lax.scan(_step, initial_state,
+    #                                                                   (next_keys, next_inputs, next_indices))
+    #
+    #         # Concatenate the initial state and emission with the following ones
+    #         expand_and_cat = lambda x0, x1T: jnp.concatenate((jnp.expand_dims(x0, 0), x1T))
+    #         states = tree_map(expand_and_cat, initial_state, next_states)
+    #         emissions = tree_map(expand_and_cat, initial_emission, next_emissions)
+    #         signals = tree_map(expand_and_cat, initial_signal, next_signals)
+    #
+    #         return None, (states, emissions, signals)
+    #
+    #     keys = jr.split(key, self.num_trials)
+    #     _, (states, emissions, signals) = lax.scan(_outer_step, None,
+    #                                                   (keys, jnp.arange(self.num_trials)))
+    #
+    #     return states, emissions, signals
+
     # All SSMs support sampling
     def sample(
         self,
@@ -1019,49 +1090,62 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         """
 
-        def _outer_step(carry, outer_args):
+        def _dynamics_outer_step(carry, outer_args):
             key, t = outer_args
-            def _step(prev_state, args):
+            def _dynamics_step(prev_state, args):
                 key, inpt, idx = args
                 key1, key2 = jr.split(key, 2)
                 state = self.transition_distribution(idx-1, params, prev_state, inpt).sample(seed=key2)
-                emission_distribution = self.emission_distribution(t, params, state, inpt)
-                emission = emission_distribution.sample(seed=key1)
-                if return_signal:
-                    signal = emission_distribution.mean()
-                else:
-                    signal = jnp.zeros_like(emission)
-                return state, (state, emission, signal)
+                return state, state
 
             # Sample the initial state
             key1, key2, key = jr.split(key, 3)
             initial_input = tree_map(lambda x: x[0], inputs)
             initial_state = self.initial_distribution(t, params, initial_input).sample(seed=key1)
-            initial_emission_distribution = self.emission_distribution(t, params, initial_state, initial_input)
-            initial_emission = initial_emission_distribution.sample(seed=key2)
-            if return_signal:
-                initial_signal = initial_emission_distribution.mean()
-            else:
-                initial_signal = jnp.zeros_like(initial_emission)
 
             # Sample the remaining emissions and states
             next_keys = jr.split(key, self.sequence_length - 1)
             next_inputs = tree_map(lambda x: x[1:], inputs)
             next_indices = jnp.arange(1, self.sequence_length)
-            _, (next_states, next_emissions, next_signals) = lax.scan(_step, initial_state,
-                                                                      (next_keys, next_inputs, next_indices))
+            _, next_states = lax.scan(_dynamics_step, initial_state, (next_keys, next_inputs, next_indices))
 
             # Concatenate the initial state and emission with the following ones
             expand_and_cat = lambda x0, x1T: jnp.concatenate((jnp.expand_dims(x0, 0), x1T))
             states = tree_map(expand_and_cat, initial_state, next_states)
-            emissions = tree_map(expand_and_cat, initial_emission, next_emissions)
-            signals = tree_map(expand_and_cat, initial_signal, next_signals)
 
-            return None, (states, emissions, signals)
+            return None, states
 
-        keys = jr.split(key, self.num_trials)
-        _, (states, emissions, signals) = lax.scan(_outer_step, None,
-                                                      (keys, jnp.arange(self.num_trials)))
+        keys = jr.split(key, self.num_trials+1)
+        _, states = lax.scan(_dynamics_outer_step, None, (keys[:-1], jnp.arange(self.num_trials)))
+
+        if self.standardize_states:
+            states_mean = jnp.mean(states)
+            states_std = jnp.std(states)
+            states = (states - states_mean) / states_std
+
+        def _emissions_outer_step(carry, outer_args):
+            key, state, t = outer_args
+            def _emissions_step(prev_state, args):
+                key, x, inpt, idx = args
+                emission_distribution = self.emission_distribution(t, params, x, inpt)
+                emission = emission_distribution.sample(seed=key)
+                if return_signal:
+                    signal = emission_distribution.mean()
+                else:
+                    signal = jnp.zeros_like(emission)
+                return None, (emission, signal)
+
+            # Sample the remaining emissions and states
+            next_keys = jr.split(key, self.sequence_length)
+            next_states = tree_map(lambda x: x, state)
+            next_inputs = tree_map(lambda x: x, inputs)
+            next_indices = jnp.arange(self.sequence_length)
+            _, (next_emissions, next_signals) = lax.scan(_emissions_step, None, (next_keys, next_states,
+                                                              next_inputs, next_indices))
+            return None, (next_emissions, next_signals)
+
+        keys = jr.split(keys[-1], self.num_trials)
+        _, (emissions, signals) = lax.scan(_emissions_outer_step, None, (keys, states, jnp.arange(self.num_trials)))
 
         return states, emissions, signals
 
@@ -1807,9 +1891,16 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             else:
                 _new_states = lgssm_posterior_sample_vmap(rngs[0], _new_params, _emissions,
                                                           inputs, masks, jnp.arange(self.num_trials, dtype=int))
+
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
             _ll = self.log_joint(_new_params, _new_states, _emissions, _inputs, masks)
+
+            if self.standardize_states:
+                states_mean = jnp.mean(_new_states)
+                states_std = jnp.std(_new_states)
+                _new_states = (_new_states - states_mean) / states_std
+
             return _new_params, _new_states, _ll
 
         sample_of_params = []
@@ -1825,6 +1916,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         else:
             current_states = lgssm_posterior_sample_vmap(next(keys), current_params, emissions,
                                                          inputs, masks, jnp.arange(self.num_trials, dtype=int))
+
+            if self.standardize_states:
+                states_mean = jnp.mean(current_states)
+                states_std = jnp.std(current_states)
+                current_states = (current_states - states_mean) / states_std
+
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
             if sample_itr >= sample_size - return_n_samples:
