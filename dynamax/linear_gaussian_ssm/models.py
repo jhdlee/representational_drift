@@ -1115,7 +1115,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         if self.standardize_states:
             states_mean = jnp.mean(states)
             states_std = jnp.std(states)
-            states = (states - states_mean) / states_std
+            # states = (states - states_mean) / states_std
+            states = states / states_std
 
         def _emissions_outer_step(carry, outer_args):
             key, state, t = outer_args
@@ -1876,7 +1877,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if self.standardize_states:
                 states_mean = jnp.mean(_new_states)
                 states_std = jnp.std(_new_states)
-                _new_states = (_new_states - states_mean) / states_std
+                # _new_states = (_new_states - states_mean) / states_std
+                _new_states = _new_states / states_std
 
             return _new_params, _new_states, _ll
 
@@ -1897,7 +1899,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if self.standardize_states:
                 states_mean = jnp.mean(current_states)
                 states_std = jnp.std(current_states)
-                current_states = (current_states - states_mean) / states_std
+                # current_states = (current_states - states_mean) / states_std
+                current_states = current_states / states_std
 
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
