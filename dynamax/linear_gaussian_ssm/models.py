@@ -926,11 +926,14 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
                 emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
             elif self.normalize_emissions:
-                _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=1)[:, None]
+                _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=1, keepdims=True)
                 # _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord='fro', axis=(-2, -1))[:, None, None]
                 _emission_weights = self.emission_weights_scale * _emission_weights
+
+                concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
+                emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
+                emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
         else:
-            emissions_param_ar_dependency_variance = 0.0
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
             if self.orthogonal_emissions_weights:
@@ -1557,6 +1560,25 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                             _emissions_weights, x_correction = jnp.linalg.qr(_emissions_weights)
                             # correct the states
                             states = jnp.einsum('bij,btj->bti', x_correction, states)
+
+                            # recompute the initial and dynamics sufficient statistics
+                            init_stats = (states[:, 0],)
+
+                            if not self.time_varying_dynamics:
+                                xp, xn = states[:, :-1], states[:, 1:]
+                                Qinv = jnp.linalg.inv(params.dynamics.cov)
+
+                                dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, :-1]).reshape(D * D, D * D)
+                                dynamics_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', xn, Qinv, xp, masks[:, 1:]).reshape(-1)
+                                dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
+                            else:
+                                dynamics_stats = None
+                        elif self.normalize_emissions:
+                            weights_norm = jnp.linalg.norm(_emissions_weights, ord=2, axis=1, keepdims=True)
+                            _emissions_weights = _emissions_weights / weights_norm
+
+                            # correct the states
+                            states = jnp.einsum('bij,btj->btj', weights_norm, states)
 
                             # recompute the initial and dynamics sufficient statistics
                             init_stats = (states[:, 0],)
