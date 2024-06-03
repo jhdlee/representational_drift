@@ -852,8 +852,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # _initial_emissions_cov = self.emissions_param_ar_dependency_variance * jnp.eye(self.emission_dim*self.state_dim)
             _initial_emissions_mean = jnp.zeros(self.emission_dim * self.state_dim)
             _initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim)
+            emissions_param_ar_dependency_variance = self.emissions_param_ar_dependency_variance
         else:
             _initial_emissions_cov, _initial_emissions_mean = None, None
+            emissions_param_ar_dependency_variance = 0.0
 
         if self.time_varying_dynamics:
             keys = jr.split(key, self.sequence_length-1)
@@ -916,7 +918,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
-            emissions_param_ar_dependency_variance = self.emissions_param_ar_dependency_variance
             if self.orthogonal_emissions_weights:
                 _emission_weights = jnp.linalg.qr(_emission_weights)[0]
                 _emission_weights = self.emission_weights_scale * _emission_weights
@@ -925,7 +926,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
                 emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
             elif self.normalize_emissions:
-                _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=-2)[:, None]
+                _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=1)[:, None]
                 # _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord='fro', axis=(-2, -1))[:, None, None]
                 _emission_weights = self.emission_weights_scale * _emission_weights
         else:
