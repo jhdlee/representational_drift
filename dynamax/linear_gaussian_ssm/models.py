@@ -1123,8 +1123,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         _, states = lax.scan(_dynamics_outer_step, None, (keys[:-1], jnp.arange(self.num_trials)))
 
         if self.standardize_states:
-            states_mean = jnp.mean(states, axis=(0,1), keepdims=True)
-            states_std = jnp.std(states, axis=(0,1), keepdims=True)
+            states_mean = jnp.mean(states)#, axis=(0,1), keepdims=True)
+            states_std = jnp.std(states)#, axis=(0,1), keepdims=True)
             states = (states - states_mean) / states_std
             # states = states / states_std
 
@@ -1916,15 +1916,15 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 _new_states = lgssm_posterior_sample_vmap(rngs[0], _new_params, _emissions,
                                                           inputs, masks, jnp.arange(self.num_trials, dtype=int))
 
+            if self.standardize_states:
+                states_mean = jnp.mean(_new_states)#, axis=(0,1), keepdims=True)
+                states_std = jnp.std(_new_states)#, axis=(0,1), keepdims=True)
+                _new_states = (_new_states - states_mean) / states_std
+                # _new_states = _new_states / states_std
+
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
             _ll = self.log_joint(_new_params, _new_states, _emissions, _inputs, masks)
-
-            if self.standardize_states:
-                states_mean = jnp.mean(_new_states, axis=(0,1), keepdims=True)
-                states_std = jnp.std(_new_states, axis=(0,1), keepdims=True)
-                _new_states = (_new_states - states_mean) / states_std
-                # _new_states = _new_states / states_std
 
             return _new_params, _new_states, _ll
 
@@ -1943,8 +1943,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                          inputs, masks, jnp.arange(self.num_trials, dtype=int))
 
             if self.standardize_states:
-                states_mean = jnp.mean(current_states, axis=(0,1), keepdims=True)
-                states_std = jnp.std(current_states, axis=(0,1), keepdims=True)
+                states_mean = jnp.mean(current_states)#, axis=(0,1), keepdims=True)
+                states_std = jnp.std(current_states)#, axis=(0,1), keepdims=True)
                 current_states = (current_states - states_mean) / states_std
                 # current_states = current_states / states_std
 
