@@ -1276,7 +1276,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         R = params.emissions.cov
         emission_dim = R.shape[0]
 
-        smoothed_emissions = jnp.einsum('...lx,...yx->...ly', posterior.smoothed_means, H)
+        smoothed_means = posterior.smoothed_means
+        if self.standardize_states:
+            states_mean = jnp.mean(smoothed_means, axis=(0, 1), keepdims=True)
+            states_std = jnp.std(smoothed_means, axis=(0, 1), keepdims=True)
+            smoothed_means = (smoothed_means - states_mean) / states_std
+
+        smoothed_emissions = jnp.einsum('...lx,...yx->...ly', smoothed_means, H)
         smoothed_emissions_cov = jnp.einsum('...ya,...lab,...xb->...lyx', H, posterior.smoothed_covariances, H) + R
 
         if self.has_emissions_bias:
