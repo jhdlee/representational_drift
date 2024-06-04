@@ -907,7 +907,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 current_weights_dist = MVN(loc=prev_weights,
                                            covariance_matrix=emissions_param_ar_dependency_cov)
                 current_weights = current_weights_dist.sample(seed=current_key)
-
                 current_weights = current_weights.reshape(self.emission_dim, self.state_dim)
                 if self.orthogonal_emissions_weights:
                     current_weights = jnp.linalg.qr(current_weights)[0]
@@ -933,6 +932,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
+            _emission_weights = self.emission_weights_scale * _emission_weights
 
             concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
             emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
