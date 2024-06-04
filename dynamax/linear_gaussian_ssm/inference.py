@@ -699,7 +699,7 @@ def _predict_identity(m, S, F, B, b, Q, u):
         mu_pred (D_hid,): predicted mean.
         Sigma_pred (D_hid,D_hid): predicted covariance.
     """
-    mu_pred = m + B @ u + b
+    mu_pred = m #+ B @ u + b
     Sigma_pred = S + Q
     return mu_pred, Sigma_pred
 
@@ -735,7 +735,8 @@ def _condition_on_identity(m, P, H, D, d, R, u, y, mask):
     K = psd_solve(S, P).T
 
     Sigma_cond = P - mask * K @ S @ K.T
-    mu_cond = m + mask * K @ (y - D @ u - d - m)
+    # mu_cond = m + mask * K @ (y - D @ u - d - m)
+    mu_cond = m + mask * K @ (y - m)
     return mu_cond, symmetrize(Sigma_cond)
 
 @preprocess_args
@@ -761,7 +762,7 @@ def lgssm_filter_identity(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     def _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y):
-        m = pred_mean + D @ u + d
+        m = pred_mean #+ D @ u + d
         S = R + pred_cov
         return MVN(m, S).log_prob(y)
 
@@ -850,3 +851,78 @@ def lgssm_posterior_sample_identity(
     _, reversed_states = lax.scan(_step, last_state, args)
     states = jnp.vstack([reversed_states[::-1], last_state])
     return states
+
+@preprocess_args
+def lgssm_smoother_identity(
+    params: ParamsLGSSM,
+    emissions: Float[Array, "ntime emission_dim"],
+    inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+    masks: jnp.array=None,
+    trial_r: int=0,
+) -> PosteriorGSSMSmoothed:
+    r"""Run forward-filtering, backward-smoother to compute expectations
+    under the posterior distribution on latent states. Technically, this
+    implements the Rauch-Tung-Striebel (RTS) smoother.
+
+    Args:
+        params: an LGSSMParams instance (or object with the same fields)
+        emissions: array of observations.
+        inputs: array of inputs.
+
+    Returns:
+        PosteriorGSSMSmoothed: smoothed posterior object.
+
+    """
+    num_timesteps = len(emissions)
+    inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
+
+    # Run the Kalman filter
+    filtered_posterior = lgssm_filter(params, emissions, inputs, masks, trial_r)
+    ll, filtered_means, filtered_covs, *_ = filtered_posterior
+
+    # Run the smoother backward in time
+    def _step(carry, args):
+        # Unpack the inputs
+        smoothed_mean_next, smoothed_cov_next = carry
+        t, filtered_mean, filtered_cov, mask = args
+
+        # Get parameters and inputs for time index t
+        F, B, b, Q = _get_params(params, num_timesteps, t)[:4]
+        u = inputs[t]
+
+        # This is like the Kalman gain but in reverse
+        # See Eq 8.11 of Saarka's "Bayesian Filtering and Smoothing"
+        # G = psd_solve(Q + F @ filtered_cov @ F.T, F @ filtered_cov).T
+        G = psd_solve(Q + filtered_cov, filtered_cov).T
+
+        # Compute the smoothed mean and covariance
+        # smoothed_mean = filtered_mean + mask * G @ (smoothed_mean_next - F @ filtered_mean - B @ u - b)
+        # smoothed_cov = filtered_cov + mask * G @ (smoothed_cov_next - F @ filtered_cov @ F.T - Q) @ G.T
+        smoothed_mean = filtered_mean + mask * G @ (smoothed_mean_next - filtered_mean)
+        smoothed_cov = filtered_cov + mask * G @ (smoothed_cov_next - filtered_cov - Q) @ G.T
+
+        # Compute the smoothed expectation of z_t z_{t+1}^T
+        smoothed_cross = G @ smoothed_cov_next + jnp.outer(smoothed_mean, smoothed_mean_next)
+
+        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross)
+
+    # Run the Kalman smoother
+    init_carry = (filtered_means[-1], filtered_covs[-1])
+    args = (jnp.arange(num_timesteps - 2, -1, -1),
+            filtered_means[:-1][::-1],
+            filtered_covs[:-1][::-1],
+            masks[1:][::-1])
+    _, (smoothed_means, smoothed_covs, smoothed_cross) = lax.scan(_step, init_carry, args)
+
+    # Reverse the arrays and return
+    smoothed_means = jnp.vstack((smoothed_means[::-1], filtered_means[-1][None, ...]))
+    smoothed_covs = jnp.vstack((smoothed_covs[::-1], filtered_covs[-1][None, ...]))
+    smoothed_cross = smoothed_cross[::-1]
+    return PosteriorGSSMSmoothed(
+        marginal_loglik=ll,
+        filtered_means=filtered_means,
+        filtered_covariances=filtered_covs,
+        smoothed_means=smoothed_means,
+        smoothed_covariances=smoothed_covs,
+        smoothed_cross_covariances=smoothed_cross,
+    )
