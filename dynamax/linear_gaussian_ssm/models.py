@@ -1123,8 +1123,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         _, states = lax.scan(_dynamics_outer_step, None, (keys[:-1], jnp.arange(self.num_trials)))
 
         if self.standardize_states:
-            states_mean = jnp.mean(states)#, axis=(0,1), keepdims=True)
-            states_std = jnp.std(states)#, axis=(0,1), keepdims=True)
+            states_mean = jnp.mean(states, axis=(0,1), keepdims=True)
+            states_std = jnp.std(states, axis=(0,1), keepdims=True)
             states = (states - states_mean) / states_std
             # states = states / states_std
 
@@ -1904,26 +1904,27 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             return params
 
         @jit
-        def one_sample(_params, _states, _emissions, _inputs, rng):
+        def one_sample(_params, _emissions, _inputs, rng):
             rngs = jr.split(rng, 2)
-            # Sample parameters
-            _stats = sufficient_stats_from_sample(_states, _params)
-            _new_params = lgssm_params_sample(rngs[1], _stats, _states, _params)
 
             if fixed_states is not None:
                 _new_states = fixed_states
             else:
-                _new_states = lgssm_posterior_sample_vmap(rngs[0], _new_params, _emissions,
+                _new_states = lgssm_posterior_sample_vmap(rngs[0], _params, _emissions,
                                                           inputs, masks, jnp.arange(self.num_trials, dtype=int))
 
             if self.standardize_states:
-                states_mean = jnp.mean(_new_states)#, axis=(0,1), keepdims=True)
-                states_std = jnp.std(_new_states)#, axis=(0,1), keepdims=True)
+                states_mean = jnp.mean(_new_states, axis=(0,1), keepdims=True)
+                states_std = jnp.std(_new_states, axis=(0,1), keepdims=True)
                 _new_states = (_new_states - states_mean) / states_std
                 # _new_states = _new_states / states_std
 
+            # Sample parameters
+            _stats = sufficient_stats_from_sample(_new_states, _params)
+            _new_params = lgssm_params_sample(rngs[1], _stats, _new_states, _params)
+
             # compute the log joint
-            # _ll = self.log_joint(_new_params, _states, _emissions, _inputs)
+            # _ll = self.log_joint(_new_params, _states, _emissions, _inputs, masks)
             _ll = self.log_joint(_new_params, _new_states, _emissions, _inputs, masks)
 
             return _new_params, _new_states, _ll
@@ -1936,20 +1937,20 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample, in_axes=(None, None, 0, None, 0, 0))
 
-        if fixed_states is not None:
-            current_states = fixed_states
-        else:
-            current_states = lgssm_posterior_sample_vmap(next(keys), current_params, emissions,
-                                                         inputs, masks, jnp.arange(self.num_trials, dtype=int))
-
-            if self.standardize_states:
-                states_mean = jnp.mean(current_states)#, axis=(0,1), keepdims=True)
-                states_std = jnp.std(current_states)#, axis=(0,1), keepdims=True)
-                current_states = (current_states - states_mean) / states_std
-                # current_states = current_states / states_std
+        # if fixed_states is not None:
+        #     current_states = fixed_states
+        # else:
+        #     current_states = lgssm_posterior_sample_vmap(next(keys), current_params, emissions,
+        #                                                  inputs, masks, jnp.arange(self.num_trials, dtype=int))
+        #
+        #     if self.standardize_states:
+        #         states_mean = jnp.mean(current_states, axis=(0,1), keepdims=True)
+        #         states_std = jnp.std(current_states, axis=(0,1), keepdims=True)
+        #         current_states = (current_states - states_mean) / states_std
+        #         # current_states = current_states / states_std
 
         for sample_itr in progress_bar(range(sample_size)):
-            current_params, current_states, ll = one_sample(current_params, current_states, emissions, inputs, next(keys))
+            current_params, current_states, ll = one_sample(current_params, emissions, inputs, next(keys))
             if sample_itr >= sample_size - return_n_samples:
                 sample_of_params.append(current_params)
             if return_states and (sample_itr >= sample_size - return_n_samples):
