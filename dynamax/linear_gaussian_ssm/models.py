@@ -1335,10 +1335,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 ar_dependency=None)
         )
 
-        _emissions_smoother = lgssm_smoother_identity(next(rngs),
-                                                     _emissions_params,
-                                                     emissions_y,
-                                                     jnp.zeros((self.num_trials, 0)), trial_masks)
+        _emissions_smoother = lgssm_smoother_identity(_emissions_params,
+                                                      emissions_y,
+                                                      jnp.zeros((self.num_trials, 0)),
+                                                      jnp.ones(self.num_trials, dtype=bool))
 
         # expand emission weights to the original shape
         H = _emissions_smoother.smoothed_means.reshape(self.num_trials, self.emission_dim, self.state_dim)
