@@ -14,7 +14,7 @@ from typing import Any, Optional, Tuple, Union
 from typing_extensions import Protocol
 
 from dynamax.ssm import SSM
-from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother, lgssm_posterior_sample, lgssm_posterior_sample_identity
+from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother, lgssm_posterior_sample, lgssm_posterior_sample_identity, lgssm_smoother_identity
 from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitial, ParamsLGSSMDynamics, ParamsLGSSMEmissions, ParamsTVLGSSM
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 from dynamax.parameters import ParameterProperties, ParameterSet
@@ -1285,6 +1285,67 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         smoothed_emissions_std = jnp.sqrt(
             jnp.array([smoothed_emissions_cov[:, :, i, i] for i in range(emission_dim)]))
         return smoothed_emissions, smoothed_emissions_std
+
+    def posterior_predictive_v2(
+            self,
+            params: ParamsLGSSM,
+            emissions: Float[Array, "ntime emission_dim"],
+            states,
+            inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+            masks: jnp.array = None
+    ) -> Tuple[Float[Array, "ntime emission_dim"], Float[Array, "ntime emission_dim"]]:
+        r"""Compute marginal posterior predictive smoothing distribution for each observation.
+
+        Args:
+            params: model parameters.
+            emissions: sequence of observations.
+            inputs: optional sequence of inputs.
+
+        Returns:
+            :posterior predictive means $\mathbb{E}[y_{t,d} \mid y_{1:T}]$ and standard deviations $\mathrm{std}[y_{t,d} \mid y_{1:T}]$
+
+        """
+        if masks is None:
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+
+        x, xp, xn = states, states[:, :-1], states[:, 1:]
+        y = emissions
+        N, D = y.shape[-1], x.shape[-1]
+        Rinv = jnp.linalg.inv(params.emissions.cov)
+        emissions_stats_1 = jnp.einsum('bt,bti,jk,btl->bjikl', masks, x, Rinv, x).reshape(self.num_trials, N * D,
+                                                                                          N * D)
+        emissions_covs = jnp.linalg.inv(emissions_stats_1)
+        emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
+        emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
+
+        _emissions_params = ParamsLGSSM(
+            initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
+                                       cov=params.initial_emissions.cov),
+            dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim * self.state_dim),
+                                         bias=None,
+                                         input_weights=None,
+                                         cov=params.emissions.ar_dependency * jnp.eye(
+                                             self.emission_dim * self.state_dim),
+                                         ar_dependency=None),
+            emissions=ParamsLGSSMEmissions(
+                weights=jnp.eye(self.emission_dim * self.state_dim),
+                bias=None,
+                input_weights=None,
+                cov=emissions_covs,
+                ar_dependency=None)
+        )
+
+        _emissions_smoother = lgssm_smoother_identity(next(rngs),
+                                                     _emissions_params,
+                                                     emissions_y,
+                                                     jnp.zeros((self.num_trials, 0)), trial_masks)
+
+        # expand emission weights to the original shape
+        H = _emissions_smoother.smoothed_means.reshape(self.num_trials, self.emission_dim, self.state_dim)
+
+        smoothed_emissions = jnp.einsum('...lx,...yx->...ly', states, H)
+
+        return smoothed_emissions, None
 
     def log_joint(
         self,
