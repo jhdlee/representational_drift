@@ -907,6 +907,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 current_weights_dist = MVN(loc=prev_weights,
                                            covariance_matrix=emissions_param_ar_dependency_cov)
                 current_weights = current_weights_dist.sample(seed=current_key)
+                if self.orthogonal_emissions_weights:
+                    current_weights = jnp.linalg.qr(current_weights)[0]
+                elif self.normalize_emissions:
+                    current_weights = current_weights / jnp.linalg.norm(current_weights, ord=2, axis=0, keepdims=True)
                 return current_weights, current_weights
 
             key1, key = jr.split(key, 2)
@@ -915,24 +919,35 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             else:
                 initial_emission_weights = MVN(loc=jnp.zeros(self.emission_dim * self.state_dim,),
                                            covariance_matrix=self.num_trials*emissions_param_ar_dependency_cov).sample(seed=key1)
+
+            if self.orthogonal_emissions_weights:
+                initial_emission_weights = jnp.linalg.qr(initial_emission_weights)[0]
+            elif self.normalize_emissions:
+                initial_emission_weights = initial_emission_weights / jnp.linalg.norm(initial_emission_weights, ord=2, axis=0, keepdims=True)
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
-            if self.orthogonal_emissions_weights:
-                _emission_weights = jnp.linalg.qr(_emission_weights)[0]
-                _emission_weights = self.emission_weights_scale * _emission_weights
 
-                concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
-                emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
-                emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
-            elif self.normalize_emissions:
-                _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=1, keepdims=True)
-                # _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord='fro', axis=(-2, -1))[:, None, None]
-                _emission_weights = self.emission_weights_scale * _emission_weights
+            concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
+            emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
+            emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
 
-                concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
-                emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
-                emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
+
+            # if self.orthogonal_emissions_weights:
+            #     _emission_weights = jnp.linalg.qr(_emission_weights)[0]
+            #     _emission_weights = self.emission_weights_scale * _emission_weights
+            #
+            #     concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
+            #     emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
+            #     emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
+            # elif self.normalize_emissions:
+            #     _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=1, keepdims=True)
+            #     # _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord='fro', axis=(-2, -1))[:, None, None]
+            #     _emission_weights = self.emission_weights_scale * _emission_weights
+            #
+            #     concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
+            #     emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
+            #     emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
         else:
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
