@@ -907,10 +907,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 current_weights_dist = MVN(loc=prev_weights,
                                            covariance_matrix=emissions_param_ar_dependency_cov)
                 current_weights = current_weights_dist.sample(seed=current_key)
+
+                current_weights = current_weights.reshape(self.emission_dim, self.state_dim)
                 if self.orthogonal_emissions_weights:
                     current_weights = jnp.linalg.qr(current_weights)[0]
                 elif self.normalize_emissions:
                     current_weights = current_weights / jnp.linalg.norm(current_weights, ord=2, axis=0, keepdims=True)
+                current_weights = current_weights.reshape(-1)
                 return current_weights, current_weights
 
             key1, key = jr.split(key, 2)
@@ -920,10 +923,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 initial_emission_weights = MVN(loc=jnp.zeros(self.emission_dim * self.state_dim,),
                                            covariance_matrix=self.num_trials*emissions_param_ar_dependency_cov).sample(seed=key1)
 
+            initial_emission_weights = initial_emission_weights.reshape(self.emission_dim, self.state_dim)
             if self.orthogonal_emissions_weights:
                 initial_emission_weights = jnp.linalg.qr(initial_emission_weights)[0]
             elif self.normalize_emissions:
                 initial_emission_weights = initial_emission_weights / jnp.linalg.norm(initial_emission_weights, ord=2, axis=0, keepdims=True)
+            initial_emission_weights = initial_emission_weights.reshape(-1)
+
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
@@ -931,7 +937,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
             emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
             emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
-
 
             # if self.orthogonal_emissions_weights:
             #     _emission_weights = jnp.linalg.qr(_emission_weights)[0]
