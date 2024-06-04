@@ -877,7 +877,7 @@ def lgssm_smoother_identity(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs, masks, trial_r)
+    filtered_posterior = lgssm_filter_identity(params, emissions, inputs, masks, trial_r)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Run the smoother backward in time
