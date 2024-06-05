@@ -809,6 +809,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         emission_bias=None,
         emission_input_weights=None,
         emission_covariance=None,
+        update_emissions_ar_var=False,
         initial_dynamics_mean=None,
         initial_dynamics_cov=None,
         initial_emissions_mean=None,
@@ -934,9 +935,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
             _emission_weights = self.emission_weights_scale * _emission_weights
 
-            concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
-            emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
-            emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
+            if update_emissions_ar_var:
+                concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
+                emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
+                emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
 
             # if self.orthogonal_emissions_weights:
             #     _emission_weights = jnp.linalg.qr(_emission_weights)[0]
