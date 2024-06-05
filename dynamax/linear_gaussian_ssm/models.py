@@ -673,6 +673,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             emission_weights_scale: float=1.0,
             orthogonal_emissions_weights: bool=False,
             standardize_states: bool=False,
+            standardize_per_latent_dim: bool=True,
             init_emissions_with_standard_normal: bool=True,
             update_emissions_param_ar_dependency_variance: bool=False,
             update_initial_covariance: bool=False,
@@ -717,6 +718,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.batch_size = batch_size
         self.orthogonal_emissions_weights = orthogonal_emissions_weights
         self.standardize_states = standardize_states
+        self.standardize_per_latent_dim = standardize_per_latent_dim
         self.init_emissions_with_standard_normal = init_emissions_with_standard_normal
         self.emission_per_trial = emission_per_trial
         self.scan_emissions_stats = scan_emissions_stats
@@ -1145,8 +1147,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         _, states = lax.scan(_dynamics_outer_step, None, (keys[:-1], jnp.arange(self.num_trials)))
 
         if self.standardize_states:
-            states_mean = jnp.mean(states, axis=(0,1), keepdims=True)
-            states_std = jnp.std(states, axis=(0,1), keepdims=True)
+            if self.standardize_per_latent_dim:
+                axis = (0, 1)
+            else:
+                axis = (0, 1, 2)
+            states_mean = jnp.mean(_new_states, axis=axis, keepdims=True)
+            states_std = jnp.std(_new_states, axis=axis, keepdims=True)
             states = (states - states_mean) / states_std
             # states = states / states_std
 
@@ -1300,8 +1306,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         smoothed_means = posterior.smoothed_means
         if self.standardize_states:
-            states_mean = jnp.mean(smoothed_means)#, axis=(0, 1), keepdims=True)
-            states_std = jnp.std(smoothed_means)#, axis=(0, 1), keepdims=True)
+            if self.standardize_per_latent_dim:
+                axis = (0, 1)
+            else:
+                axis = (0, 1, 2)
+            states_mean = jnp.mean(_new_states, axis=axis, keepdims=True)
+            states_std = jnp.std(_new_states, axis=axis, keepdims=True)
             smoothed_means = (smoothed_means - states_mean) / states_std
 
         smoothed_emissions = jnp.einsum('...lx,...yx->...ly', smoothed_means, H)
@@ -2003,8 +2013,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                           inputs, masks, jnp.arange(self.num_trials, dtype=int))
 
             if self.standardize_states:
-                states_mean = jnp.mean(_new_states)#, axis=(0,1), keepdims=True)
-                states_std = jnp.std(_new_states)#, axis=(0,1), keepdims=True)
+                if self.standardize_per_latent_dim:
+                    axis = (0,1)
+                else:
+                    axis = (0,1,2)
+                states_mean = jnp.mean(_new_states, axis=axis, keepdims=True)
+                states_std = jnp.std(_new_states, axis=axis, keepdims=True)
                 _new_states = (_new_states - states_mean) / states_std
                 # _new_states = _new_states / states_std
 
