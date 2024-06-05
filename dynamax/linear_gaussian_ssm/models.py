@@ -1145,8 +1145,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         _, states = lax.scan(_dynamics_outer_step, None, (keys[:-1], jnp.arange(self.num_trials)))
 
         if self.standardize_states:
-            states_mean = jnp.mean(states, axis=(0,1), keepdims=True)
-            states_std = jnp.std(states, axis=(0,1), keepdims=True)
+            states_mean = jnp.mean(states)#, axis=(0,1), keepdims=True)
+            states_std = jnp.std(states)#, axis=(0,1), keepdims=True)
             states = (states - states_mean) / states_std
             # states = states / states_std
 
@@ -2003,8 +2003,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                           inputs, masks, jnp.arange(self.num_trials, dtype=int))
 
             if self.standardize_states:
-                states_mean = jnp.mean(_new_states, axis=(0,1), keepdims=True)
-                states_std = jnp.std(_new_states, axis=(0,1), keepdims=True)
+                states_mean = jnp.mean(_new_states)#, axis=(0,1), keepdims=True)
+                states_std = jnp.std(_new_states)#, axis=(0,1), keepdims=True)
                 _new_states = (_new_states - states_mean) / states_std
                 # _new_states = _new_states / states_std
 
