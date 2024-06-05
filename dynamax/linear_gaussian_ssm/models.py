@@ -1151,8 +1151,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 axis = (0, 1)
             else:
                 axis = (0, 1, 2)
-            states_mean = jnp.mean(_new_states, axis=axis, keepdims=True)
-            states_std = jnp.std(_new_states, axis=axis, keepdims=True)
+            states_mean = jnp.mean(states, axis=axis, keepdims=True)
+            states_std = jnp.std(states, axis=axis, keepdims=True)
             states = (states - states_mean) / states_std
             # states = states / states_std
 
@@ -1310,8 +1310,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 axis = (0, 1)
             else:
                 axis = (0, 1, 2)
-            states_mean = jnp.mean(_new_states, axis=axis, keepdims=True)
-            states_std = jnp.std(_new_states, axis=axis, keepdims=True)
+            states_mean = jnp.mean(smoothed_means, axis=axis, keepdims=True)
+            states_std = jnp.std(smoothed_means, axis=axis, keepdims=True)
             smoothed_means = (smoothed_means - states_mean) / states_std
 
         smoothed_emissions = jnp.einsum('...lx,...yx->...ly', smoothed_means, H)
