@@ -883,8 +883,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                      normalized_eigvals,
                                      eigenvectors_inv)
                 _dynamics_weights = jnp.array(np.real(dynamics))
-                # _dynamics_weights = _dynamics_weights / (1e-8 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
-                #_dynamics_weights = _dynamics_weights / (1e-4 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights)), axis=-1))[:, None, None]
         else:
             key1, key = jr.split(key, 2)
             _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
@@ -894,7 +892,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 eigenvectors = eigdecomp_result.eigenvectors
                 dynamics = eigenvectors @ np.diag(eigenvalues / np.abs(eigenvalues)) @ np.linalg.inv(eigenvectors)
                 _dynamics_weights = jnp.array(np.real(dynamics))
-                # _dynamics_weights = _dynamics_weights / (1e-8 + alpha * np.max(np.abs(np.linalg.eigvals(_dynamics_weights))))
 
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
@@ -905,8 +902,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             keys = jr.split(key, self.num_trials)
             key = keys[-1]
             def _get_emission_weights(prev_weights, current_key):
-                # current_weights = prev_weights + jnp.sqrt(self.emissions_param_ar_dependency_variance) \
-                #                   * jr.normal(current_key, shape=(self.emission_dim, self.state_dim))
                 current_weights_dist = MVN(loc=prev_weights,
                                            covariance_matrix=emissions_param_ar_dependency_cov)
                 current_weights = current_weights_dist.sample(seed=current_key)
@@ -941,22 +936,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
                 emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
                 emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
-
-            # if self.orthogonal_emissions_weights:
-            #     _emission_weights = jnp.linalg.qr(_emission_weights)[0]
-            #     _emission_weights = self.emission_weights_scale * _emission_weights
-            #
-            #     concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
-            #     emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
-            #     emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
-            # elif self.normalize_emissions:
-            #     _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord=2, axis=1, keepdims=True)
-            #     # _emission_weights = _emission_weights / jnp.linalg.norm(_emission_weights, ord='fro', axis=(-2, -1))[:, None, None]
-            #     _emission_weights = self.emission_weights_scale * _emission_weights
-            #
-            #     concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
-            #     emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
-            #     emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
         else:
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
@@ -1025,75 +1004,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 cov=ParameterProperties(constrainer=RealToPSDBijector()))
             )
         return params, props,
-
-    # # All SSMs support sampling
-    # def sample(
-    #     self,
-    #     params: ParameterSet,
-    #     key: PRNGKey,
-    #     num_timesteps: int,
-    #     inputs: Optional[Float[Array, "num_timesteps input_dim"]]=None,
-    #     return_signal: bool=False
-    # ) -> Tuple[Float[Array, "num_timesteps state_dim"],
-    #           Float[Array, "num_timesteps emission_dim"]]:
-    #     r"""Sample states $z_{1:T}$ and emissions $y_{1:T}$ given parameters $\theta$ and (optionally) inputs $u_{1:T}$.
-    #
-    #     Args:
-    #         params: model parameters $\theta$
-    #         key: random number generator
-    #         num_timesteps: number of timesteps $T$
-    #         inputs: inputs $u_{1:T}$
-    #
-    #     Returns:
-    #         latent states and emissions
-    #
-    #     """
-    #
-    #     def _outer_step(carry, outer_args):
-    #         key, t = outer_args
-    #         def _step(prev_state, args):
-    #             key, inpt, idx = args
-    #             key1, key2 = jr.split(key, 2)
-    #             state = self.transition_distribution(idx-1, params, prev_state, inpt).sample(seed=key2)
-    #             emission_distribution = self.emission_distribution(t, params, state, inpt)
-    #             emission = emission_distribution.sample(seed=key1)
-    #             if return_signal:
-    #                 signal = emission_distribution.mean()
-    #             else:
-    #                 signal = jnp.zeros_like(emission)
-    #             return state, (state, emission, signal)
-    #
-    #         # Sample the initial state
-    #         key1, key2, key = jr.split(key, 3)
-    #         initial_input = tree_map(lambda x: x[0], inputs)
-    #         initial_state = self.initial_distribution(t, params, initial_input).sample(seed=key1)
-    #         initial_emission_distribution = self.emission_distribution(t, params, initial_state, initial_input)
-    #         initial_emission = initial_emission_distribution.sample(seed=key2)
-    #         if return_signal:
-    #             initial_signal = initial_emission_distribution.mean()
-    #         else:
-    #             initial_signal = jnp.zeros_like(initial_emission)
-    #
-    #         # Sample the remaining emissions and states
-    #         next_keys = jr.split(key, self.sequence_length - 1)
-    #         next_inputs = tree_map(lambda x: x[1:], inputs)
-    #         next_indices = jnp.arange(1, self.sequence_length)
-    #         _, (next_states, next_emissions, next_signals) = lax.scan(_step, initial_state,
-    #                                                                   (next_keys, next_inputs, next_indices))
-    #
-    #         # Concatenate the initial state and emission with the following ones
-    #         expand_and_cat = lambda x0, x1T: jnp.concatenate((jnp.expand_dims(x0, 0), x1T))
-    #         states = tree_map(expand_and_cat, initial_state, next_states)
-    #         emissions = tree_map(expand_and_cat, initial_emission, next_emissions)
-    #         signals = tree_map(expand_and_cat, initial_signal, next_signals)
-    #
-    #         return None, (states, emissions, signals)
-    #
-    #     keys = jr.split(key, self.num_trials)
-    #     _, (states, emissions, signals) = lax.scan(_outer_step, None,
-    #                                                   (keys, jnp.arange(self.num_trials)))
-    #
-    #     return states, emissions, signals
 
     # All SSMs support sampling
     def sample(
@@ -1807,6 +1717,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
                                                                       emissions_cov_stats)
                         emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
+                        emissions_cov += 1e-6
                         R = jnp.diag(jnp.ravel(emissions_cov))
                     else:
                         R = params.emissions.cov
