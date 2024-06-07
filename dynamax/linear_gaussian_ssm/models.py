@@ -1148,6 +1148,52 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         marginal_lls = _get_marginal_ll_vmap(emissions, inputs, masks, trials)
         return marginal_lls.sum()
 
+    def marginal_log_prob_v2(
+        self,
+        params: ParamsLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        states,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        masks: jnp.array=None
+    ) -> Scalar:
+
+        if masks is None:
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+
+        x, xp, xn = states, states[:, :-1], states[:, 1:]
+        y = emissions
+        N, D = y.shape[-1], x.shape[-1]
+        num_trials = y.shape[0]
+        Rinv = jnp.linalg.inv(params.emissions.cov)
+        emissions_stats_1 = jnp.einsum('bt,bti,jk,btl->bjikl', masks, x, Rinv, x).reshape(num_trials, N * D, N * D)
+        emissions_covs = jnp.linalg.inv(emissions_stats_1)
+        emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(num_trials, -1)
+        emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
+
+        _emissions_params = ParamsLGSSM(
+            initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
+                                       cov=params.initial_emissions.cov),
+            dynamics=ParamsLGSSMDynamics(weights=jnp.eye(N * D),
+                                         bias=None,
+                                         input_weights=None,
+                                         cov=params.emissions.ar_dependency * jnp.eye(N * D),
+                                         ar_dependency=None),
+            emissions=ParamsLGSSMEmissions(
+                weights=jnp.eye(N * D),
+                bias=None,
+                input_weights=None,
+                cov=emissions_covs,
+                ar_dependency=None)
+        )
+
+        _emissions_filter = lgssm_filter_identity(_emissions_params,
+                                                    emissions_y,
+                                                    jnp.zeros((num_trials, 0)),
+                                                    jnp.ones(num_trials, dtype=bool))
+
+        
+        return _emissions_filter.marginal_loglik
+
     def filter(
         self,
         params: ParamsLGSSM,
