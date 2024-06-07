@@ -1259,24 +1259,23 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         x, xp, xn = states, states[:, :-1], states[:, 1:]
         y = emissions
         N, D = y.shape[-1], x.shape[-1]
+        num_trials = y.shape[0]
         Rinv = jnp.linalg.inv(params.emissions.cov)
-        emissions_stats_1 = jnp.einsum('bt,bti,jk,btl->bjikl', masks, x, Rinv, x).reshape(self.num_trials, N * D,
-                                                                                          N * D)
+        emissions_stats_1 = jnp.einsum('bt,bti,jk,btl->bjikl', masks, x, Rinv, x).reshape(num_trials, N * D, N * D)
         emissions_covs = jnp.linalg.inv(emissions_stats_1)
-        emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
+        emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(num_trials, -1)
         emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
 
         _emissions_params = ParamsLGSSM(
             initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
                                        cov=params.initial_emissions.cov),
-            dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim * self.state_dim),
+            dynamics=ParamsLGSSMDynamics(weights=jnp.eye(N * D),
                                          bias=None,
                                          input_weights=None,
-                                         cov=params.emissions.ar_dependency * jnp.eye(
-                                             self.emission_dim * self.state_dim),
+                                         cov=params.emissions.ar_dependency * jnp.eye(N * D),
                                          ar_dependency=None),
             emissions=ParamsLGSSMEmissions(
-                weights=jnp.eye(self.emission_dim * self.state_dim),
+                weights=jnp.eye(N * D),
                 bias=None,
                 input_weights=None,
                 cov=emissions_covs,
@@ -1285,11 +1284,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         _emissions_smoother = lgssm_smoother_identity(_emissions_params,
                                                       emissions_y,
-                                                      jnp.zeros((self.num_trials, 0)),
-                                                      jnp.ones(self.num_trials, dtype=bool))
+                                                      jnp.zeros((num_trials, 0)),
+                                                      jnp.ones(num_trials, dtype=bool))
 
         # expand emission weights to the original shape
-        H = _emissions_smoother.smoothed_means.reshape(self.num_trials, self.emission_dim, self.state_dim)
+        H = _emissions_smoother.smoothed_means.reshape(num_trials, N, D)
 
         smoothed_emissions = jnp.einsum('...lx,...yx->...ly', states, H)
 
