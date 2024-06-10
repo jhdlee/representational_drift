@@ -1227,9 +1227,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
         states,
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        inputs: Optional[Float[Array, "ntime input_dim"]]=None,
         masks: jnp.array=None,
-        add_prior_and_posterior: bool = True,
+        add_prior_and_posterior: bool=True,
+        emissions_weights_samples: jnp.array=None,
     ) -> Scalar:
 
         if masks is None:
@@ -1266,8 +1267,61 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                     jnp.zeros((num_trials, 0)),
                                                     jnp.ones(num_trials, dtype=bool))
 
+        marginal_ll = _emissions_filter.marginal_loglik
+        if add_prior_and_posterior:
+            # add prior
+            marginal_ll += MVN(params.initial.mean, params.initial.cov).log_prob(states[:, 0]).sum()
+            def _compute_dynamics_lp(prev_lp, current_t):
+                current_state_mean = jnp.einsum('ij,rj->ri', params.dynamics.weights, states[:, current_t])
+                new_lp = MVN(current_state_mean, params.dynamics.cov).log_prob(states[:, current_t+1])
+                masked_new_lp = jnp.nansum(masks[:, current_t+1] * new_lp)
+                current_lp = prev_lp + masked_new_lp
+                return current_lp, None
+            marginal_ll, _ = jax.lax.scan(_compute_dynamics_lp, marginal_ll, jnp.arange(self.sequence_length-1))
+
+            # subtract posterior
+            def _iterate_over_emissions_samples(prev_lp, current_sample):
+                emissions_weights = emissions_weights_samples[current_sample]
+
+                _states_params = ParamsTVLGSSM(
+                    initial=ParamsLGSSMInitial(mean=params.initial.mean, cov=params.initial.cov),
+                    dynamics=ParamsLGSSMDynamics(weights=params.dynamics.weights, bias=params.dynamics.bias,
+                                                 input_weights=params.dynamics.input_weights, cov=params.dynamics.cov,
+                                                 ar_dependency=params.dynamics.ar_dependency),
+                    emissions=ParamsLGSSMEmissions(weights=emissions_weights, bias=params.emissions.bias,
+                                                   input_weights=params.emissions.input_weights, cov=params.emissions.cov,
+                                                   ar_dependency=params.emissions.ar_dependency),
+                    initial_dynamics=ParamsLGSSMInitial(mean=params.initial_dynamics.mean, cov=params.initial_dynamics.cov),
+                    initial_emissions=ParamsLGSSMInitial(mean=params.initial_emissions.mean, cov=params.initial_emissions.cov),
+                )
+
+                trials = jnp.arange(num_trials, dtype=int)
+                def _get_smoothers(emission, input, mask, trial_r):
+                    smoother = lgssm_smoother(_states_params, emission, input, mask, trial_r)
+                    return smoother.smoothed_means, smoother.smoothed_covariances
+                _get_smoothers_vmap = vmap(_get_smoothers, in_axes=(0, 0, 0, 0))
+                smoothed_means, smoothed_covs = _get_smoothers_vmap(emissions, inputs, masks, trials)
+
+                states_flattened = states.reshape(-1, self.state_dim)
+                smoothed_means = smoothed_means.reshape(-1, self.state_dim)
+                smoothed_covs = smoothed_covs.reshape(-1, self.state_dim, self.state_dim)
+                masks_flattened = masks.reshape(-1)
+
+                def _compute_posterior_lp(_prev_lp, current_t):
+                    current_param = states_flattened[current_t]
+                    _current_lp = _prev_lp + masks_flattened[current_t] * MVN(loc=smoothed_means[current_t],
+                                           covariance_matrix=smoothed_covs[current_t]).log_prob(jnp.ravel(current_param))
+                    return _current_lp, None
+
+                current_lp, _ = jax.lax.scan(_compute_posterior_lp, 0.0, jnp.arange(len(masks_flattened)))
+
+                return None, current_lp
+            _, current_lps = jax.lax.scan(_iterate_over_emissions_samples, None, jnp.arange(len(emissions_weights_samples)))
+
+            marginal_ll -= logsumexp(current_lps)
+            marginal_ll += jnp.log(len(emissions_weights_samples))
         
-        return _emissions_filter.marginal_loglik
+        return marginal_ll
 
     def filter(
         self,
