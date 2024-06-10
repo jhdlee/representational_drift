@@ -1170,10 +1170,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             # subtract posterior
             Rinv = jnp.linalg.inv(params.emissions.cov)
             y = emissions
-            N, D = y.shape[-1], x.shape[-1]
+            N = y.shape[-1]
             def _iterate_over_states_samples(prev_lp, current_sample):
                 states = states_samples[current_sample]
                 x, xp, xn = states, states[:, :-1], states[:, 1:]
+                D = x.shape[-1]
                 emissions_stats_1 = jnp.einsum('bt,bti,jk,btl->bjikl', masks, x, Rinv, x).reshape(num_trials, N * D,
                                                                                                   N * D)
                 emissions_covs = jnp.linalg.inv(emissions_stats_1)
