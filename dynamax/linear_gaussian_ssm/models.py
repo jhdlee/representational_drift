@@ -5,6 +5,7 @@ import jax
 from jax import jit, lax, vmap
 import jax.numpy as jnp
 import jax.random as jr
+from jax.scipy.special import logsumexp
 from jax.tree_util import tree_map
 from jaxtyping import Array, Float, PyTree
 import tensorflow_probability.substrates.jax.distributions as tfd
@@ -1211,10 +1212,14 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                            covariance_matrix=_emissions_smoothed_covs[current_trial]).log_prob(jnp.ravel(current_param))
                     return _current_lp, None
 
-                current_lp, _ = jax.lax.scan(_compute_posterior_lp, prev_lp, jnp.arange(num_trials))
+                current_lp, _ = jax.lax.scan(_compute_posterior_lp, 0.0, jnp.arange(num_trials))
 
-                return current_lp, None
-            marginal_ll, _ = jax.lax.scan(_iterate_over_states_samples, marginal_ll, jnp.arange(len(states_samples)))
+                return None, current_lp
+            _, current_lps = jax.lax.scan(_iterate_over_states_samples, None, jnp.arange(len(states_samples)))
+
+            marginal_ll -= logsumexp(current_lps)
+            marginal_ll += jnp.log(len(states_samples))
+
         return marginal_ll
 
     def marginal_log_prob_v2(
