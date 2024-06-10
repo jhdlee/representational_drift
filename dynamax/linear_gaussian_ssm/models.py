@@ -1197,10 +1197,13 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         ar_dependency=None)
                 )
 
-                _emissions_smoothed_means, _emissions_smoothed_covs = lgssm_smoother_identity(_emissions_params,
+                _emissions_smoother = lgssm_smoother_identity(_emissions_params,
                                                               emissions_y,
                                                               jnp.zeros((num_trials, 0)),
                                                               jnp.ones(num_trials, dtype=bool))
+
+                _emissions_smoothed_means = _emissions_smoother.smoothed_means
+                _emissions_smoothed_covs = _emissions_smoother.smoothed_covariances
 
                 def _compute_posterior_lp(_prev_lp, current_trial):
                     current_param = params.emissions.weights[current_trial]
