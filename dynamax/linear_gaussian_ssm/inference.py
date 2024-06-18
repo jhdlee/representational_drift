@@ -346,8 +346,7 @@ def preprocess_params_and_inputs(params, num_timesteps, inputs):
             weights=params.dynamics.weights,
             bias=dynamics_bias,
             input_weights=dynamics_input_weights,
-            cov=params.dynamics.cov,
-            ar_dependency=params.dynamics.ar_dependency),
+            cov=params.dynamics.cov),
         emissions=ParamsLGSSMEmissions(
             weights=params.emissions.weights,
             bias=emissions_bias,
