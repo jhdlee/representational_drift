@@ -31,7 +31,6 @@ class ParamsLGSSMInitial(NamedTuple):
     # unconstrained parameters are stored as a vector.
     cov: Union[Float[Array, "state_dim state_dim"], Float[Array, "state_dim_triu"], ParameterProperties]
 
-
 class ParamsLGSSMDynamics(NamedTuple):
     r"""Parameters of the emission distribution
 
@@ -61,9 +60,6 @@ class ParamsLGSSMDynamics(NamedTuple):
         Float[Array, "state_dim state_dim"], 
         Float[Array, "ntime state_dim state_dim"], 
         Float[Array, "state_dim_triu"]]
-
-    ar_dependency: Union[Float]
-
 
 class ParamsLGSSMEmissions(NamedTuple):
     r"""Parameters of the emission distribution
@@ -123,7 +119,6 @@ class ParamsTVLGSSM(NamedTuple):
     initial: ParamsLGSSMInitial
     dynamics: ParamsLGSSMDynamics
     emissions: ParamsLGSSMEmissions
-    initial_dynamics: ParamsLGSSMInitial
     initial_emissions: ParamsLGSSMInitial
 
 
