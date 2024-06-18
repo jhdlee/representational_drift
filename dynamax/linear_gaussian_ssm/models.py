@@ -1538,7 +1538,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
             N, D = y.shape[-1], states.shape[-1]
             # Optimized Code
-            if not self.time_varying_dynamics and not self.orthogonal_emissions_weights:
+            if not self.orthogonal_emissions_weights and not self.normalize_emissions:
                 Qinv = jnp.linalg.inv(params.dynamics.cov)
 
                 dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, :-1]).reshape(D*D, D*D)
