@@ -756,11 +756,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             self.emission_prior = default_prior(
                 'emission_prior',
                 MVN(loc=jnp.zeros(self.emission_dim * self.state_dim),
-                    covariance_matrix=jnp.eye(self.emission_dim * self.state_dim))
+                    covariance_matrix=1e4*jnp.eye(self.emission_dim * self.state_dim))
             )
             self.initial_emissions_covariance_prior = default_prior(
                 'init_emissions_cov_prior',
-                IG(concentration=1.0, scale=1.0)
+                IG(concentration=1.0, scale=0.01)
             )
         else:
             # prior on emissions parameters
@@ -1646,18 +1646,18 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     else:
                         initial_emissions_mean = params.initial_emissions.mean
 
-                    # if self.update_init_emissions_covariance:
-                    #     init_emissions_cov_stats_1 = jnp.ones((self.emission_dim * self.state_dim, 1)) / 2
-                    #     init_emissions_cov_stats_2 = jnp.square(H[0].reshape(-1) - initial_emissions_mean) / 2
-                    #     init_emissions_cov_stats_2 = jnp.expand_dims(init_emissions_cov_stats_2, -1)
-                    #     init_emissions_cov_stats = (init_emissions_cov_stats_1,
-                    #                                 init_emissions_cov_stats_2)
-                    #     init_emissions_cov_posterior = ig_posterior_update(self.initial_emissions_covariance_prior,
-                    #                                                             init_emissions_cov_stats)
-                    #     initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
-                    #     initial_emissions_cov = jnp.diag(jnp.ravel(initial_emissions_cov))
-                    # else:
-                    #     initial_emissions_cov = params.initial_emissions.cov
+                    if self.update_init_emissions_covariance:
+                        init_emissions_cov_stats_1 = jnp.ones((self.emission_dim * self.state_dim, 1)) / 2
+                        init_emissions_cov_stats_2 = jnp.square(H[0].reshape(-1) - initial_emissions_mean) / 2
+                        init_emissions_cov_stats_2 = jnp.expand_dims(init_emissions_cov_stats_2, -1)
+                        init_emissions_cov_stats = (init_emissions_cov_stats_1,
+                                                    init_emissions_cov_stats_2)
+                        init_emissions_cov_posterior = ig_posterior_update(self.initial_emissions_covariance_prior,
+                                                                                init_emissions_cov_stats)
+                        initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
+                        initial_emissions_cov = jnp.diag(jnp.ravel(initial_emissions_cov))
+                    else:
+                        initial_emissions_cov = params.initial_emissions.cov
 
                     if self.update_emissions_param_ar_dependency_variance:
                         emissions_ar_dependency_stats_1 = (self.emission_dim * self.state_dim * self.num_trials) / 2
@@ -1670,10 +1670,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         emissions_ar_dependency_posterior = ig_posterior_update(self.emissions_ar_dependency_prior,
                                                                                 emissions_ar_dependency_stats)
                         emissions_ar_dependency = emissions_ar_dependency_posterior.sample(seed=next(rngs))
-                        initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim) * emissions_ar_dependency
+                        # initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim) * emissions_ar_dependency
                     else:
                         emissions_ar_dependency = params.emissions.ar_dependency
-                        initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim) * params.emissions.ar_dependency
+                        # initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim) * params.emissions.ar_dependency
 
                     if self.update_emissions_covariance:
                         emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
