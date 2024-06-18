@@ -1592,8 +1592,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                      bias=None,
                                                      input_weights=None,
                                                      cov=params.emissions.ar_dependency * jnp.eye(
-                                                         self.emission_dim * self.state_dim),
-                                                     ar_dependency=None),
+                                                         self.emission_dim * self.state_dim)),
                         emissions=ParamsLGSSMEmissions(
                             weights=jnp.eye(self.emission_dim * self.state_dim),
                             bias=None,
