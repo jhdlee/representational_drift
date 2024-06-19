@@ -10,7 +10,7 @@ from tensorflow_probability.substrates.jax.distributions import (
     MultivariateNormalFullCovariance as MVN)
 
 from jax.tree_util import tree_map
-from jaxtyping import Array, Float
+from jaxtyping import Array, Float, Any
 from typing import NamedTuple, Optional, Union, Tuple
 from dynamax.utils.utils import psd_solve, symmetrize
 from dynamax.parameters import ParameterProperties
@@ -96,7 +96,7 @@ class ParamsLGSSMEmissions(NamedTuple):
     Float[Array, "ntime emission_dim"],
     Float[Array, "emission_dim_triu"]]
 
-    ar_dependency: Union[Float]
+    ar_dependency: Any
 
 
 class ParamsLGSSM(NamedTuple):

@@ -671,7 +671,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             num_trials: int = 0,  # number of trials
             sequence_length: int = 0,  # number of timesteps per trial
             time_varying_emissions: bool = True,
-            emissions_param_ar_dependency_variance: float = 1.0,
             has_dynamics_bias: bool = False,
             has_emissions_bias: bool = False,
             fix_initial: bool = False,
@@ -683,6 +682,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             emission_weights_scale: float = 1.0,
             standardize_states: bool = False,
             standardize_per_latent_dim: bool = True,
+            per_column_ar_dependency: bool=False,
             update_emissions_param_ar_dependency_variance: bool = False,
             update_initial_covariance: bool = False,
             update_dynamics_covariance: bool = False,  # learn diagonal covariance matrix
@@ -698,10 +698,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.time_varying_emissions = time_varying_emissions
         self.sequence_length = sequence_length
 
-        if time_varying_emissions:
-            assert emissions_param_ar_dependency_variance > 0.0
-        self.emissions_param_ar_dependency_variance = emissions_param_ar_dependency_variance
-
         self.fix_initial = fix_initial
         self.fix_dynamics = fix_dynamics
         self.fix_emissions = fix_emissions
@@ -711,6 +707,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         self.orthogonal_emissions_weights = orthogonal_emissions_weights
         self.emission_weights_scale = emission_weights_scale
 
+        self.per_column_ar_dependency = per_column_ar_dependency
         self.update_emissions_param_ar_dependency_variance = update_emissions_param_ar_dependency_variance
         self.update_dynamics_covariance = update_dynamics_covariance
         self.update_emissions_covariance = update_emissions_covariance
@@ -800,6 +797,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             emission_bias=None,
             emission_input_weights=None,
             emission_covariance=None,
+            emissions_param_ar_dependency_variance=None,
             update_emissions_ar_var=False,
             initial_emissions_mean=None,
             initial_emissions_cov=None
@@ -830,10 +828,18 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         if self.time_varying_emissions:
             _initial_emissions_mean = jnp.zeros(self.emission_dim * self.state_dim)
             _initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim)
-            emissions_param_ar_dependency_variance = self.emissions_param_ar_dependency_variance
+
+            if emissions_param_ar_dependency_variance is None:
+                if self.per_column_ar_dependency:
+                    _emissions_param_ar_dependency_variance = jnp.ones(self.state_dim) * 1e-2
+                else:
+                    _emissions_param_ar_dependency_variance = 1e-2
+            else:
+                _emissions_param_ar_dependency_variance = emissions_param_ar_dependency_variance
+
         else:
             _initial_emissions_cov, _initial_emissions_mean = None, None
-            emissions_param_ar_dependency_variance = 0.0
+            _emissions_param_ar_dependency_variance = 0.0
 
         key1, key = jr.split(key, 2)
         _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
@@ -849,14 +855,18 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         _dynamics_covariance = 0.1 * jnp.eye(self.state_dim)
 
         if self.time_varying_emissions:
-            emissions_param_ar_dependency_cov = jnp.eye(
-                self.emission_dim * self.state_dim) * self.emissions_param_ar_dependency_variance
+            if self.per_column_ar_dependency:
+                _emissions_param_ar_dependency_cov = jnp.diag(jnp.tile(_emissions_param_ar_dependency_variance, self.emission_dim))
+            else:
+                _emissions_param_ar_dependency_cov = jnp.eye(
+                    self.emission_dim * self.state_dim) * _emissions_param_ar_dependency_variance
+
             keys = jr.split(key, self.num_trials)
             key = keys[-1]
 
             def _get_emission_weights(prev_weights, current_key):
                 current_weights_dist = MVN(loc=prev_weights,
-                                           covariance_matrix=emissions_param_ar_dependency_cov)
+                                           covariance_matrix=_emissions_param_ar_dependency_cov)
                 current_weights = current_weights_dist.sample(seed=current_key)
                 current_weights = current_weights.reshape(self.emission_dim, self.state_dim)
                 if self.orthogonal_emissions_weights:
@@ -871,8 +881,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 initial_emission_weights = jr.normal(key1, shape=(self.emission_dim * self.state_dim,))
             else:
                 initial_emission_weights = MVN(loc=jnp.zeros(self.emission_dim * self.state_dim, ),
-                                               covariance_matrix=self.num_trials * emissions_param_ar_dependency_cov).sample(
-                    seed=key1)
+                                               covariance_matrix=self.num_trials * _emissions_param_ar_dependency_cov).sample(seed=key1)
 
             initial_emission_weights = initial_emission_weights.reshape(self.emission_dim, self.state_dim)
             if self.orthogonal_emissions_weights:
@@ -881,16 +890,19 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 initial_emission_weights = initial_emission_weights / jnp.linalg.norm(initial_emission_weights, ord=2,
                                                                                       axis=0, keepdims=True)
             initial_emission_weights = initial_emission_weights.reshape(-1)
-
             _, _emission_weights = jax.lax.scan(_get_emission_weights, initial_emission_weights, keys[:-1])
             _emission_weights = jnp.concatenate([initial_emission_weights[None], _emission_weights])
             _emission_weights = _emission_weights.reshape(_emission_weights.shape[0], self.emission_dim, self.state_dim)
             _emission_weights = self.emission_weights_scale * _emission_weights
 
             if update_emissions_ar_var:
-                concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
-                emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
-                emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
+                if self.per_column_ar_dependency:
+                    emissions_ar_diff = jnp.diff(_emission_weights, axis=0)
+                    _emissions_param_ar_dependency_variance = vmap(jnp.var)(emissions_ar_diff.reshape(-1, self.state_dim).T)
+                else:
+                    concatenated_emissions_weights = _emission_weights.reshape(self.num_trials, -1)
+                    emissions_ar_diff = jnp.diff(concatenated_emissions_weights, axis=0)
+                    _emissions_param_ar_dependency_variance = jnp.var(emissions_ar_diff.reshape(-1))
         else:
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
@@ -923,7 +935,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 bias=default(emission_bias, _emission_bias),
                 input_weights=default(emission_input_weights, _emission_input_weights),
                 cov=default(emission_covariance, _emission_covariance),
-                ar_dependency=emissions_param_ar_dependency_variance),
+                ar_dependency=_emissions_param_ar_dependency_variance),
             initial_emissions=ParamsLGSSMInitial(
                 mean=default(initial_emissions_mean, _initial_emissions_mean),
                 cov=default(initial_emissions_cov, _initial_emissions_cov))
@@ -1094,14 +1106,16 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         marginal_ll = marginal_lls.sum()
 
         if add_prior_and_posterior:
+            if self.per_column_ar_dependency:
+                emissions_param_ar_dependency_cov = jnp.diag(jnp.tile(params.emissions.ar_dependency, self.emission_dim))
+            else:
+                emissions_param_ar_dependency_cov = jnp.eye(self.emission_dim * self.state_dim) * params.emissions.ar_dependency
             # add prior
             def _compute_trial_emissions_lp(prev_lp, current_t):
                 current_param = params.emissions.weights[current_t]
                 next_param = params.emissions.weights[current_t + 1]
                 current_lp = prev_lp + MVN(loc=jnp.ravel(current_param),
-                                           covariance_matrix=jnp.eye(
-                                               self.emission_dim * self.state_dim) * params.emissions.ar_dependency).log_prob(
-                    jnp.ravel(next_param))
+                                           covariance_matrix=emissions_param_ar_dependency_cov).log_prob(jnp.ravel(next_param))
                 return current_lp, None
 
             marginal_ll, _ = jax.lax.scan(_compute_trial_emissions_lp, marginal_ll, jnp.arange(num_trials - 1))
@@ -1129,8 +1143,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     dynamics=ParamsLGSSMDynamics(weights=jnp.eye(N * D),
                                                  bias=None,
                                                  input_weights=None,
-                                                 cov=params.emissions.ar_dependency * jnp.eye(N * D),
-                                                 ar_dependency=None),
+                                                 cov=emissions_param_ar_dependency_cov),
                     emissions=ParamsLGSSMEmissions(
                         weights=jnp.eye(N * D),
                         bias=None,
@@ -1189,13 +1202,18 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(num_trials, -1)
         emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
 
+        if self.per_column_ar_dependency:
+            emissions_param_ar_dependency_cov = jnp.diag(jnp.tile(params.emissions.ar_dependency, self.emission_dim))
+        else:
+            emissions_param_ar_dependency_cov = jnp.eye(self.emission_dim * self.state_dim) * params.emissions.ar_dependency
+
         _emissions_params = ParamsLGSSM(
             initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
                                        cov=params.initial_emissions.cov),
             dynamics=ParamsLGSSMDynamics(weights=jnp.eye(N * D),
                                          bias=None,
                                          input_weights=None,
-                                         cov=params.emissions.ar_dependency * jnp.eye(N * D),
+                                         cov=emissions_param_ar_dependency_cov,
                                          ar_dependency=None),
             emissions=ParamsLGSSMEmissions(
                 weights=jnp.eye(N * D),
@@ -1231,8 +1249,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 _states_params = ParamsTVLGSSM(
                     initial=ParamsLGSSMInitial(mean=params.initial.mean, cov=params.initial.cov),
                     dynamics=ParamsLGSSMDynamics(weights=params.dynamics.weights, bias=params.dynamics.bias,
-                                                 input_weights=params.dynamics.input_weights, cov=params.dynamics.cov,
-                                                 ar_dependency=params.dynamics.ar_dependency),
+                                                 input_weights=params.dynamics.input_weights, cov=params.dynamics.cov),
                     emissions=ParamsLGSSMEmissions(weights=emissions_weights, bias=params.emissions.bias,
                                                    input_weights=params.emissions.input_weights,
                                                    cov=params.emissions.cov,
@@ -1395,14 +1412,18 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(num_trials, -1)
         emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
 
+        if self.per_column_ar_dependency:
+            emissions_param_ar_dependency_cov = jnp.diag(jnp.tile(params.emissions.ar_dependency, self.emission_dim))
+        else:
+            emissions_param_ar_dependency_cov = jnp.eye(self.emission_dim * self.state_dim) * params.emissions.ar_dependency
+
         _emissions_params = ParamsLGSSM(
             initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
                                        cov=params.initial_emissions.cov),
             dynamics=ParamsLGSSMDynamics(weights=jnp.eye(N * D),
                                          bias=None,
                                          input_weights=None,
-                                         cov=params.emissions.ar_dependency * jnp.eye(N * D),
-                                         ar_dependency=None),
+                                         cov=emissions_param_ar_dependency_cov),
             emissions=ParamsLGSSMEmissions(
                 weights=jnp.eye(N * D),
                 bias=None,
@@ -1494,7 +1515,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             lp += self.initial_emissions_covariance_prior.log_prob(jnp.diag(params.initial_emissions.cov)).sum()
 
             if self.update_emissions_param_ar_dependency_variance:
-                lp += self.emissions_ar_dependency_prior.log_prob(params.emissions.ar_dependency)
+                ar_dependency_lp = self.emissions_ar_dependency_prior.log_prob(params.emissions.ar_dependency)
+                if self.per_column_ar_dependency:
+                    ar_dependency_lp = ar_dependency_lp.sum()
+                lp += ar_dependency_lp
 
         else:
             emission_bias = params.emissions.bias if self.has_emissions_bias else jnp.zeros((self.emission_dim, 0))
@@ -1622,14 +1646,20 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
                     emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
 
+                    if self.per_column_ar_dependency:
+                        emissions_param_ar_dependency_cov = jnp.diag(
+                            jnp.tile(params.emissions.ar_dependency, self.emission_dim))
+                    else:
+                        emissions_param_ar_dependency_cov = jnp.eye(
+                            self.emission_dim * self.state_dim) * params.emissions.ar_dependency
+
                     _emissions_params = ParamsLGSSM(
                         initial=ParamsLGSSMInitial(mean=params.initial_emissions.mean,
                                                    cov=params.initial_emissions.cov),
                         dynamics=ParamsLGSSMDynamics(weights=jnp.eye(self.emission_dim * self.state_dim),
                                                      bias=None,
                                                      input_weights=None,
-                                                     cov=params.emissions.ar_dependency * jnp.eye(
-                                                         self.emission_dim * self.state_dim)),
+                                                     cov=emissions_param_ar_dependency_cov),
                         emissions=ParamsLGSSMEmissions(
                             weights=jnp.eye(self.emission_dim * self.state_dim),
                             bias=None,
@@ -1698,17 +1728,28 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         initial_emissions_cov = params.initial_emissions.cov
 
                     if self.update_emissions_param_ar_dependency_variance:
-                        emissions_ar_dependency_stats_1 = (self.emission_dim * self.state_dim * self.num_trials) / 2
-                        concatenated_emissions_weights = _emissions_weights.reshape(self.num_trials, -1)
-                        emissions_ar_dependency_stats_2 = jnp.diff(concatenated_emissions_weights, axis=0,
-                                                                   prepend=initial_emissions_mean.reshape(-1)[None])
-                        emissions_ar_dependency_stats_2 = jnp.nansum(jnp.square(emissions_ar_dependency_stats_2)) / 2
-                        emissions_ar_dependency_stats = (emissions_ar_dependency_stats_1,
-                                                         emissions_ar_dependency_stats_2)
-                        emissions_ar_dependency_posterior = ig_posterior_update(self.emissions_ar_dependency_prior,
-                                                                                emissions_ar_dependency_stats)
-                        emissions_ar_dependency = emissions_ar_dependency_posterior.sample(seed=next(rngs))
-                        # initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim) * emissions_ar_dependency
+                        if self.per_column_ar_dependency:
+                            emissions_ar_dependency_stats_1 = (self.emission_dim * (self.num_trials-1)) / 2
+                            emissions_ar_dependency_stats_2 = jnp.diff(_emissions_weights, axis=0)
+                            emissions_ar_dependency_stats_2 = jnp.nansum(jnp.square(emissions_ar_dependency_stats_2), axis=(0, 1)) / 2
+                            emissions_ar_dependency_stats = (emissions_ar_dependency_stats_1,
+                                                             emissions_ar_dependency_stats_2)
+                            emissions_ar_dependency_posterior = ig_posterior_update(self.emissions_ar_dependency_prior,
+                                                                                    emissions_ar_dependency_stats)
+                            emissions_ar_dependency = emissions_ar_dependency_posterior.sample(seed=next(rngs))
+                        else:
+                            emissions_ar_dependency_stats_1 = (self.emission_dim * self.state_dim * (self.num_trials-1)) / 2
+                            concatenated_emissions_weights = _emissions_weights.reshape(self.num_trials, -1)
+                            # emissions_ar_dependency_stats_2 = jnp.diff(concatenated_emissions_weights, axis=0,
+                            #                                            prepend=initial_emissions_mean.reshape(-1)[None])
+                            emissions_ar_dependency_stats_2 = jnp.diff(concatenated_emissions_weights, axis=0)
+                            emissions_ar_dependency_stats_2 = jnp.nansum(jnp.square(emissions_ar_dependency_stats_2)) / 2
+                            emissions_ar_dependency_stats = (emissions_ar_dependency_stats_1,
+                                                             emissions_ar_dependency_stats_2)
+                            emissions_ar_dependency_posterior = ig_posterior_update(self.emissions_ar_dependency_prior,
+                                                                                    emissions_ar_dependency_stats)
+                            emissions_ar_dependency = emissions_ar_dependency_posterior.sample(seed=next(rngs))
+                            # initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim) * emissions_ar_dependency
                     else:
                         emissions_ar_dependency = params.emissions.ar_dependency
                         # initial_emissions_cov = jnp.eye(self.emission_dim * self.state_dim) * params.emissions.ar_dependency
@@ -1727,7 +1768,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
                                                                       emissions_cov_stats)
                         emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
-                        emissions_cov += 1e-4
+                        emissions_cov += 1e-8
                         R = jnp.diag(jnp.ravel(emissions_cov))
                     else:
                         R = params.emissions.cov
