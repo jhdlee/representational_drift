@@ -1589,7 +1589,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             return_states: bool = False,
             return_n_samples: int = 100,
             print_ll: bool = False,
-            compute_ll_idx: jnp.array = None,
             masks: jnp.array = None,
             trial_masks: jnp.array = None,
             fixed_states: jnp.array = None,
@@ -1613,8 +1612,6 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
         if trial_masks is None:
             trial_masks = jnp.ones(emissions.shape[0], dtype=bool)
-        if compute_ll_idx is None:
-            compute_ll_idx = jnp.ones(sample_size, dtype=bool)
 
         def sufficient_stats_from_sample(states, params):
             """Convert samples of states to sufficient statistics."""
@@ -1959,12 +1956,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             _stats = sufficient_stats_from_sample(_new_states, _params)
             _new_params = lgssm_params_sample(rngs[1], _stats, _new_states, _params)
 
-            if compute_ll_idx[itr_num]:
-                # compute the log joint
-                # _ll = self.log_joint(_new_params, _states, _emissions, _inputs, masks)
-                _ll = self.log_joint(_new_params, _new_states, _emissions, _inputs, masks)
-            else:
-                _ll = jnp.nan
+            # compute the log joint
+            # _ll = self.log_joint(_new_params, _states, _emissions, _inputs, masks)
+            _ll = self.log_joint(_new_params, _new_states, _emissions, _inputs, masks)
 
             return _new_params, _new_states, _ll
 
@@ -1981,7 +1975,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 sample_of_params.append(current_params)
             if return_states and (sample_itr >= sample_size - return_n_samples):
                 sample_of_states.append(current_states)
-            if print_ll and compute_ll_idx[sample_itr]:
+            if print_ll:
                 print(ll)
             lls.append(ll)
 
