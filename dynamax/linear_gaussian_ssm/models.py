@@ -753,7 +753,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
         # prior on dynamics parameters
         self.dynamics_prior = default_prior(
             'dynamics_prior',
-            MVN(loc=jnp.zeros(self.state_dim ** 2), covariance_matrix=jnp.eye(self.state_dim ** 2))
+            MVN(loc=jnp.zeros(self.state_dim * (self.state_dim + self.has_dynamics_bias)),
+                covariance_matrix=jnp.eye(self.state_dim * (self.state_dim + self.has_dynamics_bias)))
         )
 
         if time_varying_emissions:
@@ -1486,16 +1487,15 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
              params.dynamics.input_weights,
              dynamics_bias))
         lp += self.dynamics_prior.log_prob(jnp.ravel(dynamics_matrix))
-
         def _compute_dynamics_lp(prev_lp, current_t):
             current_state_mean = jnp.einsum('ij,rj->ri', params.dynamics.weights, states[:, current_t])
+            if self.has_dynamics_bias:
+                current_state_mean += params.dynamics.bias[None]
             new_lp = MVN(current_state_mean, params.dynamics.cov).log_prob(states[:, current_t + 1])
             masked_new_lp = jnp.nansum(masks[:, current_t + 1] * new_lp)
             current_lp = prev_lp + masked_new_lp
             return current_lp, None
-
         lp, _ = jax.lax.scan(_compute_dynamics_lp, lp, jnp.arange(self.sequence_length - 1))
-
         if self.update_dynamics_covariance:
             lp += self.dynamics_covariance_prior.log_prob(jnp.diag(params.dynamics.cov)).sum()
 
@@ -1629,8 +1629,11 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             N, D = y.shape[-1], states.shape[-1]
             # Optimized Code
             if not self.orthogonal_emissions_weights and not self.normalize_emissions:
+                reshape_dim = D * (D + self.has_dynamics_bias)
+                if self.has_dynamics_bias:
+                    xp = jnp.pad(xp, ((0, 0), (0, 0), (0, 1)), constant_values=1)
                 Qinv = jnp.linalg.inv(params.dynamics.cov)
-                dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, :-1]).reshape(D * D, D * D)
+                dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, :-1]).reshape(reshape_dim, reshape_dim)
                 dynamics_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', xn, Qinv, xp, masks[:, 1:]).reshape(-1)
                 dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
             else:
@@ -1900,13 +1903,16 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 dynamics_posterior = mvn_posterior_update(self.dynamics_prior, dynamics_stats)
                 _dynamics_weights = dynamics_posterior.sample(seed=next(rngs))
 
-                F = _dynamics_weights.reshape(self.state_dim, self.state_dim)
+                F = _dynamics_weights.reshape(self.state_dim, self.state_dim + self.has_dynamics_bias)
+                F, b = (_dynamics_weights[:, :-1], _dynamics_weights[:, -1]) if self.has_dynamics_bias \
+                    else (_dynamics_weights, None)
 
-                b = None
                 B = jnp.zeros((self.state_dim, 0))
                 if self.update_dynamics_covariance:
                     dynamics_cov_stats_1 = jnp.ones((self.state_dim, 1)) * (masks.sum() / 2)
                     dynamics_mean = jnp.einsum('btx,yx->bty', xp, F)
+                    if self.has_dynamics_bias:
+                        dynamics_mean += b[None, None]
                     sqr_err_flattened = jnp.square(xn - dynamics_mean).reshape(-1, self.state_dim)
                     masks_flattened = masks[:, 1:].reshape(-1)
                     sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
