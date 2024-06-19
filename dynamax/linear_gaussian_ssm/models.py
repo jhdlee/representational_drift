@@ -1486,6 +1486,12 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
         # emissions & observations
         if self.time_varying_emissions:
+            if self.per_column_ar_dependency:
+                emissions_param_ar_dependency_cov = jnp.diag(
+                    jnp.tile(params.emissions.ar_dependency, self.emission_dim))
+            else:
+                emissions_param_ar_dependency_cov = jnp.eye(
+                    self.emission_dim * self.state_dim) * params.emissions.ar_dependency
             # also need to edit ar dependency variance update step.
             def _compute_emissions_lp(prev_lp, current_t):
                 # current_param = params.emissions.weights[current_t]
@@ -1501,9 +1507,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 current_param = params.emissions.weights[current_t]
                 next_param = params.emissions.weights[current_t + 1]
                 current_lp = prev_lp + MVN(loc=jnp.ravel(current_param),
-                                           covariance_matrix=jnp.eye(
-                                               self.emission_dim * self.state_dim) * params.emissions.ar_dependency).log_prob(
-                    jnp.ravel(next_param))
+                                           covariance_matrix=emissions_param_ar_dependency_cov).log_prob(jnp.ravel(next_param))
                 return current_lp, None
 
             lp, _ = jax.lax.scan(_compute_trial_emissions_lp, lp, jnp.arange(self.num_trials - 1))
