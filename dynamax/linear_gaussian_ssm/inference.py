@@ -10,8 +10,8 @@ from tensorflow_probability.substrates.jax.distributions import (
     MultivariateNormalFullCovariance as MVN)
 
 from jax.tree_util import tree_map
-from jaxtyping import Array, Float, Any
-from typing import NamedTuple, Optional, Union, Tuple
+from jaxtyping import Array, Float
+from typing import NamedTuple, Optional, Union, Tuple, Any
 from dynamax.utils.utils import psd_solve, symmetrize
 from dynamax.parameters import ParameterProperties
 from dynamax.types import PRNGKey, Scalar
