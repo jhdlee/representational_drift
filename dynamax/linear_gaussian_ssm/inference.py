@@ -508,6 +508,11 @@ def lgssm_filter(
     else:
         H = params.emissions.weights
 
+    if params.emissions.bias.ndim == 2:
+        d = params.emissions.bias[trial_r]
+    else:
+        d = params.emissions.bias
+
     def _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y):
         m = H @ pred_mean + D @ u + d
         if R.ndim == 2:
@@ -521,7 +526,7 @@ def lgssm_filter(
         ll, pred_mean, pred_cov = carry
 
         # Shorthand: get parameters and inputs for time index t
-        F, B, b, Q, _, D, d, R = _get_params(params, num_timesteps, t)
+        F, B, b, Q, _, D, _, R = _get_params(params, num_timesteps, t)
         u = inputs[t]
         y = emissions[t]
         mask = masks[t]
