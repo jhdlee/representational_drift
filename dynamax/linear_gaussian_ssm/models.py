@@ -1903,7 +1903,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 dynamics_posterior = mvn_posterior_update(self.dynamics_prior, dynamics_stats)
                 _dynamics_weights = dynamics_posterior.sample(seed=next(rngs))
 
-                F = _dynamics_weights.reshape(self.state_dim, self.state_dim + self.has_dynamics_bias)
+                _dynamics_weights = _dynamics_weights.reshape(self.state_dim, self.state_dim + self.has_dynamics_bias)
                 F, b = (_dynamics_weights[:, :-1], _dynamics_weights[:, -1]) if self.has_dynamics_bias \
                     else (_dynamics_weights, None)
 
