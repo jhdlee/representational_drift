@@ -1697,7 +1697,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     emissions_covs = symmetrize(emissions_covs)
                     emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
                     # emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
-                    emissions_y = jnp.linalg.solve(symmetrize(emissions_stats_1), emissions_stats_2)
+                    emissions_y = jnp.linalg.solve(symmetrize(emissions_stats_1), emissions_stats_2[..., None])[..., 0]
 
                     if self.per_column_ar_dependency:
                         emissions_param_ar_dependency_cov = jnp.diag(
