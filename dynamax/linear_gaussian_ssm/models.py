@@ -1799,6 +1799,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                             init_emissions_cov_posterior = ig_posterior_update(self.initial_emissions_covariance_prior,
                                                                                init_emissions_cov_stats)
                             initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
+                        initial_emissions_cov += 1e-6
                     else:
                         initial_emissions_cov = params.initial_emissions.cov
 
@@ -1835,6 +1836,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                                                     emissions_ar_dependency_stats)
                             emissions_ar_dependency = emissions_ar_dependency_posterior.sample(seed=next(rngs))
                             # initial_emissions_cov = jnp.eye(self.emission_dim * (self.state_dim + self.has_emissions_bias)) * emissions_ar_dependency
+                        emissions_ar_dependency += 1e-6
                     else:
                         emissions_ar_dependency = params.emissions.ar_dependency
                         # initial_emissions_cov = jnp.eye(self.emission_dim * (self.state_dim + self.has_emissions_bias)) * params.emissions.ar_dependency
@@ -1854,7 +1856,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
                                                                       emissions_cov_stats)
                         emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
-                        # emissions_cov += 1e-8
+                        emissions_cov += 1e-6
                         R = jnp.diag(jnp.ravel(emissions_cov))
                     else:
                         R = params.emissions.cov
