@@ -28,8 +28,7 @@ from dynamax.utils.distributions import MatrixNormalInverseWishart as MNIW
 from dynamax.utils.distributions import NormalInverseWishart as NIW
 from dynamax.utils.distributions import mniw_posterior_update, niw_posterior_update, mvn_posterior_update, \
     ig_posterior_update
-from dynamax.utils.utils import pytree_stack, psd_solve
-
+from dynamax.utils.utils import pytree_stack, psd_solve, symmetrize
 
 class SuffStatsLGSSM(Protocol):
     """A :class:`NamedTuple` with sufficient statistics for LGSSM parameter estimation."""
@@ -1690,6 +1689,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                     emissions_stats_1 = jnp.einsum('bt,bti,jk,btl->bjikl', masks, x, Rinv, x).reshape(self.num_trials,
                                                                                                       reshape_dim, reshape_dim)
+
+                    emissions_stats_1 = symmetrize(emissions_stats_1)
                     emissions_covs = jnp.linalg.inv(emissions_stats_1)
                     emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
                     emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
