@@ -1762,8 +1762,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         initial_emissions = H[0].reshape(-1)
 
                     if self.update_init_emissions_mean:
-                        #init_emissions_stats_1 = jnp.linalg.inv(params.initial_emissions.cov)
-                        init_emissions_stats_1 = jnp.linalg.inv(emissions_param_ar_dependency_cov)
+                        init_emissions_stats_1 = jnp.linalg.inv(emissions_initial_emissions_cov)
+                        # init_emissions_stats_1 = jnp.linalg.inv(emissions_param_ar_dependency_cov)
                         init_emissions_stats_2 = init_emissions_stats_1 @ initial_emissions
                         init_emissions_stats = (init_emissions_stats_1, init_emissions_stats_2)
 
@@ -1798,7 +1798,10 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         initial_emissions_cov = params.initial_emissions.cov
 
                     if self.update_emissions_param_ar_dependency_variance:
-                        updated_emissions_weights = jnp.concatenate([H, d[:, :, None]], axis=-1)
+                        if self.has_emissions_bias:
+                            updated_emissions_weights = jnp.concatenate([H, d[:, :, None]], axis=-1)
+                        else:
+                            updated_emissions_weights = H
 
                         if self.per_column_ar_dependency:
                             emissions_ar_dependency_stats_1 = (self.emission_dim * (self.num_trials-1)) / 2
