@@ -1693,7 +1693,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     emissions_stats_1 = symmetrize(emissions_stats_1)
                     emissions_covs = jnp.linalg.inv(emissions_stats_1)
                     emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
-                    emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
+                    # emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
+                    emissions_y = psd_solve(emissions_stats_1, emissions_stats_2, diagonal_boost=0.0)
 
                     if self.per_column_ar_dependency:
                         emissions_param_ar_dependency_cov = jnp.diag(
@@ -1850,7 +1851,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                         emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
                                                                       emissions_cov_stats)
                         emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
-                        emissions_cov += 1e-8
+                        # emissions_cov += 1e-8
                         R = jnp.diag(jnp.ravel(emissions_cov))
                     else:
                         R = params.emissions.cov
