@@ -1790,6 +1790,9 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                             init_emissions_cov_posterior = ig_posterior_update(self.initial_emissions_covariance_prior,
                                                                                init_emissions_cov_stats)
                             initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
+                            initial_emissions_cov = jnp.where(jnp.logical_or(jnp.isnan(initial_emissions_cov),
+                                                                             initial_emissions_cov < 1e-6),
+                                                              1e-6, initial_emissions_cov)
                         else:
                             init_emissions_cov_stats_1 = (self.emission_dim * (self.state_dim + self.has_emissions_bias)) / 2
                             init_emissions_cov_stats_2 = initial_emissions - initial_emissions_mean
@@ -1799,7 +1802,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                             init_emissions_cov_posterior = ig_posterior_update(self.initial_emissions_covariance_prior,
                                                                                init_emissions_cov_stats)
                             initial_emissions_cov = init_emissions_cov_posterior.sample(seed=next(rngs))
-                        initial_emissions_cov += 1e-6
+                        # initial_emissions_cov += 1e-6
                     else:
                         initial_emissions_cov = params.initial_emissions.cov
 
