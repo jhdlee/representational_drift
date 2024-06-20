@@ -1740,13 +1740,14 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
 
                     D = jnp.zeros((self.emission_dim, 0))
 
+                    if self.has_emissions_bias:
+                        initial_emissions = jnp.concatenate([H[0], d[0][:, None]], axis=-1).reshape(-1)
+                    else:
+                        initial_emissions = H[0].reshape(-1)
+
                     if self.update_init_emissions_mean:
                         #init_emissions_stats_1 = jnp.linalg.inv(params.initial_emissions.cov)
                         init_emissions_stats_1 = jnp.linalg.inv(emissions_param_ar_dependency_cov)
-                        if self.has_emissions_bias:
-                            initial_emissions = jnp.concatenate([H[0], d[0][ :, None]], axis=-1).reshape(-1)
-                        else:
-                            initial_emissions = H[0].reshape(-1)
                         init_emissions_stats_2 = init_emissions_stats_1 @ initial_emissions
                         init_emissions_stats = (init_emissions_stats_1, init_emissions_stats_2)
 
