@@ -1694,7 +1694,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                     # emissions_covs = symmetrize(emissions_covs)
                     emissions_covs = jnp.linalg.solve(emissions_stats_1,
                                                       jnp.eye(emissions_stats_1.shape[-1])[None])
-                    emissions_covs = symmetrize(emissions_covs)
+                    emissions_covs = symmetrize(emissions_covs) + jnp.eye(emissions_covs.shape[-1]) * 1e-6
                     emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
                     # emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
                     emissions_y = jnp.linalg.solve(emissions_stats_1, emissions_stats_2[..., None])[..., 0]
@@ -1842,7 +1842,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                                                     emissions_ar_dependency_stats)
                             emissions_ar_dependency = emissions_ar_dependency_posterior.sample(seed=next(rngs))
                             # initial_emissions_cov = jnp.eye(self.emission_dim * (self.state_dim + self.has_emissions_bias)) * emissions_ar_dependency
-                        emissions_ar_dependency += 1e-6
+                        # emissions_ar_dependency += 1e-6
                     else:
                         emissions_ar_dependency = params.emissions.ar_dependency
                         # initial_emissions_cov = jnp.eye(self.emission_dim * (self.state_dim + self.has_emissions_bias)) * params.emissions.ar_dependency
