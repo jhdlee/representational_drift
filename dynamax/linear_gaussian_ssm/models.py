@@ -2038,7 +2038,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
             if return_states and (sample_itr >= sample_size - return_n_samples):
                 sample_of_states.append(current_states)
             if print_ll:
-                print(current_states.emissions.ar_dependency)
+                print(current_params.emissions.ar_dependency)
                 print(ll)
             lls.append(ll)
 
