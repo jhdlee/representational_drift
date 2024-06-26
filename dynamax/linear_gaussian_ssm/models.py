@@ -2039,6 +2039,7 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                 sample_of_states.append(current_states)
             if print_ll:
                 print(jnp.isnan(current_params.emissions.weights).sum())
+                print(current_params.initial_emissions.cov)
                 print(current_params.emissions.ar_dependency)
                 print(ll)
             lls.append(ll)
