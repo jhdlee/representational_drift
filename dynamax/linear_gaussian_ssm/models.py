@@ -1868,8 +1868,8 @@ class TimeVaryingLinearGaussianConjugateSSM(LinearGaussianSSM):
                                                                       emissions_cov_stats)
                         emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
                         emissions_cov = jnp.where(jnp.logical_or(jnp.isnan(emissions_cov),
-                                                                           emissions_cov < 1e-3),
-                                                            1e-3, emissions_cov)
+                                                                           emissions_cov < 1e-2),
+                                                            1e-2, emissions_cov)
                         R = jnp.diag(jnp.ravel(emissions_cov))
                     else:
                         R = params.emissions.cov
