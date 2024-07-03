@@ -647,7 +647,7 @@ def lgssm_posterior_sample_conditional_smc(
 
         return new_state, incr_log_w
 
-    key, subkey = jax.random.split(key)
+    key, subkey = jr.split(key)
     initial_states = MVN(params.initial.mean,
                          params.initial.cov).sample(sample_shape=(num_particles,), seed=subkey)
 
