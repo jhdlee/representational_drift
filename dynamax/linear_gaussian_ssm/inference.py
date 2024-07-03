@@ -658,7 +658,7 @@ def lgssm_posterior_sample_conditional_smc(
 
     prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions)
 
-    key, subkey = jax.random.split(key)
+    key, subkey = jr.split(key)
     states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(subkey,
                                                                                initial_states,
                                                                                p_and_w,
@@ -671,5 +671,5 @@ def lgssm_posterior_sample_conditional_smc(
                                                                                )
 
     posterior_dist = smc.make_posterior_dist(states, ancestors, resampled, num_steps, log_weights)
-    key, subkey = jax.random.split(key)
+    key, subkey = jr.split(key)
     return posterior_dist.sample(seed=subkey)
