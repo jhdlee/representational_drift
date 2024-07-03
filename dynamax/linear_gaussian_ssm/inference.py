@@ -659,15 +659,15 @@ def lgssm_posterior_sample_conditional_smc(
     prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions)
 
     key, subkey = jr.split(key)
-    states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(subkey,
-                                                                               initial_states,
-                                                                               p_and_w,
-                                                                               num_steps,
-                                                                               max_num_steps,
-                                                                               emissions,
-                                                                               num_particles,
-                                                                               prespecified_path,
-                                                                               prespecified_incr_log_ws,
+    states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
+                                                                               initial_states=initial_states,
+                                                                               transition_fn=p_and_w,
+                                                                               num_steps=num_steps,
+                                                                               max_num_steps=max_num_steps,
+                                                                               observations=emissions,
+                                                                               num_particles=num_particles,
+                                                                               prespecified_path=prespecified_path,
+                                                                               prespecified_incr_log_ws=prespecified_incr_log_ws,
                                                                                )
 
     posterior_dist = smc.make_posterior_dist(states, ancestors, resampled, num_steps, log_weights)
