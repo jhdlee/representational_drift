@@ -12,7 +12,7 @@ from typing_extensions import Protocol
 
 from dynamax.ssm import SSM
 from dynamax.linear_gaussian_ssm.inference import lgssm_joint_sample, lgssm_filter, lgssm_smoother, \
-    lgssm_posterior_sample
+    lgssm_posterior_sample, lgssm_posterior_sample_conditional_smc
 from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitial, ParamsLGSSMDynamics, \
     ParamsLGSSMEmissions
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
