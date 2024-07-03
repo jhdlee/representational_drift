@@ -16,6 +16,8 @@ from dynamax.utils.utils import psd_solve, symmetrize
 from dynamax.parameters import ParameterProperties
 from dynamax.types import PRNGKey, Scalar
 
+import smc
+
 class ParamsLGSSMInitial(NamedTuple):
     r"""Parameters of the initial distribution
 
@@ -617,3 +619,57 @@ def lgssm_posterior_sample(
     )
 
     return jnp.vstack([states, last_state])
+
+def lgssm_posterior_sample_conditional_smc(
+    key: PRNGKey,
+    params: ParamsLGSSM,
+    emissions:  Float[Array, "ntime emission_dim"],
+    inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+    prespecified_path=None,
+    num_particles=1000,
+    jitter: Optional[Scalar]=0
+
+) -> Float[Array, "ntime state_dim"]:
+
+    num_steps = max_num_steps = len(emissions)
+
+    def p_and_w(key, prev_latent, obs, t):
+
+        # propose new state
+        A = params.dynamics.weights
+        Q = params.dynamics.cov
+        C = params.emissions.weights
+        R = params.emissions.cov
+
+        new_state = MVN(A @ prev_latent, Q).sample(seed=key)
+
+        incr_log_w = MVN(C @ new_state, R).log_prob(obs)
+
+        return new_state, incr_log_w
+
+    key, subkey = jax.random.split(key)
+    initial_states = MVN(params.initial.mean,
+                         params.initial.cov).sample(sample_shape=(num_particles,), seed=subkey)
+
+    def compute_prespecified_incr_log_ws(state, obs):
+        C = params.emissions.weights
+        R = params.emissions.cov
+        return MVN(C @ state, R).log_prob(obs)
+
+    prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions)
+
+    key, subkey = jax.random.split(key)
+    states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(subkey,
+                                                                               initial_states,
+                                                                               p_and_w,
+                                                                               num_steps,
+                                                                               max_num_steps,
+                                                                               emissions,
+                                                                               num_particles,
+                                                                               prespecified_path,
+                                                                               prespecified_incr_log_ws,
+                                                                               )
+
+    posterior_dist = smc.make_posterior_dist(states, ancestors, resampled, num_steps, log_weights)
+    key, subkey = jax.random.split(key)
+    return posterior_dist.sample(seed=subkey)

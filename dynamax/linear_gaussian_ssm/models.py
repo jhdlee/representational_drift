@@ -590,19 +590,25 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
             return params
 
         @jit
-        def one_sample(_params, rng):
+        def one_sample(_params, _states, rng):
             rngs = jr.split(rng, 2)
             # Sample latent states
-            states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
+            # states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
+            # Replace with conditional SMC for sampling the states
+            _states = lgssm_posterior_sample_conditional_smc(rngs[0], _params,
+                                                             emissions, inputs, _states)
             # Sample parameters
-            _stats = sufficient_stats_from_sample(states)
-            return lgssm_params_sample(rngs[1], _stats)
+            _stats = sufficient_stats_from_sample(_states)
+            return lgssm_params_sample(rngs[1], _stats), _states
 
         sample_of_params = []
-        keys = iter(jr.split(key, sample_size))
+        keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
+        current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs)
         for _ in progress_bar(range(sample_size)):
             sample_of_params.append(current_params)
-            current_params = one_sample(current_params, next(keys))
+            current_params, current_states = one_sample(current_params,
+                                                        current_states,
+                                                        next(keys))
 
         return pytree_stack(sample_of_params)
