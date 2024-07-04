@@ -509,7 +509,8 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
             initial_params: ParamsLGSSM,
             sample_size: int,
             emissions: Float[Array, "nbatch ntime emission_dim"],
-            inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None
+            inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None,
+            num_particles=1,
     ) -> ParamsLGSSM:
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
@@ -596,19 +597,22 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
             # states = lgssm_posterior_sample(rngs[0], _params, emissions, inputs)
             # Replace with conditional SMC for sampling the states
             _states = lgssm_posterior_sample_conditional_smc(rngs[0], _params,
-                                                             emissions, inputs, _states)
+                                                             emissions, inputs,
+                                                             _states, num_particles=num_particles)
             # Sample parameters
             _stats = sufficient_stats_from_sample(_states)
             return lgssm_params_sample(rngs[1], _stats), _states
 
         sample_of_params = []
+        sample_of_states = []
         keys = iter(jr.split(key, sample_size+1))
         current_params = initial_params
         current_states = lgssm_posterior_sample(next(keys), current_params, emissions, inputs)
         for _ in progress_bar(range(sample_size)):
             sample_of_params.append(current_params)
+            sample_of_states.append(current_states)
             current_params, current_states = one_sample(current_params,
                                                         current_states,
                                                         next(keys))
 
-        return pytree_stack(sample_of_params)
+        return pytree_stack(sample_of_params), sample_of_states
