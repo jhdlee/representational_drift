@@ -1267,7 +1267,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 subspace = jnp.einsum('ij,rjk->rik', base_subspace, rotation)
                 _emission_weights = subspace[:, :, :self.state_dim]
 
-                H, = _emissions_weights
+                H = _emission_weights
                 D = jnp.zeros((self.emission_dim, 0))
 
                 initial_velocity = velocity[0]
