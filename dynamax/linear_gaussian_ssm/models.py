@@ -723,7 +723,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             'init_vel_mean_prior',
             MVN(loc=jnp.zeros(self.dof),
                 covariance_matrix=1e2 * jnp.eye(self.dof)))
-        )
+
         self.initial_velocity_covariance_prior = default_prior(
             'init_vel_cov_prior',
             IG(concentration=1.0, scale=0.01)
