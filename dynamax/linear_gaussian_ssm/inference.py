@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy as jscipy
 from jax import lax
 from functools import wraps
 import inspect
@@ -935,3 +936,73 @@ def lgssm_smoother_identity(
         smoothed_covariances=smoothed_covs,
         smoothed_cross_covariances=smoothed_cross,
     )
+
+def lgssm_posterior_sample_conditional_smc(
+    key: PRNGKey,
+    params: ParamsTVLGSSM,
+    base_subspace,
+    emissions:  Float[Array, "ntime emission_dim"],
+    covs,
+    prespecified_path=None,
+    num_particles=100,
+
+) -> Float[Array, "ntime state_dim"]:
+
+    num_steps = max_num_steps = len(emissions)
+    _, emission_dim, state_dim = params.emissions.weights.shape
+    dof = state_dim * (emission_dim - state_dim)
+    dof_shape = (state_dim, (emission_dim - state_dim))
+    tau_array = jnp.ones(dof) * params.emissions.tau
+
+    def p_and_w(key, prev_latent, obs, obs_cov, t):
+
+        bool_array = jnp.ones(dof) * t
+        bool_array = bool_array.astype(jnp.bool)
+
+        cov = jnp.where(bool_array,
+                        tau_array,
+                        jnp.diag(params.initial_velocity.cov))
+        cov = jnp.diag(cov)
+        new_velocity = MVN(prev_latent, cov).sample(seed=key)
+
+        rotation = jnp.zeros((emission_dim, emission_dim))
+        rotation = rotation.at[:state_dim, state_dim:].set(new_velocity)
+        rotation -= rotation.T
+        rotation = jscipy.linalg.expm(rotation)
+
+        new_subspace = base_subspace @ rotation
+        C = new_subspace[:, :state_dim].reshape(-1)
+
+        incr_log_w = MVN(C, obs_cov).log_prob(obs).sum()
+
+        return new_velocity, incr_log_w
+
+    initial_states = jnp.tile(params.initial_velocity.mean[jnp.newaxis], (num_particles, 1))
+
+    def compute_prespecified_incr_log_ws(state, obs, obs_cov):
+        rotation = jnp.zeros((emission_dim, emission_dim))
+        rotation = rotation.at[:state_dim, state_dim:].set(state)
+        rotation -= rotation.T
+        rotation = jscipy.linalg.expm(rotation)
+
+        subspace = base_subspace @ rotation
+        C = subspace[:, :state_dim].reshape(-1)
+        return MVN(C, obs_cov).log_prob(obs).sum()
+
+    prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions)
+
+    key, subkey = jr.split(key)
+    states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
+                                                                               initial_states=initial_states,
+                                                                               transition_fn=p_and_w,
+                                                                               num_steps=num_steps,
+                                                                               max_num_steps=max_num_steps,
+                                                                               observations=(emissions, covs),
+                                                                               num_particles=num_particles,
+                                                                               prespecified_path=prespecified_path,
+                                                                               prespecified_incr_log_ws=prespecified_incr_log_ws,
+                                                                               )
+
+    posterior_dist = smc.make_posterior_dist(states, ancestors, resampled, num_steps, log_weights)
+    key, subkey = jr.split(key)
+    return posterior_dist.sample(seed=subkey)
