@@ -684,7 +684,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         self.dof_shape = (self.state_dim , (self.emission_dim - self.state_dim))
 
         self.num_trials = num_trials
-        self.time_varying_emissions = time_varying_emissions
         self.sequence_length = sequence_length
 
         self.fix_initial = fix_initial
