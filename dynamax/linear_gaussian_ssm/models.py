@@ -1142,7 +1142,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         lp += MVN(params.initial_velocity.mean,
                   params.initial_velocity.cov).log_prob(initial_velocity)
         lp += self.initial_velocity_mean_prior.log_prob(params.initial_velocity.mean)
-        lp += self.initial_velocity_covariance_prior.log_prob(jnp.diag(params.initial_emissions.cov)).sum()
+        lp += self.initial_velocity_covariance_prior.log_prob(jnp.diag(params.initial_velocity.cov)).sum()
 
         tau_lp = self.tau_prior.log_prob(params.emissions.tau)
         lp += tau_lp
