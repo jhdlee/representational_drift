@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jscipy
-from jax import lax
+from jax import lax, vmap
 from functools import wraps
 import inspect
 import warnings
