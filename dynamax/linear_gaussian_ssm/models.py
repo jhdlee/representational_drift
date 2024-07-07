@@ -721,8 +721,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         # prior on initial velocity
         self.initial_velocity_mean_prior = default_prior(
             'init_vel_mean_prior',
-            MVN(loc=jnp.zeros(self.emission_dim * (self.state_dim + self.has_emissions_bias)),
-                covariance_matrix=1e2 * jnp.eye(self.emission_dim * (self.state_dim + self.has_emissions_bias)))
+            MVN(loc=jnp.zeros(self.dof),
+                covariance_matrix=1e2 * jnp.eye(self.dof)))
         )
         self.initial_velocity_covariance_prior = default_prior(
             'init_vel_cov_prior',
