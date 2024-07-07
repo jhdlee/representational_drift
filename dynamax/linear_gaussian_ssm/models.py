@@ -978,14 +978,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             inputs: Optional[Float[Array, "ntime input_dim"]] = None
     ) -> tfd.Distribution:
         inputs = inputs if inputs is not None else jnp.zeros(self.input_dim)
-        if self.time_varying_emissions:
-            mean = params.emissions.weights[timestep] @ state + params.emissions.input_weights @ inputs
-            if self.has_emissions_bias:
-                mean += params.emissions.bias[timestep]
-        else:
-            mean = params.emissions.weights @ state + params.emissions.input_weights @ inputs
-            if self.has_emissions_bias:
-                mean += params.emissions.bias
+        mean = params.emissions.weights[timestep] @ state + params.emissions.input_weights @ inputs
+        if self.has_emissions_bias:
+            mean += params.emissions.bias[timestep]
         return MVN(mean, params.emissions.cov)
 
     def marginal_log_prob(
