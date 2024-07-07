@@ -942,7 +942,7 @@ def lgssm_posterior_sample_conditional_smc(
     params: ParamsTVLGSSM,
     base_subspace,
     emissions:  Float[Array, "ntime emission_dim"],
-    covs,
+    emissions_covs,
     prespecified_path=None,
     num_particles=100,
 
@@ -989,7 +989,7 @@ def lgssm_posterior_sample_conditional_smc(
         C = subspace[:, :state_dim].reshape(-1)
         return MVN(C, obs_cov).log_prob(obs).sum()
 
-    prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions)
+    prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions, emissions_covs)
 
     key, subkey = jr.split(key)
     states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
@@ -997,7 +997,7 @@ def lgssm_posterior_sample_conditional_smc(
                                                                                transition_fn=p_and_w,
                                                                                num_steps=num_steps,
                                                                                max_num_steps=max_num_steps,
-                                                                               observations=(emissions, covs),
+                                                                               observations=(emissions, emissions_covs),
                                                                                num_particles=num_particles,
                                                                                prespecified_path=prespecified_path,
                                                                                prespecified_incr_log_ws=prespecified_incr_log_ws,
