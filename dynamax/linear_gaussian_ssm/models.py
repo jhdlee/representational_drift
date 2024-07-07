@@ -813,7 +813,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             return current_velocity, current_velocity
 
         key1, key = jr.split(key, 2)
-        _initial_velocity = jr.normal(key1, shape=self.dof)
+        _initial_velocity = jr.normal(key1, shape=(self.dof,))
         _, _velocity = jax.lax.scan(_get_velocity, _initial_velocity, keys[:-1])
         _velocity = jnp.concatenate([_initial_velocity[None], _velocity])
         _velocity = _velocity.reshape((self.num_trials,) + self.dof_shape)
