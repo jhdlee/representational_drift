@@ -96,7 +96,7 @@ class ParamsLGSSMEmissions(NamedTuple):
     Float[Array, "ntime emission_dim"],
     Float[Array, "emission_dim_triu"]]
 
-    ar_dependency: Any
+    tau: Any
 
 
 class ParamsLGSSM(NamedTuple):
@@ -123,7 +123,7 @@ class ParamsTVLGSSM(NamedTuple):
     initial: ParamsLGSSMInitial
     dynamics: ParamsLGSSMDynamics
     emissions: ParamsLGSSMEmissions
-    initial_emissions: ParamsLGSSMInitial
+    initial_velocity: ParamsLGSSMInitial
 
 
 class PosteriorGSSMFiltered(NamedTuple):
