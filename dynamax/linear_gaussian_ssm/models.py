@@ -1207,16 +1207,13 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             N, D = y.shape[-1], states.shape[-1]
             # Optimized Code
-            if not self.orthogonal_emissions_weights and not self.normalize_emissions:
-                reshape_dim = D * (D + self.has_dynamics_bias)
-                if self.has_dynamics_bias:
-                    xp = jnp.pad(xp, ((0, 0), (0, 0), (0, 1)), constant_values=1)
-                Qinv = jnp.linalg.inv(params.dynamics.cov + jnp.eye(params.dynamics.cov.shape[-1]) * self.EPS)
-                dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, :-1]).reshape(reshape_dim, reshape_dim)
-                dynamics_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', xn, Qinv, xp, masks[:, 1:]).reshape(-1)
-                dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
-            else:
-                dynamics_stats = None
+            reshape_dim = D * (D + self.has_dynamics_bias)
+            if self.has_dynamics_bias:
+                xp = jnp.pad(xp, ((0, 0), (0, 0), (0, 1)), constant_values=1)
+            Qinv = jnp.linalg.inv(params.dynamics.cov + jnp.eye(params.dynamics.cov.shape[-1]) * self.EPS)
+            dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, :-1]).reshape(reshape_dim, reshape_dim)
+            dynamics_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', xn, Qinv, xp, masks[:, 1:]).reshape(-1)
+            dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
 
             # Quantities for the emissions
             emission_stats = None
