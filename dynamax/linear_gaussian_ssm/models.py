@@ -1223,7 +1223,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         def lgssm_params_sample(rng, stats, states, params, prespecified_path):
             """Sample parameters of the model given sufficient statistics from observed states and emissions."""
             init_stats, dynamics_stats, emission_stats = stats
-            n_splits = 7 + self.update_emissions_param_ar_dependency_variance + self.update_emissions_covariance
+            n_splits = 9
             rngs = iter(jr.split(rng, n_splits))
 
             # Sample the emission params
@@ -1295,25 +1295,23 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 tau_posterior = ig_posterior_update(self.tau_prior, tau_stats)
                 tau = tau_posterior.sample(seed=next(rngs))
 
-                if self.update_emissions_covariance:
-                    emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
-                    emissions_mean = jnp.einsum('btx,byx->bty', states, H)
-                    if self.has_emissions_bias:
-                        emissions_mean += d[:, None]
-                    sqr_err_flattened = jnp.square(emissions - emissions_mean).reshape(-1, self.emission_dim)
-                    masks_flattened = masks.reshape(-1)
-                    sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
-                    emissions_cov_stats_2 = jnp.nansum(sqr_err_flattened, axis=0) / 2
+                emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
+                emissions_mean = jnp.einsum('btx,byx->bty', states, H)
+                if self.has_emissions_bias:
+                    emissions_mean += d[:, None]
+                sqr_err_flattened = jnp.square(emissions - emissions_mean).reshape(-1, self.emission_dim)
+                masks_flattened = masks.reshape(-1)
+                sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
+                emissions_cov_stats_2 = jnp.nansum(sqr_err_flattened, axis=0) / 2
 
-                    emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
-                    emissions_cov_stats = (emissions_cov_stats_1, emissions_cov_stats_2)
-                    emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
-                                                                  emissions_cov_stats)
-                    emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
-                    emissions_cov = jnp.where(jnp.logical_or(jnp.isnan(emissions_cov), emissions_cov < self.EPS), self.EPS, emissions_cov)
-                    R = jnp.diag(jnp.ravel(emissions_cov))
-                else:
-                    R = params.emissions.cov
+                emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
+                emissions_cov_stats = (emissions_cov_stats_1, emissions_cov_stats_2)
+                emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
+                                                              emissions_cov_stats)
+                emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
+                emissions_cov = jnp.where(jnp.logical_or(jnp.isnan(emissions_cov), emissions_cov < self.EPS), self.EPS, emissions_cov)
+                R = jnp.diag(jnp.ravel(emissions_cov))
+
 
             # Sample the initial params
             if self.fix_initial:
@@ -1328,20 +1326,17 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_posterior = mvn_posterior_update(self.initial_mean_prior, initial_stats)
                 m = initial_posterior.sample(seed=next(rngs))
 
-                if self.update_initial_covariance:
-                    init_cov_stats_1 = jnp.ones((self.num_trials * self.state_dim, 1)) / 2
-                    init_cov_stats_2 = jnp.square(init_stats[0] - m) / 2
-                    init_cov_stats_2 = init_cov_stats_2.flatten()
-                    init_cov_stats_2 = jnp.expand_dims(init_cov_stats_2, -1)
-                    init_cov_stats = (init_cov_stats_1, init_cov_stats_2)
-                    init_cov_posterior = ig_posterior_update(self.initial_covariance_prior, init_cov_stats)
-                    init_cov = init_cov_posterior.sample(seed=next(rngs))
-                    # init_cov = jnp.where(jnp.logical_or(jnp.isnan(init_cov),
-                    #                                          init_cov < self.EPS), self.EPS, init_cov)
-                    init_cov = jnp.ravel(init_cov).reshape(self.num_trials, self.state_dim)
-                    S = vmap(jnp.diag)(init_cov)
-                else:
-                    S = params.initial.cov
+                init_cov_stats_1 = jnp.ones((self.num_trials * self.state_dim, 1)) / 2
+                init_cov_stats_2 = jnp.square(init_stats[0] - m) / 2
+                init_cov_stats_2 = init_cov_stats_2.flatten()
+                init_cov_stats_2 = jnp.expand_dims(init_cov_stats_2, -1)
+                init_cov_stats = (init_cov_stats_1, init_cov_stats_2)
+                init_cov_posterior = ig_posterior_update(self.initial_covariance_prior, init_cov_stats)
+                init_cov = init_cov_posterior.sample(seed=next(rngs))
+                # init_cov = jnp.where(jnp.logical_or(jnp.isnan(init_cov),
+                #                                          init_cov < self.EPS), self.EPS, init_cov)
+                init_cov = jnp.ravel(init_cov).reshape(self.num_trials, self.state_dim)
+                S = vmap(jnp.diag)(init_cov)
 
             # Sample the dynamics params
             if self.fix_dynamics:
@@ -1360,25 +1355,23 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     else (_dynamics_weights, None)
 
                 B = jnp.zeros((self.state_dim, 0))
-                if self.update_dynamics_covariance:
-                    dynamics_cov_stats_1 = jnp.ones((self.state_dim, 1)) * (masks.sum() / 2)
-                    dynamics_mean = jnp.einsum('btx,yx->bty', xp, F)
-                    if self.has_dynamics_bias:
-                        dynamics_mean += b[None, None]
-                    sqr_err_flattened = jnp.square(xn - dynamics_mean).reshape(-1, self.state_dim)
-                    masks_flattened = masks[:, 1:].reshape(-1)
-                    sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
-                    dynamics_cov_stats_2 = jnp.nansum(sqr_err_flattened, axis=0) / 2
-                    dynamics_cov_stats_2 = jnp.expand_dims(dynamics_cov_stats_2, -1)
-                    dynamics_cov_stats = (dynamics_cov_stats_1, dynamics_cov_stats_2)
-                    dynamics_cov_posterior = ig_posterior_update(self.dynamics_covariance_prior,
-                                                                 dynamics_cov_stats)
-                    dynamics_cov = dynamics_cov_posterior.sample(seed=next(rngs))
-                    # dynamics_cov = jnp.where(jnp.logical_or(jnp.isnan(dynamics_cov),
-                    #                                          dynamics_cov < self.EPS), self.EPS, dynamics_cov)
-                    Q = jnp.diag(jnp.ravel(dynamics_cov))
-                else:
-                    Q = params.dynamics.cov
+
+                dynamics_cov_stats_1 = jnp.ones((self.state_dim, 1)) * (masks.sum() / 2)
+                dynamics_mean = jnp.einsum('btx,yx->bty', xp, F)
+                if self.has_dynamics_bias:
+                    dynamics_mean += b[None, None]
+                sqr_err_flattened = jnp.square(xn - dynamics_mean).reshape(-1, self.state_dim)
+                masks_flattened = masks[:, 1:].reshape(-1)
+                sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
+                dynamics_cov_stats_2 = jnp.nansum(sqr_err_flattened, axis=0) / 2
+                dynamics_cov_stats_2 = jnp.expand_dims(dynamics_cov_stats_2, -1)
+                dynamics_cov_stats = (dynamics_cov_stats_1, dynamics_cov_stats_2)
+                dynamics_cov_posterior = ig_posterior_update(self.dynamics_covariance_prior,
+                                                             dynamics_cov_stats)
+                dynamics_cov = dynamics_cov_posterior.sample(seed=next(rngs))
+                # dynamics_cov = jnp.where(jnp.logical_or(jnp.isnan(dynamics_cov),
+                #                                          dynamics_cov < self.EPS), self.EPS, dynamics_cov)
+                Q = jnp.diag(jnp.ravel(dynamics_cov))
 
             params = ParamsTVLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
