@@ -1166,6 +1166,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emissions: Float[Array, "nbatch ntime emission_dim"],
             base_subspace,
             current_velocity,
+            num_particles = 100,
             inputs: Optional[Float[Array, "nbatch ntime input_dim"]] = None,
             return_states: bool = False,
             return_n_samples: int = 100,
