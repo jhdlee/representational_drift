@@ -1258,7 +1258,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                                    params,
                                                                    base_subspace,
                                                                    emissions_y,
-                                                                   emissions_covs
+                                                                   emissions_covs,
                                                                    prespecified_path,
                                                                    num_particles)
 
