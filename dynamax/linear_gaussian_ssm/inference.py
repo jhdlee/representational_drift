@@ -358,7 +358,7 @@ def preprocess_params_and_inputs(params, num_timesteps, inputs):
             bias=emissions_bias,
             input_weights=emissions_input_weights,
             cov=params.emissions.cov,
-            ar_dependency=params.emissions.ar_dependency)
+            tau=params.emissions.tau)
     )
     return full_params, inputs
 
