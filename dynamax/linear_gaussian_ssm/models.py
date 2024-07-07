@@ -872,7 +872,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 mean=ParameterProperties(),
                 cov=ParameterProperties(constrainer=RealToPSDBijector()))
         )
-        return params, props
+        return params, props, _velocity
 
     # All SSMs support sampling
     def sample(
