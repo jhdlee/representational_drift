@@ -966,7 +966,7 @@ def lgssm_posterior_sample_conditional_smc(
         new_velocity = MVN(prev_latent, cov).sample(seed=key)
 
         rotation = jnp.zeros((emission_dim, emission_dim))
-        rotation = rotation.at[:state_dim, state_dim:].set(new_velocity)
+        rotation = rotation.at[:state_dim, state_dim:].set(new_velocity.reshape(dof_shape))
         rotation -= rotation.T
         rotation = jscipy.linalg.expm(rotation)
 
@@ -981,7 +981,7 @@ def lgssm_posterior_sample_conditional_smc(
 
     def compute_prespecified_incr_log_ws(state, obs, obs_cov):
         rotation = jnp.zeros((emission_dim, emission_dim))
-        rotation = rotation.at[:state_dim, state_dim:].set(state)
+        rotation = rotation.at[:state_dim, state_dim:].set(state.reshape(dof_shape))
         rotation -= rotation.T
         rotation = jscipy.linalg.expm(rotation)
 
