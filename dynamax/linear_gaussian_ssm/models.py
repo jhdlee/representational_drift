@@ -1289,7 +1289,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_velocity_cov = jnp.diag(jnp.ravel(initial_velocity_cov))
 
                 tau_stats_1 = (self.dof * (self.num_trials-1)) / 2
-                tau_stats_2 = jnp.diff(_emissions_weights, axis=0)
+                tau_stats_2 = jnp.diff(velocity, axis=0)
                 tau_stats_2 = jnp.nansum(jnp.square(tau_stats_2)) / 2
                 tau_stats = (tau_stats_1, tau_stats_2)
                 tau_posterior = ig_posterior_update(self.tau_prior, tau_stats)
