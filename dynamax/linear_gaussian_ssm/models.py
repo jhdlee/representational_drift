@@ -748,6 +748,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
     def initialize(
             self,
+            base_subspace,
             tau,
             key=jr.PRNGKey(0),
             initial_mean=None,
@@ -761,7 +762,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_bias=None,
             emission_input_weights=None,
             emission_covariance=None,
-            base_subspace=None,
             initial_velocity_mean=None,
             initial_velocity_cov=None,
     ) -> Tuple[ParamsTVLGSSM, ParamsTVLGSSM]:
@@ -817,12 +817,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         _velocity = jnp.concatenate([_initial_velocity[None], _velocity])
         _velocity = _velocity.reshape((self.num_trials,) + self.dof_shape)
 
-        _base_subspace = jr.orthogonal(key1, self.emission_dim)
         _rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
         _rotation = _rotation.at[:, :self.state_dim, self.state_dim:].set(_velocity)
         _rotation -= _rotation.transpose(0, 2, 1)
         _rotation = jscipy.linalg.expm(_rotation)
-        _subspace = jnp.einsum('ij,rjk->rik', _base_subspace, _rotation)
+        _subspace = jnp.einsum('ij,rjk->rik', base_subspace, _rotation)
         _emission_weights = _subspace[:, :, :self.state_dim]
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
