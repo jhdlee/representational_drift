@@ -748,8 +748,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
     def initialize(
             self,
-            key: PRNGKey = jr.PRNGKey(0),
-            initial_mean: Optional[Float[Array, "state_dim"]] = None,
+            tau,
+            key=jr.PRNGKey(0),
+            initial_mean=None,
             initial_covariance=None,
             dynamics_weights=None,
             dynamics_bias=None,
@@ -763,7 +764,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             base_subspace=None,
             initial_velocity_mean=None,
             initial_velocity_cov=None,
-            tau=None,
     ) -> Tuple[ParamsTVLGSSM, ParamsTVLGSSM]:
         r"""Initialize model parameters that are set to None, and their corresponding properties.
 
@@ -790,7 +790,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         _initial_velocity_mean = jnp.zeros(self.dof)
         _initial_velocity_cov = jnp.eye(self.dof)
-        _tau = 1e-2
 
         key1, key = jr.split(key, 2)
         _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
@@ -806,7 +805,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         keys = jr.split(key, self.num_trials)
         key = keys[-1]
-        _velocity_cov = jnp.eye(self.dof) * _tau
+        _velocity_cov = jnp.eye(self.dof) * tau
         def _get_velocity(prev_velocity, current_key):
             current_velocity_dist = MVN(loc=prev_velocity, covariance_matrix=_velocity_cov)
             current_velocity = current_velocity_dist.sample(seed=current_key)
@@ -848,7 +847,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 bias=default(emission_bias, _emission_bias),
                 input_weights=default(emission_input_weights, _emission_input_weights),
                 cov=default(emission_covariance, _emission_covariance),
-                tau=default(tau, _tau)),
+                tau=tau),
             initial_velocity=ParamsLGSSMInitial(
                 mean=default(initial_velocity_mean, _initial_velocity_mean),
                 cov=default(initial_velocity_cov, _initial_velocity_cov))
