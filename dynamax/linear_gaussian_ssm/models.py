@@ -726,7 +726,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         self.initial_velocity_covariance_prior = default_prior(
             'init_vel_cov_prior',
-            IG(concentration=1.0, scale=0.01)
+            IG(concentration=1.0, scale=1e-2)
         )
 
         self.emissions_covariance_prior = default_prior(
@@ -736,7 +736,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         self.tau_prior = default_prior(
             'tau_prior',
-            IG(concentration=1.0, scale=1.0)
+            IG(concentration=1e-2, scale=1e-2)
         )
     @property
     def emission_shape(self):
