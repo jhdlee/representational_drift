@@ -8,7 +8,8 @@ import warnings
 
 from tensorflow_probability.substrates.jax.distributions import (
     MultivariateNormalDiagPlusLowRankCovariance as MVNLowRank,
-    MultivariateNormalFullCovariance as MVN)
+    MultivariateNormalFullCovariance as MVN,
+    Categorical as Cat)
 
 from jax.tree_util import tree_map
 from jaxtyping import Array, Float
@@ -970,13 +971,51 @@ def lgssm_posterior_sample_conditional_smc(
         rotation = rotation.at[:state_dim, state_dim:].set(new_velocity.reshape(dof_shape))
         rotation -= rotation.T
         rotation = jscipy.linalg.expm(rotation)
-
         new_subspace = base_subspace @ rotation
-        C = new_subspace[:, :state_dim].reshape(-1)
 
+        C = new_subspace[:, :state_dim].reshape(-1)
         incr_log_w = MVN(C, obs_cov).log_prob(obs).sum()
 
+        # C = new_subspace[:, :state_dim]
+        # init_mean_t = params.initial.mean[t]
+        # init_cov_t = params.initial.cov[t]
+        # dynamics_weights = params.dynamics.weights
+        # dynamics_cov = params.dynamics.cov
+        # emissions_cov = params.emissions.cov
+        # initial_velocity_mean = params.initial_velocity.mean
+        # initial_velocity_cov = params.initial_velocity.cov
+        # tau = params.emissions.tau
+        # new_params = ParamsTVLGSSM(
+        #     initial=ParamsLGSSMInitial(
+        #         mean=init_mean_t,
+        #         cov=init_cov_t),
+        #     dynamics=ParamsLGSSMDynamics(
+        #         weights=dynamics_weights,
+        #         bias=None,
+        #         input_weights=jnp.zeros((state_dim, 0)),
+        #         cov=dynamics_cov),
+        #     emissions=ParamsLGSSMEmissions(
+        #         weights=C,
+        #         bias=None,
+        #         input_weights=jnp.zeros((emission_dim, 0)),
+        #         cov=emissions_cov,
+        #         tau=tau),
+        #     initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
+        #                                         cov=initial_velocity_cov),
+        # )
+        #
+        # filtered_posterior = lgssm_filter(new_params, obs,
+        #                                   None, masks[t])
+        # incr_log_w = filtered_posterior.marginal_loglik
+
         return new_velocity, incr_log_w
+
+    def ancestor_sample_fn(args):
+        _key, _log_ws, _states, _next_state = args
+        _log_adj_weights = MVN(_states, jnp.diag(tau_array)).log_prob(_next_state)
+        _log_ws += _log_adj_weights
+        cat = Cat(logits=_log_ws)
+        return = cat.sample(sample_shape=(1,), seed=_key)
 
     initial_states = jnp.tile(params.initial_velocity.mean[jnp.newaxis], (num_particles, 1))
 
@@ -996,6 +1035,7 @@ def lgssm_posterior_sample_conditional_smc(
     states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
                                                                                initial_states=initial_states,
                                                                                transition_fn=p_and_w,
+                                                                               ancestor_sample_fn=ancestor_sample_fn,
                                                                                num_steps=num_steps,
                                                                                max_num_steps=max_num_steps,
                                                                                observations=(emissions, emissions_covs),
