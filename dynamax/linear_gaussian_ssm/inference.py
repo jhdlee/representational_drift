@@ -1015,7 +1015,7 @@ def lgssm_posterior_sample_conditional_smc(
         _log_adj_weights = MVN(_states, jnp.diag(tau_array)).log_prob(_next_state)
         _log_ws += _log_adj_weights
         cat = Cat(logits=_log_ws)
-        return cat.sample(sample_shape=(1,), seed=_key)
+        return cat.sample(sample_shape=(1,), seed=_key)[0]
 
     initial_states = jnp.tile(params.initial_velocity.mean[jnp.newaxis], (num_particles, 1))
 
