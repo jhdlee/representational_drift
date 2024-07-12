@@ -1404,8 +1404,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             subspace = jnp.einsum('ij,rjk->rik', base_subspace, rotation)
             _emission_weights = subspace[:, :, :self.state_dim]
 
-            init_mean_t = _params.initial.mean[t]
-            init_cov_t = _params.initial.cov[t]
+            init_mean_t = _params.initial.mean
+            init_cov_t = _params.initial.cov
             dynamics_weights = _params.dynamics.weights
             dynamics_cov = _params.dynamics.cov
             emissions_cov = _params.emissions.cov
