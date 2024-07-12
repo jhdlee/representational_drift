@@ -1019,7 +1019,7 @@ def lgssm_posterior_sample_conditional_smc(
 
     initial_states = jnp.tile(params.initial_velocity.mean[jnp.newaxis], (num_particles, 1))
 
-    def compute_prespecified_incr_log_ws(state, obs, obs_cov):
+    def compute_prespecified_incr_log_ws(state, obs, obs_cov, t):
         rotation = jnp.zeros((emission_dim, emission_dim))
         rotation = rotation.at[:state_dim, state_dim:].set(state.reshape(dof_shape))
         rotation -= rotation.T
@@ -1061,7 +1061,8 @@ def lgssm_posterior_sample_conditional_smc(
         log_w = filtered_posterior.marginal_loglik
         return log_w
 
-    prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions, emissions_covs)
+    prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions,
+                                                                      emissions_covs, jnp.arange(len(emissions)))
 
     key, subkey = jr.split(key)
     states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
