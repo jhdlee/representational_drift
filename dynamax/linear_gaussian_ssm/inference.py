@@ -978,8 +978,8 @@ def lgssm_posterior_sample_conditional_smc(
         # incr_log_w = MVN(C, obs_cov).log_prob(obs).sum()
 
         C = new_subspace[:, :state_dim]
-        init_mean_t = params.initial.mean[t]
-        init_cov_t = params.initial.cov[t]
+        init_mean_t = params.initial.mean
+        init_cov_t = params.initial.cov
         dynamics_weights = params.dynamics.weights
         dynamics_cov = params.dynamics.cov
         emissions_cov = params.emissions.cov
@@ -1030,8 +1030,8 @@ def lgssm_posterior_sample_conditional_smc(
         # C = subspace[:, :state_dim].reshape(-1)
         # return MVN(C, obs_cov).log_prob(obs).sum()
         C = subspace[:, :state_dim]
-        init_mean_t = params.initial.mean[t]
-        init_cov_t = params.initial.cov[t]
+        init_mean_t = params.initial.mean
+        init_cov_t = params.initial.cov
         dynamics_weights = params.dynamics.weights
         dynamics_cov = params.dynamics.cov
         emissions_cov = params.emissions.cov
