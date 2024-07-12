@@ -1394,7 +1394,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                                    _emissions,
                                                                    _emissions,
                                                                    _prespecified_path,
-                                                                   num_particle,
+                                                                   num_particles,
                                                                    masks)
 
             rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
