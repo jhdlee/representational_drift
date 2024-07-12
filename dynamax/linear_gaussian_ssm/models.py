@@ -1219,7 +1219,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             return init_stats, dynamics_stats, emission_stats
 
-        def lgssm_params_sample(rng, stats, states, params, prespecified_path, _emission_weights):
+        def lgssm_params_sample(rng, stats, states, params, prespecified_path, _emission_weights, velocity):
             """Sample parameters of the model given sufficient statistics from observed states and emissions."""
             init_stats, dynamics_stats, emission_stats = stats
             n_splits = 9
@@ -1442,7 +1442,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             _stats = sufficient_stats_from_sample(_new_states, _params)
             _new_params, _new_velocity = lgssm_params_sample(rngs[1], _stats,
                                                              _new_states, _new_params_emissions_updated,
-                                                             _prespecified_path, _emission_weights)
+                                                             _prespecified_path, _emission_weights, _new_velocity)
 
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs, masks)
