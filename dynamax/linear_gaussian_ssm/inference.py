@@ -947,6 +947,7 @@ def lgssm_posterior_sample_conditional_smc(
     emissions_covs,
     prespecified_path=None,
     num_particles=100,
+        masks
 
 ) -> Float[Array, "ntime state_dim"]:
 
