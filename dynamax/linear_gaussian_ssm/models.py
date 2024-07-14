@@ -1136,7 +1136,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(self.sequence_length))
 
         # tau_cov = jnp.eye(self.dof) * params.emissions.tau
-        tau_cov = params.emissions.tau
+        tau_cov = jnp.diag(params.emissions.tau)
         def _compute_trial_velocity_lp(prev_lp, current_t):
             current_param = velocity[current_t]
             next_param = velocity[current_t + 1]
