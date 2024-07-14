@@ -764,6 +764,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_bias=None,
             emission_input_weights=None,
             emission_covariance=None,
+            velocity=None,
             initial_velocity_mean=None,
             initial_velocity_cov=None,
     ) -> Tuple[ParamsTVLGSSM, ParamsTVLGSSM]:
@@ -813,11 +814,14 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             current_velocity = current_velocity_dist.sample(seed=current_key)
             return current_velocity, current_velocity
 
-        key1, key = jr.split(key, 2)
-        _initial_velocity = jr.normal(key1, shape=(self.dof,))
-        _, _velocity = jax.lax.scan(_get_velocity, _initial_velocity, keys[:-1])
-        _velocity = jnp.concatenate([_initial_velocity[None], _velocity])
-        _velocity = _velocity.reshape((self.num_trials,) + self.dof_shape)
+        if velocity is None:
+            key1, key = jr.split(key, 2)
+            _initial_velocity = jr.normal(key1, shape=(self.dof,))
+            _, _velocity = jax.lax.scan(_get_velocity, _initial_velocity, keys[:-1])
+            _velocity = jnp.concatenate([_initial_velocity[None], _velocity])
+            _velocity = _velocity.reshape((self.num_trials,) + self.dof_shape)
+        else:
+            _velocity = velocity
 
         _rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
         _rotation = _rotation.at[:, :self.state_dim, self.state_dim:].set(_velocity)
