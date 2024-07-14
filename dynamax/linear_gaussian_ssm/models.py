@@ -809,7 +809,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         keys = jr.split(key, self.num_trials)
         key = keys[-1]
         # _velocity_cov = jnp.eye(self.dof) * tau
-        _velocity_cov = tau # per dimension / rotation tau
+        _velocity_cov = jnp.diag(tau) # per dimension / rotation tau
         def _get_velocity(prev_velocity, current_key):
             current_velocity_dist = MVN(loc=prev_velocity, covariance_matrix=_velocity_cov)
             current_velocity = current_velocity_dist.sample(seed=current_key)
