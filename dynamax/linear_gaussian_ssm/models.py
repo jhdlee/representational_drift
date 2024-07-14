@@ -808,7 +808,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         keys = jr.split(key, self.num_trials)
         key = keys[-1]
-        _velocity_cov = jnp.eye(self.dof) * tau
+        # _velocity_cov = jnp.eye(self.dof) * tau
+        _velocity_cov = tau # per dimension / rotation tau
         def _get_velocity(prev_velocity, current_key):
             current_velocity_dist = MVN(loc=prev_velocity, covariance_matrix=_velocity_cov)
             current_velocity = current_velocity_dist.sample(seed=current_key)
@@ -1134,7 +1135,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             return current_lp, None
         lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(self.sequence_length))
 
-        tau_cov = jnp.eye(self.dof) * params.emissions.tau
+        # tau_cov = jnp.eye(self.dof) * params.emissions.tau
+        tau_cov = params.emissions.tau
         def _compute_trial_velocity_lp(prev_lp, current_t):
             current_param = velocity[current_t]
             next_param = velocity[current_t + 1]
@@ -1150,7 +1152,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         lp += self.initial_velocity_covariance_prior.log_prob(jnp.diag(params.initial_velocity.cov)).sum()
 
         tau_lp = self.tau_prior.log_prob(params.emissions.tau)
-        lp += tau_lp
+        # lp += tau_lp
+        lp += tau_lp.sum()
 
         lp += self.emissions_covariance_prior.log_prob(jnp.diag(params.emissions.cov)).sum()
 
@@ -1297,12 +1300,20 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 if self.fix_tau:
                     tau = params.emissions.tau
                 else:
-                    tau_stats_1 = (self.dof * (self.num_trials-1)) / 2
+                    # tau_stats_1 = (self.dof * (self.num_trials-1)) / 2
+                    # tau_stats_2 = jnp.diff(velocity, axis=0)
+                    # tau_stats_2 = jnp.nansum(jnp.square(tau_stats_2)) / 2
+                    # tau_stats = (tau_stats_1, tau_stats_2)
+                    # tau_posterior = ig_posterior_update(self.tau_prior, tau_stats)
+                    # tau = tau_posterior.sample(seed=next(rngs))
+                    tau_stats_1 = jnp.ones((self.dof, 1)) * (self.num_trials-1) / 2
                     tau_stats_2 = jnp.diff(velocity, axis=0)
-                    tau_stats_2 = jnp.nansum(jnp.square(tau_stats_2)) / 2
+                    tau_stats_2 = jnp.nansum(jnp.square(tau_stats_2), axis=0) / 2
+                    tau_stats_2 = jnp.expand_dims(tau_stats_2, -1)
                     tau_stats = (tau_stats_1, tau_stats_2)
                     tau_posterior = ig_posterior_update(self.tau_prior, tau_stats)
                     tau = tau_posterior.sample(seed=next(rngs))
+                    tau = jnp.ravel(tau)
 
                 emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
                 emissions_mean = jnp.einsum('btx,byx->bty', states, H)

@@ -955,7 +955,8 @@ def lgssm_posterior_sample_conditional_smc(
     _, emission_dim, state_dim = params.emissions.weights.shape
     dof = state_dim * (emission_dim - state_dim)
     dof_shape = (state_dim, (emission_dim - state_dim))
-    tau_array = jnp.ones(dof) * params.emissions.tau
+    # tau_array = jnp.ones(dof) * params.emissions.tau
+    tau_array = params.emissions.tau
 
     def p_and_w(key, prev_latent, obs, obs_cov, t):
 
