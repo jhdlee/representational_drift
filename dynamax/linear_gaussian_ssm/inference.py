@@ -8,7 +8,8 @@ import warnings
 
 from tensorflow_probability.substrates.jax.distributions import (
     MultivariateNormalDiagPlusLowRankCovariance as MVNLowRank,
-    MultivariateNormalFullCovariance as MVN)
+    MultivariateNormalFullCovariance as MVN,
+    Categorical as Cat)
 
 from jax.tree_util import tree_map
 from jaxtyping import Array, Float
