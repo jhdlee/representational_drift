@@ -761,6 +761,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             dynamics_covariance=None,
             stabilize_dynamics=True,
             emission_weights=None,
+            emission_weights_scale=1.0,
             emission_bias=None,
             emission_input_weights=None,
             emission_covariance=None,
@@ -824,7 +825,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         _rotation -= _rotation.transpose(0, 2, 1)
         _rotation = jscipy.linalg.expm(_rotation)
         _subspace = jnp.einsum('ij,rjk->rik', base_subspace, _rotation)
-        _emission_weights = _subspace[:, :, :self.state_dim]
+        _emission_weights = _subspace[:, :, :self.state_dim] * emission_weights_scale
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
