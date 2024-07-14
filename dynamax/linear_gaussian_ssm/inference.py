@@ -999,10 +999,18 @@ def lgssm_posterior_sample_conditional_smc(
 
     prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions, emissions_covs)
 
+    def ancestor_sample_fn(args):
+        _key, _log_ws, _states, _next_state = args
+        _log_adj_weights = MVN(_states, jnp.diag(tau_array)).log_prob(_next_state)
+        _log_ws += _log_adj_weights
+        cat = Cat(logits=_log_ws)
+        return cat.sample(sample_shape=(1,), seed=_key)[0]
+
     key, subkey = jr.split(key)
     states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
                                                                                initial_states=initial_states,
                                                                                transition_fn=p_and_w,
+                                                                               ancestor_sample_fn=ancestor_sample_fn,
                                                                                num_steps=num_steps,
                                                                                max_num_steps=max_num_steps,
                                                                                observations=(emissions, emissions_covs),
