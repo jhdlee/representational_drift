@@ -674,6 +674,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             fix_initial: bool = False,
             fix_dynamics: bool = False,
             fix_emissions: bool = False,
+            fix_tau: bool = False,
             EPS: float = 1e-6,
             **kw_priors
     ):
@@ -689,6 +690,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         self.fix_initial = fix_initial
         self.fix_dynamics = fix_dynamics
         self.fix_emissions = fix_emissions
+        self.fix_tau = fix_tau
 
         self.EPS = EPS
 
@@ -1288,12 +1290,15 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_velocity_cov = init_velocity_cov_posterior.sample(seed=next(rngs))
                 initial_velocity_cov = jnp.diag(jnp.ravel(initial_velocity_cov))
 
-                tau_stats_1 = (self.dof * (self.num_trials-1)) / 2
-                tau_stats_2 = jnp.diff(velocity, axis=0)
-                tau_stats_2 = jnp.nansum(jnp.square(tau_stats_2)) / 2
-                tau_stats = (tau_stats_1, tau_stats_2)
-                tau_posterior = ig_posterior_update(self.tau_prior, tau_stats)
-                tau = tau_posterior.sample(seed=next(rngs))
+                if self.fix_tau:
+                    tau = params.emissions.tau
+                else:
+                    tau_stats_1 = (self.dof * (self.num_trials-1)) / 2
+                    tau_stats_2 = jnp.diff(velocity, axis=0)
+                    tau_stats_2 = jnp.nansum(jnp.square(tau_stats_2)) / 2
+                    tau_stats = (tau_stats_1, tau_stats_2)
+                    tau_posterior = ig_posterior_update(self.tau_prior, tau_stats)
+                    tau = tau_posterior.sample(seed=next(rngs))
 
                 emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
                 emissions_mean = jnp.einsum('btx,byx->bty', states, H)
