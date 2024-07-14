@@ -972,7 +972,7 @@ def lgssm_posterior_sample_conditional_smc(
         rotation = jscipy.linalg.expm(rotation)
 
         new_subspace = base_subspace @ rotation
-        C = new_subspace[:, :state_dim].reshape(-1)
+        C = new_subspace[:, :state_dim]#.reshape(-1)
 
         #incr_log_w = MVN(C, obs_cov).log_prob(obs).sum()
         pred = jnp.einsum('nd,td->tn', C, obs_cov)
@@ -989,7 +989,7 @@ def lgssm_posterior_sample_conditional_smc(
         rotation = jscipy.linalg.expm(rotation)
 
         subspace = base_subspace @ rotation
-        C = subspace[:, :state_dim].reshape(-1)
+        C = subspace[:, :state_dim]#.reshape(-1)
 
         pred = jnp.einsum('nd,td->tn', C, obs_cov)
         incr_log_w = MVN(pred, params.emissions.cov).log_prob(obs).sum()
