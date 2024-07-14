@@ -1483,4 +1483,4 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             lls.append(ll)
             marginal_lls.append(marginal_ll)
 
-        return pytree_stack(sample_of_params), lls, None, sample_of_states, sample_of_velocity
+        return pytree_stack(sample_of_params), lls, None, sample_of_states, sample_of_velocity, marginal_lls
