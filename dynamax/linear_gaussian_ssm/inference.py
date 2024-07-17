@@ -1007,7 +1007,7 @@ def lgssm_posterior_sample_conditional_smc(
         )
 
         filtered_posterior = lgssm_filter(new_params, obs,
-                                          None, masks[t])
+                                          None, masks[t], trial_r=t)
         incr_log_w = filtered_posterior.marginal_loglik
 
         return new_velocity, incr_log_w
@@ -1059,7 +1059,7 @@ def lgssm_posterior_sample_conditional_smc(
         )
 
         filtered_posterior = lgssm_filter(new_params, obs,
-                                          None, masks[t])
+                                          None, masks[t], trial_r=t)
         log_w = filtered_posterior.marginal_loglik
         return log_w
 
