@@ -1260,7 +1260,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
                 emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
 
-                velocity = lgssm_posterior_sample_conditional_smc(next(rngs),
+                velocity, _ = lgssm_posterior_sample_conditional_smc(next(rngs),
                                                                    params,
                                                                    base_subspace,
                                                                    emissions_y,
