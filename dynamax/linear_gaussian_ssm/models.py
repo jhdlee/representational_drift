@@ -18,7 +18,7 @@ from typing_extensions import Protocol
 from dynamax.ssm import SSM
 from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother, lgssm_posterior_sample
 from dynamax.linear_gaussian_ssm.inference import lgssm_posterior_sample_identity, lgssm_filter_identity, \
-    lgssm_smoother_identity, lgssm_posterior_sample_conditional_smc
+    lgssm_smoother_identity, lgssm_posterior_sample_conditional_smc, lgssm_posterior_sample_conditional_smc_v2
 from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitial, ParamsLGSSMDynamics, \
     ParamsLGSSMEmissions, ParamsTVLGSSM
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
@@ -1407,51 +1407,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         def one_sample(_params, _emissions, _inputs, rng, _prespecified_path):
             rngs = jr.split(rng, 3)
 
-            # sample velocity
-            # _new_velocity, log_Z_hat = lgssm_posterior_sample_conditional_smc(rngs[-1],
-            #                                                        _params,
-            #                                                        base_subspace,
-            #                                                        _emissions,
-            #                                                        _emissions,
-            #                                                        _prespecified_path,
-            #                                                        num_particles,
-            #                                                        masks)
-            #
-            # rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
-            # rotation = rotation.at[:, :self.state_dim, self.state_dim:].set(
-            #     _new_velocity.reshape((self.num_trials,) + self.dof_shape))
-            # rotation -= rotation.transpose(0, 2, 1)
-            # rotation = jscipy.linalg.expm(rotation)
-            # subspace = jnp.einsum('ij,rjk->rik', base_subspace, rotation)
-            # _emission_weights = subspace[:, :, :self.state_dim]
-            #
-            # init_mean_t = _params.initial.mean
-            # init_cov_t = _params.initial.cov
-            # dynamics_weights = _params.dynamics.weights
-            # dynamics_cov = _params.dynamics.cov
-            # emissions_cov = _params.emissions.cov
-            # initial_velocity_mean = _params.initial_velocity.mean
-            # initial_velocity_cov = _params.initial_velocity.cov
-            # tau = _params.emissions.tau
-            # _new_params_emissions_updated = ParamsTVLGSSM(
-            #     initial=ParamsLGSSMInitial(
-            #         mean=init_mean_t,
-            #         cov=init_cov_t),
-            #     dynamics=ParamsLGSSMDynamics(
-            #         weights=dynamics_weights,
-            #         bias=None,
-            #         input_weights=jnp.zeros((self.state_dim, 0)),
-            #         cov=dynamics_cov),
-            #     emissions=ParamsLGSSMEmissions(
-            #         weights=_emission_weights,
-            #         bias=None,
-            #         input_weights=jnp.zeros((self.emission_dim, 0)),
-            #         cov=emissions_cov,
-            #         tau=tau),
-            #     initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
-            #                                         cov=initial_velocity_cov),
-            # )
-
             if fixed_states is not None:
                 _new_states = fixed_states
             else:
@@ -1476,9 +1431,54 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         sample_of_velocity = []
         lls = []
         marginal_lls = []
-        keys = iter(jr.split(key, sample_size + 1))
+        keys = iter(jr.split(key, sample_size + 2))
         current_params = initial_params
         lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample, in_axes=(None, None, 0, None, 0, 0))
+
+        # sample velocity
+        current_velocity, log_Z_hat = lgssm_posterior_sample_conditional_smc_v2(next(keys),
+                                                                          current_params,
+                                                                          base_subspace,
+                                                                          emissions,
+                                                                          emissions,
+                                                                          current_velocity,
+                                                                          num_particles,
+                                                                          masks)
+
+        rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
+        rotation = rotation.at[:, :self.state_dim, self.state_dim:].set(
+            current_velocity.reshape((self.num_trials,) + self.dof_shape))
+        rotation -= rotation.transpose(0, 2, 1)
+        rotation = jscipy.linalg.expm(rotation)
+        subspace = jnp.einsum('ij,rjk->rik', base_subspace, rotation)
+        _emission_weights = subspace[:, :, :self.state_dim]
+
+        init_mean_t = current_params.initial.mean
+        init_cov_t = current_params.initial.cov
+        dynamics_weights = current_params.dynamics.weights
+        dynamics_cov = current_params.dynamics.cov
+        emissions_cov = current_params.emissions.cov
+        initial_velocity_mean = current_params.initial_velocity.mean
+        initial_velocity_cov = current_params.initial_velocity.cov
+        tau = current_params.emissions.tau
+        current_params = ParamsTVLGSSM(
+            initial=ParamsLGSSMInitial(
+                mean=init_mean_t,
+                cov=init_cov_t),
+            dynamics=ParamsLGSSMDynamics(
+                weights=dynamics_weights,
+                bias=current_params.dynamics.bias,
+                input_weights=jnp.zeros((self.state_dim, 0)),
+                cov=dynamics_cov),
+            emissions=ParamsLGSSMEmissions(
+                weights=_emission_weights,
+                bias=current_params.emissions.bias,
+                input_weights=jnp.zeros((self.emission_dim, 0)),
+                cov=emissions_cov,
+                tau=tau),
+            initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
+                                                cov=initial_velocity_cov),
+        )
 
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, current_velocity, ll, marginal_ll = one_sample(current_params, emissions,

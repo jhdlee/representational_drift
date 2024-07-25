@@ -978,38 +978,6 @@ def lgssm_posterior_sample_conditional_smc(
         C = new_subspace[:, :state_dim].reshape(-1)
         incr_log_w = MVN(C, obs_cov).log_prob(obs).sum()
 
-        # C = new_subspace[:, :state_dim]
-        # init_mean_t = params.initial.mean
-        # init_cov_t = params.initial.cov
-        # dynamics_weights = params.dynamics.weights
-        # dynamics_cov = params.dynamics.cov
-        # emissions_cov = params.emissions.cov
-        # initial_velocity_mean = params.initial_velocity.mean
-        # initial_velocity_cov = params.initial_velocity.cov
-        # tau = params.emissions.tau
-        # new_params = ParamsTVLGSSM(
-        #     initial=ParamsLGSSMInitial(
-        #         mean=init_mean_t,
-        #         cov=init_cov_t),
-        #     dynamics=ParamsLGSSMDynamics(
-        #         weights=dynamics_weights,
-        #         bias=None,
-        #         input_weights=jnp.zeros((state_dim, 0)),
-        #         cov=dynamics_cov),
-        #     emissions=ParamsLGSSMEmissions(
-        #         weights=C,
-        #         bias=None,
-        #         input_weights=jnp.zeros((emission_dim, 0)),
-        #         cov=emissions_cov,
-        #         tau=tau),
-        #     initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
-        #                                         cov=initial_velocity_cov),
-        # )
-        #
-        # filtered_posterior = lgssm_filter(new_params, obs,
-        #                                   None, masks[t], trial_r=t)
-        # incr_log_w = filtered_posterior.marginal_loglik
-
         return new_velocity, incr_log_w
 
     def ancestor_sample_fn(args):
@@ -1031,38 +999,150 @@ def lgssm_posterior_sample_conditional_smc(
         C = subspace[:, :state_dim].reshape(-1)
         return MVN(C, obs_cov).log_prob(obs).sum()
 
-        # C = subspace[:, :state_dim]
-        # init_mean_t = params.initial.mean
-        # init_cov_t = params.initial.cov
-        # dynamics_weights = params.dynamics.weights
-        # dynamics_cov = params.dynamics.cov
-        # emissions_cov = params.emissions.cov
-        # initial_velocity_mean = params.initial_velocity.mean
-        # initial_velocity_cov = params.initial_velocity.cov
-        # tau = params.emissions.tau
-        # new_params = ParamsTVLGSSM(
-        #     initial=ParamsLGSSMInitial(
-        #         mean=init_mean_t,
-        #         cov=init_cov_t),
-        #     dynamics=ParamsLGSSMDynamics(
-        #         weights=dynamics_weights,
-        #         bias=None,
-        #         input_weights=jnp.zeros((state_dim, 0)),
-        #         cov=dynamics_cov),
-        #     emissions=ParamsLGSSMEmissions(
-        #         weights=C,
-        #         bias=None,
-        #         input_weights=jnp.zeros((emission_dim, 0)),
-        #         cov=emissions_cov,
-        #         tau=tau),
-        #     initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
-        #                                         cov=initial_velocity_cov),
-        # )
-        #
-        # filtered_posterior = lgssm_filter(new_params, obs,
-        #                                   None, masks[t], trial_r=t)
-        # log_w = filtered_posterior.marginal_loglik
-        # return log_w
+    prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions,
+                                                                      emissions_covs, jnp.arange(len(emissions)))
+
+    key, subkey = jr.split(key)
+    states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
+                                                                               initial_states=initial_states,
+                                                                               transition_fn=p_and_w,
+                                                                               ancestor_sample_fn=ancestor_sample_fn,
+                                                                               num_steps=num_steps,
+                                                                               max_num_steps=max_num_steps,
+                                                                               observations=(emissions, emissions_covs),
+                                                                               num_particles=num_particles,
+                                                                               prespecified_path=prespecified_path,
+                                                                               prespecified_incr_log_ws=prespecified_incr_log_ws,
+                                                                               )
+
+    posterior_dist = smc.make_posterior_dist(states, ancestors, resampled, num_steps, log_weights)
+    key, subkey = jr.split(key)
+    return posterior_dist.sample(seed=subkey), log_Z_hat
+
+
+def lgssm_posterior_sample_conditional_smc_v2(
+    key: PRNGKey,
+    params: ParamsTVLGSSM,
+    base_subspace,
+    emissions:  Float[Array, "ntime emission_dim"],
+    emissions_covs,
+    prespecified_path=None,
+    num_particles=100,
+        masks=None,
+
+) -> Float[Array, "ntime state_dim"]:
+
+    num_steps = max_num_steps = len(emissions)
+    _, emission_dim, state_dim = params.emissions.weights.shape
+    dof = state_dim * (emission_dim - state_dim)
+    dof_shape = (state_dim, (emission_dim - state_dim))
+    # tau_array = jnp.ones(dof) * params.emissions.tau
+    tau_array = params.emissions.tau
+
+    def p_and_w(key, prev_latent, obs, obs_cov, t):
+
+        bool_array = jnp.ones(dof) * t
+        bool_array = bool_array.astype(jnp.bool)
+
+        cov = jnp.where(bool_array,
+                        tau_array,
+                        jnp.diag(params.initial_velocity.cov))
+        cov = jnp.diag(cov)
+        new_velocity = MVN(prev_latent, cov).sample(seed=key)
+
+        rotation = jnp.zeros((emission_dim, emission_dim))
+        rotation = rotation.at[:state_dim, state_dim:].set(new_velocity.reshape(dof_shape))
+        rotation -= rotation.T
+        rotation = jscipy.linalg.expm(rotation)
+        new_subspace = base_subspace @ rotation
+
+        # C = new_subspace[:, :state_dim].reshape(-1)
+        # incr_log_w = MVN(C, obs_cov).log_prob(obs).sum()
+
+        C = new_subspace[:, :state_dim]
+        init_mean_t = params.initial.mean
+        init_cov_t = params.initial.cov
+        dynamics_weights = params.dynamics.weights
+        dynamics_cov = params.dynamics.cov
+        emissions_cov = params.emissions.cov
+        initial_velocity_mean = params.initial_velocity.mean
+        initial_velocity_cov = params.initial_velocity.cov
+        tau = params.emissions.tau
+        new_params = ParamsTVLGSSM(
+            initial=ParamsLGSSMInitial(
+                mean=init_mean_t,
+                cov=init_cov_t),
+            dynamics=ParamsLGSSMDynamics(
+                weights=dynamics_weights,
+                bias=None,
+                input_weights=jnp.zeros((state_dim, 0)),
+                cov=dynamics_cov),
+            emissions=ParamsLGSSMEmissions(
+                weights=C,
+                bias=None,
+                input_weights=jnp.zeros((emission_dim, 0)),
+                cov=emissions_cov,
+                tau=tau),
+            initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
+                                                cov=initial_velocity_cov),
+        )
+
+        filtered_posterior = lgssm_filter(new_params, obs,
+                                          None, masks[t], trial_r=t)
+        incr_log_w = filtered_posterior.marginal_loglik
+
+        return new_velocity, incr_log_w
+
+    def ancestor_sample_fn(args):
+        _key, _log_ws, _states, _next_state = args
+        _log_adj_weights = MVN(_states, jnp.diag(tau_array)).log_prob(_next_state)
+        _log_ws += _log_adj_weights
+        cat = Cat(logits=_log_ws)
+        return cat.sample(sample_shape=(1,), seed=_key)[0]
+
+    initial_states = jnp.tile(params.initial_velocity.mean[jnp.newaxis], (num_particles, 1))
+
+    def compute_prespecified_incr_log_ws(state, obs, obs_cov, t):
+        rotation = jnp.zeros((emission_dim, emission_dim))
+        rotation = rotation.at[:state_dim, state_dim:].set(state.reshape(dof_shape))
+        rotation -= rotation.T
+        rotation = jscipy.linalg.expm(rotation)
+
+        subspace = base_subspace @ rotation
+        # C = subspace[:, :state_dim].reshape(-1)
+        # return MVN(C, obs_cov).log_prob(obs).sum()
+        C = subspace[:, :state_dim]
+        init_mean_t = params.initial.mean
+        init_cov_t = params.initial.cov
+        dynamics_weights = params.dynamics.weights
+        dynamics_cov = params.dynamics.cov
+        emissions_cov = params.emissions.cov
+        initial_velocity_mean = params.initial_velocity.mean
+        initial_velocity_cov = params.initial_velocity.cov
+        tau = params.emissions.tau
+        new_params = ParamsTVLGSSM(
+            initial=ParamsLGSSMInitial(
+                mean=init_mean_t,
+                cov=init_cov_t),
+            dynamics=ParamsLGSSMDynamics(
+                weights=dynamics_weights,
+                bias=None,
+                input_weights=jnp.zeros((state_dim, 0)),
+                cov=dynamics_cov),
+            emissions=ParamsLGSSMEmissions(
+                weights=C,
+                bias=None,
+                input_weights=jnp.zeros((emission_dim, 0)),
+                cov=emissions_cov,
+                tau=tau),
+            initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
+                                                cov=initial_velocity_cov),
+        )
+
+        filtered_posterior = lgssm_filter(new_params, obs,
+                                          None, masks[t], trial_r=t)
+        log_w = filtered_posterior.marginal_loglik
+        return log_w
 
     prespecified_incr_log_ws = vmap(compute_prespecified_incr_log_ws)(prespecified_path, emissions,
                                                                       emissions_covs, jnp.arange(len(emissions)))
