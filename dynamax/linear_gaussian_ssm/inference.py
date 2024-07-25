@@ -960,8 +960,17 @@ def _predict_3d(m, S, F, B, b, Q, u):
     """
     # mu_pred = F @ m + b
     # Sigma_pred = F @ S @ F.T + Q
-    mu_pred = jnp.einsum('ij,rj->ri', F, m) + b
-    Sigma_pred = jnp.einsum('ij,rjk,lk->ril', F, S, F) + Q
+    # mu_pred = jnp.einsum('ij,rj->ri', F, m) + b
+    # Sigma_pred = jnp.einsum('ij,rjk,lk->ril', F, S, F) + Q
+
+    def _mu(aa, bb):
+        return jnp.einsum('ij,j->i', aa, bb)
+    mu_pred = vmap(_mu, in_axes=(None, 0))(F, m) + b
+
+    def _Sigma(aa, bb):
+        return jnp.einsum('ij,jk,lk->il', aa, bb, aa)
+    Sigma_pred = vmap(_Sigma, in_axes=(None, 0))(F, S) + Q
+
     return mu_pred, Sigma_pred
 
 def _condition_on_3d(m, P, H, D, d, R, u, y, mask):
@@ -991,16 +1000,32 @@ def _condition_on_3d(m, P, H, D, d, R, u, y, mask):
          mu_pred (D_hid,): predicted mean.
          Sigma_pred (D_hid,D_hid): predicted covariance.
     """
-    S = R + jnp.einsum('rij,rjk,rlk->ril', H, P, H) #H @ P @ H.T
-    K = vmap(psd_solve)(S, jnp.einsum('rij,rjk->rik', H, P)).transpose(0, 2, 1)
+    # S = R + jnp.einsum('rij,rjk,rlk->ril', H, P, H) #H @ P @ H.T
+    # K = vmap(psd_solve)(S, jnp.einsum('rij,rjk->rik', H, P)).transpose(0, 2, 1)
+
+    def _S(aa, bb):
+        return jnp.einsum('ij,jk,lk->il', aa, bb, aa)
+    S = R + vmap(_S)(H, P)
+
+    def _X(aa, bb):
+        return jnp.einsum('ij,jk->ik', aa, bb)
+
+    K = vmap(psd_solve)(S, vmap(_X)(H, P)).transpose(0, 2, 1)
 
     # Sigma_cond = P - mask * K @ S @ K.T
     # mu_cond = m + mask * K @ (y - H @ m)
 
-    Sigma_cond = P - mask * jnp.einsum('rij,rjk,rlk->ril', K, S, K)
-    mu_cond = m + mask * jnp.einsum('rij,rj->ri',
-                                    K,
-                                    y - jnp.einsum('rij,rj->ri', H, m))
+    def _Sigma(aa, bb):
+        return jnp.einsum('ij,jk,lk->il', aa, bb, aa)
+    Sigma_cond = P - mask * vmap(_Sigma)(K, S)
+
+    def _y(aa, bb):
+        return jnp.einsum('ij,j->i', aa, bb)
+
+    def _mu(aa, bb):
+        return jnp.einsum('ij,j->i', aa, bb)
+
+    mu_cond = m + mask * vmap(_mu)(K, y - vmap(_y)(H, m))
 
     return mu_cond, symmetrize(Sigma_cond)
 
@@ -1032,8 +1057,15 @@ def lgssm_filter_3d(
     def _log_likelihood_3d(pred_mean, pred_cov, H, D, d, R, u, y):
         # m = H @ pred_mean
         # S = R + H @ pred_cov @ H.T
-        m = jnp.einsum('rij,rj->ri', H, pred_mean)
-        S = R + jnp.einsum('rij,rjk,rlk->ril', H, pred_cov, H)
+        # m = jnp.einsum('rij,rj->ri', H, pred_mean)
+        # S = R + jnp.einsum('rij,rjk,rlk->ril', H, pred_cov, H)
+        def _m(aa, bb):
+            return jnp.einsum('ij,j->i', aa, bb)
+        m = vmap(_m)(H, pred_mean)
+
+        def _S(aa, bb):
+            return jnp.einsum(ij,jk,lk->il, aa, bb, aa)
+        S = R + vmap(_S)(H, pred_cov)
         return MVN(m, S).log_prob(y)
 
     def _step(carry, t):
