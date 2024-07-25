@@ -1099,7 +1099,7 @@ def lgssm_posterior_sample_conditional_smc(
     def compute_log_ws(states, obs, obs_cov, t):
         num_particles = len(states)
         rotation = jnp.zeros((num_particles, emission_dim, emission_dim))
-        rotation = rotation.at[:, state_dim, state_dim:].set(states.reshape(dof_shape))
+        rotation = rotation.at[:, state_dim, state_dim:].set(states.reshape((num_particles,)+dof_shape))
         rotation -= rotation.transpose(0, 2, 1)
         rotation = jscipy.linalg.expm(rotation)
         new_subspace = jnp.einsum('ij,rjk->rik', base_subspace, rotation)
