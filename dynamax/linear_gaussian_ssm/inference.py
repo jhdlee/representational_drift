@@ -939,6 +939,131 @@ def lgssm_smoother_identity(
         smoothed_cross_covariances=smoothed_cross,
     )
 
+def _predict_3d(m, S, F, B, b, Q, u):
+    r"""Predict next mean and covariance under a linear Gaussian model.
+
+        p(z_{t+1}) = int N(z_t \mid m, S) N(z_{t+1} \mid Fz_t + Bu + b, Q)
+                    = N(z_{t+1} \mid Fm + Bu, F S F^T + Q)
+
+    Args:
+        m (D_hid,): prior mean.
+        S (D_hid,D_hid): prior covariance.
+        F (D_hid,D_hid): dynamics matrix.
+        B (D_hid,D_in): dynamics input matrix.
+        u (D_in,): inputs.
+        Q (D_hid,D_hid): dynamics covariance matrix.
+        b (D_hid,): dynamics bias.
+
+    Returns:
+        mu_pred (D_hid,): predicted mean.
+        Sigma_pred (D_hid,D_hid): predicted covariance.
+    """
+    # mu_pred = F @ m + b
+    # Sigma_pred = F @ S @ F.T + Q
+    mu_pred = jnp.einsum('ij,rj->ri', F, m) + b
+    Sigma_pred = jnp.einsum('ij,rjk,lk->ril', F, S, F) + Q
+    return mu_pred, Sigma_pred
+
+def _condition_on_3d(m, P, H, D, d, R, u, y, mask):
+    r"""Condition a Gaussian potential on a new linear Gaussian observation
+       p(z_t \mid y_t, u_t, y_{1:t-1}, u_{1:t-1})
+         propto p(z_t \mid y_{1:t-1}, u_{1:t-1}) p(y_t \mid z_t, u_t)
+         = N(z_t \mid m, P) N(y_t \mid H_t z_t + D_t u_t + d_t, R_t)
+         = N(z_t \mid mm, PP)
+     where
+         mm = m + K*(y - yhat) = mu_cond
+         yhat = H*m + D*u + d
+         S = (R + H * P * H')
+         K = P * H' * S^{-1}
+         PP = P - K S K' = Sigma_cond
+
+    Args:
+         m (D_hid,): prior mean.
+         P (D_hid,D_hid): prior covariance.
+         H (D_obs,D_hid): emission matrix.
+         D (D_obs,D_in): emission input weights.
+         u (D_in,): inputs.
+         d (D_obs,): emission bias.
+         R (D_obs,D_obs): emission covariance matrix.
+         y (D_obs,): observation.
+
+     Returns:
+         mu_pred (D_hid,): predicted mean.
+         Sigma_pred (D_hid,D_hid): predicted covariance.
+    """
+    S = R + jnp.einsum('rij,rjk,rlk->ril', H, P, H) #H @ P @ H.T
+    K = vmap(psd_solve)(S, jnp.einsum('rij,rjk->rik', H, P)).transpose(0, 2, 1)
+
+    # Sigma_cond = P - mask * K @ S @ K.T
+    # mu_cond = m + mask * K @ (y - H @ m)
+
+    Sigma_cond = P - mask * jnp.einsum('rij,rjk,rlk->ril', K, S, K)
+    mu_cond = m + mask * jnp.einsum('rij,rj->ri',
+                                    K,
+                                    y - jnp.einsum('rij,rj->ri', H, m))
+
+    return mu_cond, symmetrize(Sigma_cond)
+
+def lgssm_filter_3d(
+        num_particles,
+        params: ParamsLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        masks: jnp.array = None,
+        trial_r: int = 0,
+) -> PosteriorGSSMFiltered:
+    r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
+
+    Args:
+        params: model parameters
+        emissions: array of observations.
+        inputs: optional array of inputs.
+
+    Returns:
+        PosteriorGSSMFiltered: filtered posterior object
+
+    """
+    num_timesteps = len(emissions)
+    inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
+
+    H = params.emissions.weights
+    d = jnp.zeros(H.shape[-1])
+
+    def _log_likelihood_3d(pred_mean, pred_cov, H, D, d, R, u, y):
+        # m = H @ pred_mean
+        # S = R + H @ pred_cov @ H.T
+        m = jnp.einsum('rij,rj->ri', H, pred_mean)
+        S = R + jnp.einsum('rij,rjk,rlk->ril', H, pred_cov, H)
+        return MVN(m, S).log_prob(y)
+
+    def _step(carry, t):
+        ll, pred_mean, pred_cov = carry
+
+        # Shorthand: get parameters and inputs for time index t
+        F, B, b, Q, _, D, _, R = _get_params(params, num_timesteps, t)
+        u = inputs[t]
+        y = emissions[t]
+        mask = masks[t]
+
+        # Update the log likelihood
+        ll += mask * _log_likelihood_3d(pred_mean, pred_cov, H, D, d, R, u, y)
+
+        # Condition on this emission
+        filtered_mean, filtered_cov = _condition_on_3d(pred_mean, pred_cov, H, D, d, R, u, y, mask)
+
+        # Predict the next state
+        pred_mean, pred_cov = _predict_3d(filtered_mean, filtered_cov, F, B, b, Q, u)
+
+        return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
+
+    # Run the Kalman filter
+    carry = (jnp.zeros(num_particles),
+             jnp.tile(params.initial.mean[trial_r][None], (num_particles, 1)),
+             jnp.tile(params.initial.cov[trial_r][None], (num_particles, 1, 1)))
+    (ll, _, _), (filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
+    return PosteriorGSSMFiltered(marginal_loglik=ll, filtered_means=filtered_means, filtered_covariances=filtered_covs)
+
+
 def lgssm_posterior_sample_conditional_smc(
     key: PRNGKey,
     params: ParamsTVLGSSM,
@@ -947,7 +1072,7 @@ def lgssm_posterior_sample_conditional_smc(
     emissions_covs,
     prespecified_path=None,
     num_particles=100,
-        masks=None,
+    masks=None,
 
 ) -> Float[Array, "ntime state_dim"]:
 
@@ -969,16 +1094,17 @@ def lgssm_posterior_sample_conditional_smc(
         cov = jnp.diag(cov)
         new_velocity = MVN(prev_latent, cov).sample(seed=key)
 
-        rotation = jnp.zeros((emission_dim, emission_dim))
-        rotation = rotation.at[:state_dim, state_dim:].set(new_velocity.reshape(dof_shape))
-        rotation -= rotation.T
+        return new_velocity
+
+    def compute_log_ws(states, obs, obs_cov, t):
+        num_particles = len(states)
+        rotation = jnp.zeros((num_particles, emission_dim, emission_dim))
+        rotation = rotation.at[:, state_dim, state_dim:].set(states.reshape(dof_shape))
+        rotation -= rotation.transpose(0, 2, 1)
         rotation = jscipy.linalg.expm(rotation)
-        new_subspace = base_subspace @ rotation
+        new_subspace = jnp.einsum('ij,rjk->rik', base_subspace, rotation)
 
-        # C = new_subspace[:, :state_dim].reshape(-1)
-        # incr_log_w = MVN(C, obs_cov).log_prob(obs).sum()
-
-        C = new_subspace[:, :state_dim]
+        C = new_subspace[:, :, :state_dim]
         init_mean_t = params.initial.mean
         init_cov_t = params.initial.cov
         dynamics_weights = params.dynamics.weights
@@ -1006,11 +1132,11 @@ def lgssm_posterior_sample_conditional_smc(
                                                 cov=initial_velocity_cov),
         )
 
-        filtered_posterior = lgssm_filter(new_params, obs,
+        filtered_posterior = lgssm_filter_3d(num_particles, new_params, obs,
                                           None, masks[t], trial_r=t)
         incr_log_w = filtered_posterior.marginal_loglik
 
-        return new_velocity, incr_log_w
+        return incr_log_w
 
     def ancestor_sample_fn(args):
         _key, _log_ws, _states, _next_state = args
@@ -1070,6 +1196,7 @@ def lgssm_posterior_sample_conditional_smc(
     states, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
                                                                                initial_states=initial_states,
                                                                                transition_fn=p_and_w,
+                                                                               weighting_fn=compute_log_ws,
                                                                                ancestor_sample_fn=ancestor_sample_fn,
                                                                                num_steps=num_steps,
                                                                                max_num_steps=max_num_steps,
