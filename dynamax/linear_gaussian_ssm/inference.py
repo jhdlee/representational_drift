@@ -1119,12 +1119,12 @@ def lgssm_posterior_sample_conditional_smc(
                 cov=init_cov_t),
             dynamics=ParamsLGSSMDynamics(
                 weights=dynamics_weights,
-                bias=None,
+                bias=params.dynamics.bias,
                 input_weights=jnp.zeros((state_dim, 0)),
                 cov=dynamics_cov),
             emissions=ParamsLGSSMEmissions(
                 weights=C,
-                bias=None,
+                bias=params.emissions.bias,
                 input_weights=jnp.zeros((emission_dim, 0)),
                 cov=emissions_cov,
                 tau=tau),
