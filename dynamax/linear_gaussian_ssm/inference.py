@@ -1064,7 +1064,7 @@ def lgssm_filter_3d(
         m = vmap(_m)(H, pred_mean)
 
         def _S(aa, bb):
-            return jnp.einsum(ij,jk,lk->il, aa, bb, aa)
+            return jnp.einsum('ij,jk,lk->il', aa, bb, aa)
         S = R + vmap(_S)(H, pred_cov)
         return MVN(m, S).log_prob(y)
 
