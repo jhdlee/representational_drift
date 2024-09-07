@@ -1334,7 +1334,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                 _emissions_covs = jnp.linalg.inv(emissions_stats_1)
                 emissions_stats_2 = jnp.einsum('bt,bti,ik,btl->bkl', masks, y, Rinv, x).reshape(self.num_trials, -1)
-                _emissions_y = jnp.einsum('bij,bj->bi', emissions_covs, emissions_stats_2)
+                _emissions_y = jnp.einsum('bij,bj->bi', _emissions_covs, emissions_stats_2)
 
                 _params = ParamsNLGSSM(
                     initial_mean=params.initial_velocity.mean,
