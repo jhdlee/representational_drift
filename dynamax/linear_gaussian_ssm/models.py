@@ -1210,12 +1210,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             return x
 
         def h(x):
-            rotation = jnp.zeros((N, N))
-            rotation = rotation.at[:D, D:].set(x.reshape(self.dof_shape))
+            rotation = jnp.zeros((self.emission_dim, self.emission_dim))
+            rotation = rotation.at[:self.state_dim, self.state_dim:].set(x.reshape(self.dof_shape))
             rotation -= rotation.T
             rotation = jscipy.linalg.expm(rotation)
             new_subspace = base_subspace @ rotation
-            new_C = new_subspace[:, :D].reshape(-1)
+            new_C = new_subspace[:, :self.state_dim].reshape(-1)
 
             return new_C
 
