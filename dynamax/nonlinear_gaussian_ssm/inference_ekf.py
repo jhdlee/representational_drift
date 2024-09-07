@@ -367,13 +367,14 @@ def iterated_extended_kalman_posterior_sample(
 
     """
 
+    smoothed_posterior = extended_kalman_smoother(params, emissions, None, inputs)
     def _step(carry, _):
         # Relinearize around smoothed posterior from previous iteration
         smoothed_prior = carry
         smoothed_posterior = extended_kalman_smoother(params, emissions, smoothed_prior, inputs)
         return smoothed_posterior, None
 
-    smoothed_posterior, _ = lax.scan(_step, None, jnp.arange(num_iter))
+    smoothed_posterior, _ = lax.scan(_step, smoothed_posterior, jnp.arange(num_iter-1))
 
     states = extended_kalman_posterior_sample(key, params, emissions, filtered_posterior=smoothed_posterior)
 
