@@ -259,7 +259,8 @@ def extended_kalman_posterior_sample(
     key: PRNGKey,
     params: ParamsNLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None
+    inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+    filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
 ) -> Float[Array, "ntime state_dim"]:
     r"""Run forward-filtering, backward-sampling to draw samples.
 
@@ -275,7 +276,8 @@ def extended_kalman_posterior_sample(
     num_timesteps = len(emissions)
 
     # Get filtered posterior
-    filtered_posterior = extended_kalman_filter(params, emissions, inputs=inputs)
+    if filtered_posterior is None:
+        filtered_posterior = extended_kalman_filter(params, emissions, inputs=inputs)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
@@ -343,3 +345,36 @@ def iterated_extended_kalman_smoother(
 
     smoothed_posterior, _ = lax.scan(_step, None, jnp.arange(num_iter))
     return smoothed_posterior
+
+
+def iterated_extended_kalman_posterior_sample(
+    key: PRNGKey,
+    params: ParamsNLGSSM,
+    emissions:  Float[Array, "ntime emission_dim"],
+    num_iter: int = 2,
+    inputs: Optional[Float[Array, "ntime input_dim"]] = None
+) -> Float[Array, "ntime state_dim"]:
+    r"""Run an iterated extended Kalman smoother (IEKS).
+
+    Args:
+        params: model parameters.
+        emissions: observation sequence.
+        num_iter: number of linearizations around posterior for update step (default 2).
+        inputs: optional array of inputs.
+
+    Returns:
+        post: posterior object.
+
+    """
+
+    def _step(carry, _):
+        # Relinearize around smoothed posterior from previous iteration
+        smoothed_prior = carry
+        smoothed_posterior = extended_kalman_smoother(params, emissions, smoothed_prior, inputs)
+        return smoothed_posterior, None
+
+    smoothed_posterior, _ = lax.scan(_step, None, jnp.arange(num_iter))
+
+    states = extended_kalman_posterior_sample(key, params, emissions, filtered_posterior=smoothed_posterior)
+
+    return states
