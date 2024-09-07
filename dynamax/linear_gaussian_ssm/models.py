@@ -22,9 +22,10 @@ from dynamax.linear_gaussian_ssm.inference import lgssm_posterior_sample_identit
 from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitial, ParamsLGSSMDynamics, \
     ParamsLGSSMEmissions, ParamsTVLGSSM
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
+
 from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, UKFHyperParams
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_smoother, iterated_extended_kalman_posterior_sample
-from dynamax.nonlinear_gaussian_ssm import extended_kalman_filter, iterated_extended_kalman_filter
+from dynamax.nonlinear_gaussian_ssm import extended_kalman_filter, iterated_extended_kalman_filter, extended_kalman_posterior_sample
 
 from dynamax.parameters import ParameterProperties, ParameterSet
 from dynamax.types import PRNGKey, Scalar
@@ -1345,11 +1346,14 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     emission_covariance=_emissions_covs
                 )
 
-                # posterior = iterated_extended_kalman_filter(_params, emissions_y, num_iter=1000)
-                velocity = iterated_extended_kalman_posterior_sample(next(rngs),
-                                                                      _params,
-                                                                      _emissions_y,
-                                                                      num_iter=ieks_num_iter)
+                posterior = iterated_extended_kalman_filter(_params, _emissions_y, num_iter=ieks_num_iter)
+                velocity = extended_kalman_posterior_sample(next(rngs),
+                                                             _params, _emissions_y,
+                                                             filtered_posterior=posterior)
+                # velocity = iterated_extended_kalman_posterior_sample(next(rngs),
+                #                                                       _params,
+                #                                                       _emissions_y,
+                #                                                       num_iter=ieks_num_iter)
 
                 rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
                 rotation = rotation.at[:, :self.state_dim, self.state_dim:].set(
