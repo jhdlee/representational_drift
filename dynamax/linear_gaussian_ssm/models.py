@@ -24,6 +24,7 @@ from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitia
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 
 from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, UKFHyperParams
+from dynamax.nonlinear_gaussian_ssm import unscented_kalman_posterior_sample
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_smoother, iterated_extended_kalman_posterior_sample
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_filter, iterated_extended_kalman_filter, extended_kalman_posterior_sample
 
@@ -1346,16 +1347,22 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     emission_covariance=_emissions_covs
                 )
 
-                posterior = iterated_extended_kalman_filter(_params, _emissions_y, num_iter=ieks_num_iter)
-                # velocity = extended_kalman_posterior_sample(next(rngs),
-                #                                              _params, _emissions_y,
-                #                                              filtered_posterior=posterior)
-                posterior = extended_kalman_smoother(_params, _emissions_y, filtered_posterior=posterior)
-                velocity = posterior.smoothed_means
-                # velocity = iterated_extended_kalman_posterior_sample(next(rngs),
-                #                                                       _params,
-                #                                                       _emissions_y,
-                #                                                       num_iter=ieks_num_iter)
+                # posterior = iterated_extended_kalman_filter(_params, _emissions_y, num_iter=ieks_num_iter)
+                # # velocity = extended_kalman_posterior_sample(next(rngs),
+                # #                                              _params, _emissions_y,
+                # #                                              filtered_posterior=posterior)
+                # posterior = extended_kalman_smoother(_params, _emissions_y, filtered_posterior=posterior)
+                # velocity = posterior.smoothed_means
+                # # velocity = iterated_extended_kalman_posterior_sample(next(rngs),
+                # #                                                       _params,
+                # #                                                       _emissions_y,
+                # #                                                       num_iter=ieks_num_iter)
+
+                ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
+                velocity = unscented_kalman_posterior_sample(next(rngs),
+                                                              _params,
+                                                              _emissions_y,
+                                                              ukf_hyperparams)
 
                 rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
                 rotation = rotation.at[:, :self.state_dim, self.state_dim:].set(

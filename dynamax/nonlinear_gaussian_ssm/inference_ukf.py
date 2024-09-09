@@ -285,3 +285,77 @@ def unscented_kalman_smoother(
         smoothed_means=smoothed_means,
         smoothed_covariances=smoothed_covs,
     )
+
+def unscented_kalman_posterior_sample(
+    key: PRNGKey,
+    params: ParamsNLGSSM,
+    emissions: Float[Array, "ntime emission_dim"],
+    hyperparams: UKFHyperParams,
+    inputs: Optional[Float[Array, "ntime input_dim"]]=None
+) -> Float[Array, "ntime state_dim"]:
+    """Run a unscented Kalman (RTS) posterior sampler.
+
+    Args:
+        params: model parameters.
+        emissions: array of observations.
+        hyperperams: hyper-parameters.
+        inputs: optional inputs.
+
+    Returns:
+        nlgssm_posterior: posterior object.
+
+    """
+    num_timesteps = len(emissions)
+    state_dim = params.dynamics_covariance.shape[0]
+
+    # Run the unscented Kalman filter
+    ukf_posterior = unscented_kalman_filter(params, emissions, hyperparams, inputs)
+    ll = ukf_posterior.marginal_loglik
+    filtered_means = ukf_posterior.filtered_means
+    filtered_covs = ukf_posterior.filtered_covariances
+
+    # Compute lambda and weights from from hyperparameters
+    alpha, beta, kappa = hyperparams.alpha, hyperparams.beta, hyperparams.kappa
+    lamb = _compute_lambda(alpha, kappa, state_dim)
+    w_mean, w_cov = _compute_weights(state_dim, alpha, beta, lamb)
+
+    # Dynamics and emission functions
+    f, h = params.dynamics_function, params.emission_function
+    f, h = (_process_fn(fn, inputs) for fn in (f, h))
+    inputs = _process_input(inputs, num_timesteps)
+
+    def _step(carry, args):
+        # Unpack the inputs
+        smoothed_mean_next, smoothed_cov_next = carry
+        key, filtered_mean, filtered_cov, t = args
+
+        # Get parameters and inputs for time t
+        Q = _get_params(params.dynamics_covariance, 2, t)
+        R = _get_params(params.emission_covariance, 2, t)
+        u = inputs[t]
+        y = emissions[t]
+
+        # Prediction step
+        m_pred, S_pred, S_cross = _predict(filtered_mean, filtered_cov, f, Q, lamb, w_mean, w_cov, u)
+        G = psd_solve(S_pred, S_cross.T).T
+
+        # Compute smoothed mean and covariance
+        smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
+        smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
+
+        state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
+        return (smoothed_mean, smoothed_cov), state
+
+    # Run the unscented Kalman smoother
+    key, this_key = jr.split(key, 2)
+    last_state = MVN(filtered_means[-1], filtered_covs[-1]).sample(seed=this_key)
+
+    args = (
+        jr.split(key, num_timesteps - 1),
+        filtered_means[:-1][::-1],
+        filtered_covs[:-1][::-1],
+        jnp.arange(num_timesteps - 2, -1, -1),
+    )
+    _, reversed_states = lax.scan(_step, last_state, args)
+    states = jnp.vstack([reversed_states[::-1], last_state])
+    return states
