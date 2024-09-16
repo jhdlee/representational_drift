@@ -1180,7 +1180,7 @@ def lgssm_posterior_sample_conditional_smc(
                                                                       jnp.arange(len(emissions)))
 
     initial_means = jnp.tile(params.initial_velocity.mean[jnp.newaxis], (num_particles, 1))
-    initial_covs = jnp.tile(params.initial_velocity.cov[jnp.newaxis], (num_particles, 1))
+    initial_covs = jnp.tile(params.initial_velocity.cov[jnp.newaxis], (num_particles, 1, 1))
 
     key, subkey = jr.split(key)
     states, ek_means, ek_covs, log_weights, ancestors, log_Z_hat, resampled = smc.conditional_smc(key=subkey,
