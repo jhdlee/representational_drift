@@ -66,7 +66,7 @@ def _compute_weights(n, alpha, beta, lamb):
     return w_mean, w_cov
 
 
-def _predict(m, P, f, Q, lamb, w_mean, w_cov, u):
+def _predict(m, P, f, Q, lamb, w_mean, w_cov):
     """Predict next mean and covariance using additive UKF
 
     Args:
@@ -87,8 +87,7 @@ def _predict(m, P, f, Q, lamb, w_mean, w_cov, u):
     n = len(m)
     # Form sigma points and propagate
     sigmas_pred = _compute_sigmas(m, P, n, lamb)
-    u_s = jnp.array([u] * len(sigmas_pred))
-    sigmas_pred_prop = vmap(f, (0, 0), 0)(sigmas_pred, u_s)
+    sigmas_pred_prop = vmap(f, 0, 0)(sigmas_pred)
 
     # Compute predicted mean and covariance
     m_pred = jnp.tensordot(w_mean, sigmas_pred_prop, axes=1)
@@ -97,7 +96,7 @@ def _predict(m, P, f, Q, lamb, w_mean, w_cov, u):
     return m_pred, P_pred, P_cross
 
 
-def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y):
+def _condition_on(m, P, h, R, lamb, w_mean, w_cov, y):
     """Condition a Gaussian potential on a new observation
 
     Args:
@@ -120,8 +119,7 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y):
     n = len(m)
     # Form sigma points and propagate
     sigmas_cond = _compute_sigmas(m, P, n, lamb)
-    u_s = jnp.array([u] * len(sigmas_cond))
-    sigmas_cond_prop = vmap(h, (0, 0), 0)(sigmas_cond, u_s)
+    sigmas_cond_prop = vmap(h, 0, 0)(sigmas_cond)
 
     # Compute parameters needed to filter
     pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
@@ -189,7 +187,7 @@ def unscented_kalman_filter(
         ll += log_likelihood
 
         # Predict the next state
-        pred_mean, pred_cov, _ = _predict(filtered_mean, filtered_cov, f, Q, lamb, w_mean, w_cov, u)
+        pred_mean, pred_cov, _ = _predict(filtered_mean, filtered_cov, f, Q, lamb, w_mean, w_cov)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
