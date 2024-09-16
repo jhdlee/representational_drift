@@ -165,6 +165,7 @@ def extended_kalman_filter(
 
 def iterated_extended_kalman_filter(
     params: ParamsNLGSSM,
+    model_params,
     emissions:  Float[Array, "ntime emission_dim"],
     num_iter: int = 2,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None
@@ -182,7 +183,8 @@ def iterated_extended_kalman_filter(
         post: posterior object.
 
     """
-    filtered_posterior = extended_kalman_filter(params, emissions, num_iter, inputs)
+    filtered_posterior = extended_kalman_filter(params, model_params,
+                                                emissions, num_iter, inputs)
     return filtered_posterior
 
 
