@@ -1558,7 +1558,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
             rotation = rotation.at[:, :self.state_dim, self.state_dim:].set(
-                _new_velocity.reshape((self.num_trials,) + self.dof_shape))
+                velocity.reshape((self.num_trials,) + self.dof_shape))
             rotation -= rotation.transpose(0, 2, 1)
             rotation = jscipy.linalg.expm(rotation)
             subspace = jnp.einsum('ij,rjk->rik', base_subspace, rotation)
