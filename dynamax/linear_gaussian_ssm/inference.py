@@ -1036,10 +1036,12 @@ def lgssm_posterior_sample_conditional_smc(
 
         # Extended Kalman proposal
         # if t > 0, predict the next state
-        def false_fun(m, P):
+        def false_fun(args):
+            m, P = args
             return m, P
 
-        def true_fun(m, P):
+        def true_fun(args):
+            m, P = args
             F_x = F(m)
             mu_pred = f(m)
             Sigma_pred = F_x @ P @ F_x.T + cov
