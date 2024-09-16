@@ -549,8 +549,8 @@ def lgssm_filter(
     carry = (0.0, params.initial.mean[trial_r], params.initial.cov[trial_r])
     (ll, _, _), (pred_means, pred_covs, filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
     return PosteriorGSSMFiltered(marginal_loglik=ll,
-                                 pred_means=pred_means,
-                                 pred_covs=pred_covs,
+                                 predicted_means=pred_means,
+                                 predicted_covariances=pred_covs,
                                  filtered_means=filtered_means,
                                  filtered_covariances=filtered_covs)
 
