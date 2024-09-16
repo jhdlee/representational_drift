@@ -1498,8 +1498,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 # print(current_params.initial_emissions.cov)
                 # print(current_params.emissions.ar_dependency)
                 # print(jnp.diag(current_params.emissions.cov))
-                print(jnp.diag(current_params.initial_velocity.cov))
-                print(current_params.emissions.tau)
+                # print(jnp.diag(current_params.initial_velocity.cov))
+                # print(current_params.emissions.tau)
                 print(ll)
             lls.append(ll)
 
