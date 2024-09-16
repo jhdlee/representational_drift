@@ -1200,9 +1200,13 @@ def lgssm_posterior_sample_conditional_smc(
                                                                                prespecified_incr_log_ws=prespecified_incr_log_ws,
                                                                                )
 
-    print(states.shape)
-    posterior_dist = smc.make_posterior_dist(jnp.arange(num_particles+1)[:, jnp.newaxis], ancestors,
+    # print(states.shape)
+    concat_states = jnp.concatenate([states, ek_means, ek_covs.reshape(num_steps, num_particles+1, -1)], axis=-1)
+    posterior_dist = smc.make_posterior_dist(concat_states, ancestors,
                                              resampled, num_steps, log_weights)
     key, subkey = jr.split(key)
-    idx = posterior_dist.sample(seed=subkey)
-    return states[idx], ek_means[idx], ek_covs[idx]
+    sampled_concat_states = posterior_dist.sample(seed=subkey)
+    sampled_states = sampled_concat_states[:, :dof]
+    sampled_ek_means = sampled_concat_states[:, dof:2*dof]
+    sampled_ek_covs = sampled_concat_states[:, 2*dof].reshape(num_steps, dof, dof)
+    return sampled_states, sampled_ek_means, sampled_ek_covs
