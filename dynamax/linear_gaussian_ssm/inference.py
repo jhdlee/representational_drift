@@ -1045,7 +1045,7 @@ def lgssm_posterior_sample_conditional_smc(
             Sigma_pred = F_x @ P @ F_x.T + cov
             return mu_pred, Sigma_pred
 
-        pred_mean, pred_cov = lax.cond(jnp.array([t]).astype(bool), true_fun, false_fun, (prev_latent, prev_cov))
+        pred_mean, pred_cov = lax.cond(t > 0, true_fun, false_fun, (prev_latent, prev_cov))
 
         H_x = H(pred_mean, obs, params, t)[0]
         mu, R = h(pred_mean, obs, params, t)
