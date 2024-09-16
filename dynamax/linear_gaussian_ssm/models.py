@@ -1535,7 +1535,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                 # compute pred obs means and covs
                 pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
-                pred_obs_covs = jnp.einsum('ij,tjk,kl->til', C, pred_covs, C) + emissions_cov
+                pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + emissions_cov
 
                 pred_obs_means = pred_obs_means.flatten()
                 pred_obs_covs = jscipy.linalg.block_diag(pred_obs_covs)
