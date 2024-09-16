@@ -1208,5 +1208,5 @@ def lgssm_posterior_sample_conditional_smc(
     sampled_concat_states = posterior_dist.sample(seed=subkey)
     sampled_states = sampled_concat_states[:, :dof]
     sampled_ek_means = sampled_concat_states[:, dof:2*dof]
-    sampled_ek_covs = sampled_concat_states[:, 2*dof].reshape(num_steps, dof, dof)
+    sampled_ek_covs = sampled_concat_states[:, 2*dof:].reshape(num_steps, dof, dof)
     return sampled_states, sampled_ek_means, sampled_ek_covs
