@@ -1049,13 +1049,13 @@ def lgssm_posterior_sample_conditional_smc(
 
         pred_mean, pred_cov = lax.cond(t > 0, true_fun, false_fun, (prev_latent, prev_cov))
 
-        H_x = H(pred_mean, obs, params, t)[0]
-        mu, R = h(pred_mean, obs, params, t)
+        H_x = H(pred_mean, obs, t)[0]
+        mu, R = h(pred_mean, obs, t)
 
         def _step(carry, _):
             prior_mean, prior_cov = carry
-            H_x, _ = H(prior_mean, obs, params, t)
-            mu, R = h(prior_mean, obs, params, t)
+            H_x, _ = H(prior_mean, obs, t)
+            mu, R = h(prior_mean, obs, t)
 
             S = R + H_x @ prior_cov @ H_x.T
             K = psd_solve(S, H_x @ prior_cov).T
