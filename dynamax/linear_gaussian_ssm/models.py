@@ -1552,7 +1552,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             )
 
             posterior = iterated_extended_kalman_filter(NLGSSM_params, _params, emissions, num_iter=ieks_num_iter)
-            velocity = extended_kalman_posterior_sample(next(rngs),
+            velocity = extended_kalman_posterior_sample(rngs[2],
                                                         NLGSSM_params, emissions,
                                                         filtered_posterior=posterior)
 
