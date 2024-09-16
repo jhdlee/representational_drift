@@ -41,7 +41,7 @@ def _predict(m, P, f, F, Q, u):
     return mu_pred, Sigma_pred
 
 
-def _condition_on(m, P, h, H, R, u, y, num_iter):
+def _condition_on(m, P, h, H, R, u, y, model_params, t, num_iter):
     r"""Condition a Gaussian potential on a new observation.
 
        p(z_t | y_t, u_t, y_{1:t-1}, u_{1:t-1})
@@ -72,11 +72,13 @@ def _condition_on(m, P, h, H, R, u, y, num_iter):
     """
     def _step(carry, _):
         prior_mean, prior_cov = carry
-        H_x = H(prior_mean, u)
+        H_x, _ = H(prior_mean, y, model_params, t)
+        mu, R = h(prior_mean, y, model_params, t)
+
         S = R + H_x @ prior_cov @ H_x.T
         K = psd_solve(S, H_x @ prior_cov).T
         posterior_cov = prior_cov - K @ S @ K.T
-        posterior_mean = prior_mean + K @ (y - h(prior_mean, u))
+        posterior_mean = prior_mean + K @ (y.flatten() - mu)
         return (posterior_mean, posterior_cov), None
 
     # Iterate re-linearization over posterior mean and covariance
@@ -87,6 +89,7 @@ def _condition_on(m, P, h, H, R, u, y, num_iter):
 
 def extended_kalman_filter(
     params: ParamsNLGSSM,
+    model_params,
     emissions: Float[Array, "ntime emission_dim"],
     num_iter: int = 1,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None,
@@ -112,8 +115,8 @@ def extended_kalman_filter(
 
     # Dynamics and emission functions and their Jacobians
     f, h = params.dynamics_function, params.emission_function
-    F, H = jacfwd(f), jacfwd(h)
-    f, h, F, H = (_process_fn(fn, inputs) for fn in (f, h, F, H))
+    F, H = jacfwd(f), jacfwd(h, argnums=0, has_aux=True)
+    f, F = (_process_fn(fn, inputs) for fn in (f, F))
     inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, t):
@@ -121,16 +124,18 @@ def extended_kalman_filter(
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
-        R = _get_params(params.emission_covariance, 2, t)
+        # R = _get_params(params.emission_covariance, 2, t)
         u = inputs[t]
         y = emissions[t]
 
         # Update the log likelihood
-        H_x = H(pred_mean, u)
-        ll += MVN(h(pred_mean, u), H_x @ pred_cov @ H_x.T + R).log_prob(jnp.atleast_1d(y))
+        H_x = H(pred_mean, y, model_params, t)[0]
+        mu, R = h(pred_mean, y, model_params, t)
+        ll += MVN(mu, H_x @ pred_cov @ H_x.T + R).log_prob(jnp.atleast_1d(y.flatten()))
 
         # Condition on this emission
-        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u, y, num_iter)
+        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u,
+                                                    y, model_params, t, num_iter)
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, f, F, Q, u)
