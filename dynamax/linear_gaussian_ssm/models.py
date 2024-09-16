@@ -1543,10 +1543,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 return pred_obs_means, pred_obs_covs
 
             NLGSSM_params = ParamsNLGSSM(
-                initial_mean=params.initial_velocity.mean,
-                initial_covariance=params.initial_velocity.cov,
+                initial_mean=_params.initial_velocity.mean,
+                initial_covariance=_params.initial_velocity.cov,
                 dynamics_function=f,
-                dynamics_covariance=jnp.diag(params.emissions.tau),
+                dynamics_covariance=jnp.diag(_params.emissions.tau),
                 emission_function=h,
                 emission_covariance=None
             )
