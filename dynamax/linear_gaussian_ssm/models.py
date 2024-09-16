@@ -1478,7 +1478,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         sample_of_states = []
         sample_of_velocity = []
         lls = []
-        marginal_lls = []
         keys = iter(jr.split(key, sample_size + 1))
         current_params = initial_params
         lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample, in_axes=(None, None, 0, None, 0, 0))
@@ -1501,8 +1500,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 # print(jnp.diag(current_params.emissions.cov))
                 print(jnp.diag(current_params.initial_velocity.cov))
                 print(current_params.emissions.tau)
-                print(ll, marginal_ll)
+                print(ll)
             lls.append(ll)
-            marginal_lls.append(marginal_ll)
 
-        return pytree_stack(sample_of_params), lls, None, sample_of_states, sample_of_velocity, marginal_lls
+        return pytree_stack(sample_of_params), lls, sample_of_states, sample_of_velocity
