@@ -1066,6 +1066,7 @@ def lgssm_posterior_sample_conditional_smc(
         # Iterate re-linearization over posterior mean and covariance
         carry = (pred_mean, pred_cov)
         (ek_mean, ek_cov), _ = lax.scan(_step, carry, jnp.arange(num_ekf_iters))
+        ek_cov = symmetrize(ek_cov)
 
         new_velocity = MVN(ek_mean, ek_cov).sample(seed=key)
 
