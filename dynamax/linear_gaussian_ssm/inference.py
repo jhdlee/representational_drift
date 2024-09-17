@@ -1111,6 +1111,8 @@ def lgssm_posterior_sample_conditional_smc(
         log_p = MVN(prev_latent, cov).log_prob(new_velocity)
         log_q = MVN(ek_mean, ek_cov).log_prob(new_velocity)
 
+        jax.debug.print("{x}, {y}, {z}", x=log_w, y=log_p, z=log_q)
+
         return new_velocity, log_w + log_p - log_q, ek_mean, ek_cov
 
     def ancestor_sample_fn(args):
