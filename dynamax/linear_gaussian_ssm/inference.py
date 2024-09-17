@@ -1112,7 +1112,7 @@ def lgssm_posterior_sample_conditional_smc(
         log_p = MVN(prev_latent, cov).log_prob(new_velocity)
         log_q = MVN(ek_mean, ek_cov).log_prob(new_velocity)
 
-        jax.debug.print("{x}, {y}, {z}", x=log_w, y=log_p, z=log_q)
+        jax.debug.print("p_and_w: {x}, {y}, {z}", x=log_w, y=log_p, z=log_q)
 
         return new_velocity, log_w + log_p - log_q, ek_mean, ek_cov
 
@@ -1173,6 +1173,8 @@ def lgssm_posterior_sample_conditional_smc(
         log_p = MVN(prev_state, cov).log_prob(state)
 
         log_q = MVN(pre_mean, pre_cov).log_prob(state)
+
+        jax.debug.print("precompute: {x}, {y}, {z}", x=log_w, y=log_p, z=log_q)
 
         return log_w + log_p - log_q
 
