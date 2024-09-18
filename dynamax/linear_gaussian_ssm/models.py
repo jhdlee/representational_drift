@@ -1552,9 +1552,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             )
 
             posterior = iterated_extended_kalman_filter(NLGSSM_params, _params, emissions, num_iter=ieks_num_iter)
-            velocity = extended_kalman_posterior_sample(rngs[2],
-                                                        NLGSSM_params, emissions,
-                                                        filtered_posterior=posterior)
+            velocity = posterior.filtered_means
+            # velocity = extended_kalman_posterior_sample(rngs[2], NLGSSM_params, emissions, filtered_posterior=posterior)
 
             rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
             rotation = rotation.at[:, :self.state_dim, self.state_dim:].set(
