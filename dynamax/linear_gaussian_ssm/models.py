@@ -1369,23 +1369,26 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 d = None
                 D = jnp.zeros((self.emission_dim, 0))
 
-                initial_velocity = velocity[0]
-                init_velocity_stats_1 = jnp.linalg.inv(params.initial_velocity.cov)
-                init_velocity_stats_2 = init_velocity_stats_1 @ initial_velocity
-                init_velocity_stats = (init_velocity_stats_1, init_velocity_stats_2)
-                init_velocity_posterior = mvn_posterior_update(self.initial_velocity_mean_prior,
-                                                               init_velocity_stats)
-                initial_velocity_mean = init_velocity_posterior.sample(seed=next(rngs))
+                # initial_velocity = velocity[0]
+                # init_velocity_stats_1 = jnp.linalg.inv(params.initial_velocity.cov)
+                # init_velocity_stats_2 = init_velocity_stats_1 @ initial_velocity
+                # init_velocity_stats = (init_velocity_stats_1, init_velocity_stats_2)
+                # init_velocity_posterior = mvn_posterior_update(self.initial_velocity_mean_prior,
+                #                                                init_velocity_stats)
+                # initial_velocity_mean = init_velocity_posterior.sample(seed=next(rngs))
+                #
+                # init_velocity_cov_stats_1 = jnp.ones((self.dof, 1)) / 2
+                # init_velocity_cov_stats_2 = initial_velocity - initial_velocity_mean
+                # init_velocity_cov_stats_2 = jnp.square(init_velocity_cov_stats_2) / 2
+                # init_velocity_cov_stats_2 = jnp.expand_dims(init_velocity_cov_stats_2, -1)
+                # init_velocity_cov_stats = (init_velocity_cov_stats_1, init_velocity_cov_stats_2)
+                # init_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior,
+                #                                                   init_velocity_cov_stats)
+                # initial_velocity_cov = init_velocity_cov_posterior.sample(seed=next(rngs))
+                # initial_velocity_cov = jnp.diag(jnp.ravel(initial_velocity_cov))
 
-                init_velocity_cov_stats_1 = jnp.ones((self.dof, 1)) / 2
-                init_velocity_cov_stats_2 = initial_velocity - initial_velocity_mean
-                init_velocity_cov_stats_2 = jnp.square(init_velocity_cov_stats_2) / 2
-                init_velocity_cov_stats_2 = jnp.expand_dims(init_velocity_cov_stats_2, -1)
-                init_velocity_cov_stats = (init_velocity_cov_stats_1, init_velocity_cov_stats_2)
-                init_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior,
-                                                                  init_velocity_cov_stats)
-                initial_velocity_cov = init_velocity_cov_posterior.sample(seed=next(rngs))
-                initial_velocity_cov = jnp.diag(jnp.ravel(initial_velocity_cov))
+                initial_velocity_mean = params.initial_velocity.mean
+                initial_velocity_cov = params.initial_velocity.cov
 
                 if self.fix_tau:
                     tau = params.emissions.tau
