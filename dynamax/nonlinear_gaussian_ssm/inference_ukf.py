@@ -166,7 +166,8 @@ def unscented_kalman_filter(
 
     # Dynamics and emission functions
     f, h = params.dynamics_function, params.emission_function
-    f, h = (_process_fn(fn, inputs) for fn in (f, h))
+    # f, h = (_process_fn(fn, inputs) for fn in (f, h))
+    f = (_process_fn(fn, inputs) for fn in (f,))
     inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, t):
