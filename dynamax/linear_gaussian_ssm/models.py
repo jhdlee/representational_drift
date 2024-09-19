@@ -1535,12 +1535,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                 # compute pred obs means and covs
                 pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
-                # pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + emissions_cov
+                pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + emissions_cov
 
                 pred_obs_means = pred_obs_means.flatten()
-                # pred_obs_covs = jscipy.linalg.block_diag(*pred_obs_covs)
+                pred_obs_covs = jscipy.linalg.block_diag(*pred_obs_covs)
 
-                return pred_obs_means#, pred_obs_covs
+                return pred_obs_means, symmetrize(pred_obs_covs)
 
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=_params.initial_velocity.mean,
@@ -1549,7 +1549,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 dynamics_covariance=jnp.diag(_params.emissions.tau),
                 emission_function=h,
                 emission_covariance=jscipy.linalg.block_diag(
-                    *jnp.tile(_params.emissions.cov[None], (masks.shape[0], 1, 1)))
+                    *jnp.tile(_params.emissions.cov[None], (masks.shape[1], 1, 1)))
             )
 
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)

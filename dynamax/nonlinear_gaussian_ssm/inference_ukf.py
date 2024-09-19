@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 from jax import lax
@@ -6,7 +7,7 @@ from tensorflow_probability.substrates.jax.distributions import MultivariateNorm
 from jaxtyping import Array, Float
 from typing import NamedTuple, Optional, List
 
-from dynamax.utils.utils import psd_solve
+from dynamax.utils.utils import psd_solve, symmetrize
 from dynamax.types import PRNGKey
 from dynamax.nonlinear_gaussian_ssm.models import  ParamsNLGSSM
 from dynamax.linear_gaussian_ssm.models import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
@@ -119,21 +120,26 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, y, t):
     n = len(m)
     # Form sigma points and propagate
     sigmas_cond = _compute_sigmas(m, P, n, lamb)
-    sigmas_cond_prop = vmap(h, in_axes=(0, None, None))(sigmas_cond, y, t)
-
+    sigmas_cond_prop, _ = vmap(h, in_axes=(0, None, None))(sigmas_cond, y, t)
+    
     # Compute parameters needed to filter
     pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
-    pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1) + R
+    _, pred_obs_prop = h(m, y, t)
+    # pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1) + R + jnp.eye(R.shape[-1]) * 1e-4
+    pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1) + pred_obs_prop #+ jnp.eye(pred_obs_prop.shape[-1]) * 1e-4
+    pred_cov = symmetrize(pred_cov)
+    # pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean) + pred_obs_prop, axes=1)
+    # pred_cov = pred_obs_prop
     pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond - m, sigmas_cond_prop - pred_mean), axes=1)
 
     # Compute log-likelihood of observation
-    ll = MVN(pred_mean, pred_cov).log_prob(y)
+    ll = MVN(pred_mean, pred_cov).log_prob(y.flatten())
 
     # Compute filtered mean and covariace
     K = psd_solve(pred_cov, pred_cross.T).T  # Filter gain
-    m_cond = m + K @ (y - pred_mean)
+    m_cond = m + K @ (y.flatten() - pred_mean)
     P_cond = P - K @ pred_cov @ K.T
-    return ll, m_cond, P_cond
+    return ll, m_cond, symmetrize(P_cond)
 
 
 def unscented_kalman_filter(
@@ -167,7 +173,7 @@ def unscented_kalman_filter(
     # Dynamics and emission functions
     f, h = params.dynamics_function, params.emission_function
     # f, h = (_process_fn(fn, inputs) for fn in (f, h))
-    f = (_process_fn(fn, inputs) for fn in (f,))
+    # f = (_process_fn(fn, inputs) for fn in (f,))
     inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, t):
@@ -322,7 +328,7 @@ def unscented_kalman_posterior_sample(
 
     # Dynamics and emission functions
     f, h = params.dynamics_function, params.emission_function
-    f, h = (_process_fn(fn, inputs) for fn in (f, h))
+    # f, h = (_process_fn(fn, inputs) for fn in (f, h))
     inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, args):
@@ -337,7 +343,7 @@ def unscented_kalman_posterior_sample(
         y = emissions[t]
 
         # Prediction step
-        m_pred, S_pred, S_cross = _predict(filtered_mean, filtered_cov, f, Q, lamb, w_mean, w_cov, u)
+        m_pred, S_pred, S_cross = _predict(filtered_mean, filtered_cov, f, Q, lamb, w_mean, w_cov)
         G = psd_solve(S_pred, S_cross.T).T
 
         # Compute smoothed mean and covariance
