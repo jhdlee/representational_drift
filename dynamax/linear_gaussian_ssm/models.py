@@ -1549,7 +1549,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 dynamics_covariance=jnp.diag(_params.emissions.tau),
                 emission_function=h,
                 emission_covariance=jscipy.linalg.block_diag(
-                    *jnp.tile(params.emissions.cov[None], (masks.shape[0], 1, 1)))
+                    *jnp.tile(_params.emissions.cov[None], (masks.shape[0], 1, 1)))
             )
 
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
