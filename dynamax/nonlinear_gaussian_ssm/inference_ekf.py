@@ -41,7 +41,7 @@ def _predict(m, P, f, F, Q, u):
     return mu_pred, Sigma_pred
 
 
-def _condition_on(m, P, h, H, R, u, y, num_iter):
+def _condition_on(m, P, h, H, R, u, y, model_params, t, num_iter):
     r"""Condition a Gaussian potential on a new observation.
 
        p(z_t | y_t, u_t, y_{1:t-1}, u_{1:t-1})
@@ -72,11 +72,13 @@ def _condition_on(m, P, h, H, R, u, y, num_iter):
     """
     def _step(carry, _):
         prior_mean, prior_cov = carry
-        H_x = H(prior_mean, u)
+        H_x, _ = H(prior_mean, y, model_params, t)
+        mu, R = h(prior_mean, y, model_params, t)
+
         S = R + H_x @ prior_cov @ H_x.T
         K = psd_solve(S, H_x @ prior_cov).T
         posterior_cov = prior_cov - K @ S @ K.T
-        posterior_mean = prior_mean + K @ (y - h(prior_mean, u))
+        posterior_mean = prior_mean + K @ (y.flatten() - mu)
         return (posterior_mean, posterior_cov), None
 
     # Iterate re-linearization over posterior mean and covariance
@@ -87,6 +89,7 @@ def _condition_on(m, P, h, H, R, u, y, num_iter):
 
 def extended_kalman_filter(
     params: ParamsNLGSSM,
+    model_params,
     emissions: Float[Array, "ntime emission_dim"],
     num_iter: int = 1,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None,
@@ -112,8 +115,8 @@ def extended_kalman_filter(
 
     # Dynamics and emission functions and their Jacobians
     f, h = params.dynamics_function, params.emission_function
-    F, H = jacfwd(f), jacfwd(h)
-    f, h, F, H = (_process_fn(fn, inputs) for fn in (f, h, F, H))
+    F, H = jacfwd(f), jacfwd(h, argnums=0, has_aux=True)
+    f, F = (_process_fn(fn, inputs) for fn in (f, F))
     inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, t):
@@ -121,16 +124,18 @@ def extended_kalman_filter(
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
-        R = _get_params(params.emission_covariance, 2, t)
+        # R = _get_params(params.emission_covariance, 2, t)
         u = inputs[t]
         y = emissions[t]
 
         # Update the log likelihood
-        H_x = H(pred_mean, u)
-        ll += MVN(h(pred_mean, u), H_x @ pred_cov @ H_x.T + R).log_prob(jnp.atleast_1d(y))
+        H_x = H(pred_mean, y, model_params, t)[0]
+        mu, R = h(pred_mean, y, model_params, t)
+        ll += 0.0 #MVN(mu, H_x @ pred_cov @ H_x.T + R).log_prob(jnp.atleast_1d(y.flatten()))
 
         # Condition on this emission
-        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u, y, num_iter)
+        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u,
+                                                    y, model_params, t, num_iter)
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, f, F, Q, u)
@@ -160,6 +165,7 @@ def extended_kalman_filter(
 
 def iterated_extended_kalman_filter(
     params: ParamsNLGSSM,
+    model_params,
     emissions:  Float[Array, "ntime emission_dim"],
     num_iter: int = 2,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None
@@ -177,7 +183,8 @@ def iterated_extended_kalman_filter(
         post: posterior object.
 
     """
-    filtered_posterior = extended_kalman_filter(params, emissions, num_iter, inputs)
+    filtered_posterior = extended_kalman_filter(params, model_params,
+                                                emissions, num_iter, inputs)
     return filtered_posterior
 
 
@@ -253,7 +260,48 @@ def extended_kalman_smoother(
     )
 
 
+def _condition_on_original(m, P, h, H, R, u, y, num_iter):
+    r"""Condition a Gaussian potential on a new observation.
 
+       p(z_t | y_t, u_t, y_{1:t-1}, u_{1:t-1})
+         propto p(z_t | y_{1:t-1}, u_{1:t-1}) p(y_t | z_t, u_t)
+         = N(z_t | m, S) N(y_t | h_t(z_t, u_t), R_t)
+         = N(z_t | mm, SS)
+     where
+         mm = m + K*(y - yhat) = mu_cond
+         yhat = h(m, u)
+         S = R + H(m,u) * P * H(m,u)'
+         K = P * H(m, u)' * S^{-1}
+         SS = P - K * S * K' = Sigma_cond
+     **Note! This can be done more efficiently when R is diagonal.**
+
+    Args:
+         m (D_hid,): prior mean.
+         P (D_hid,D_hid): prior covariance.
+         h (Callable): emission function.
+         H (Callable): Jacobian of emission function.
+         R (D_obs,D_obs): emission covariance matrix.
+         u (D_in,): inputs.
+         y (D_obs,): observation.
+         num_iter (int): number of re-linearizations around posterior for update step.
+
+     Returns:
+         mu_cond (D_hid,): filtered mean.
+         Sigma_cond (D_hid,D_hid): filtered covariance.
+    """
+    def _step(carry, _):
+        prior_mean, prior_cov = carry
+        H_x = H(prior_mean, u)
+        S = R + H_x @ prior_cov @ H_x.T
+        K = psd_solve(S, H_x @ prior_cov).T
+        posterior_cov = prior_cov - K @ S @ K.T
+        posterior_mean = prior_mean + K @ (y - h(prior_mean, u))
+        return (posterior_mean, posterior_cov), None
+
+    # Iterate re-linearization over posterior mean and covariance
+    carry = (m, P)
+    (mu_cond, Sigma_cond), _ = lax.scan(_step, carry, jnp.arange(num_iter))
+    return mu_cond, symmetrize(Sigma_cond)
 
 def extended_kalman_posterior_sample(
     key: PRNGKey,
@@ -298,7 +346,7 @@ def extended_kalman_posterior_sample(
         u = inputs[t]
 
         # Condition on next state
-        smoothed_mean, smoothed_cov = _condition_on(filtered_mean, filtered_cov, f, F, Q, u, next_state, 1)
+        smoothed_mean, smoothed_cov = _condition_on_original(filtered_mean, filtered_cov, f, F, Q, u, next_state, 1)
         state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
         return state, state
 
