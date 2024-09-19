@@ -1540,7 +1540,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 pred_obs_means = pred_obs_means.flatten()
                 pred_obs_covs = jscipy.linalg.block_diag(*pred_obs_covs)
 
-                return pred_obs_means, symmetrize(pred_obs_covs)
+                return pred_obs_means, pred_obs_covs
 
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=_params.initial_velocity.mean,
@@ -1552,8 +1552,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             )
 
             posterior = iterated_extended_kalman_filter(NLGSSM_params, _params, emissions, num_iter=ieks_num_iter)
-            # velocity = posterior.filtered_means
-            velocity = extended_kalman_posterior_sample(rngs[2], NLGSSM_params, emissions, filtered_posterior=posterior)
+            velocity = extended_kalman_posterior_sample(rngs[2],
+                                                        NLGSSM_params, emissions,
+                                                        filtered_posterior=posterior)
 
             rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
             rotation = rotation.at[:, :self.state_dim, self.state_dim:].set(
