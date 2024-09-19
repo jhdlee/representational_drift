@@ -1540,7 +1540,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 pred_obs_means = pred_obs_means.flatten()
                 pred_obs_covs = jscipy.linalg.block_diag(*pred_obs_covs)
 
-                return pred_obs_means, pred_obs_covs
+                return pred_obs_means, symmetrize(pred_obs_covs)
 
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=_params.initial_velocity.mean,
