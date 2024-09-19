@@ -1490,7 +1490,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             def f(v):
                 return v
 
-            def h(v, obs_t, model_params, t):
+            def h(v, obs_t, t):
                 rotation = jnp.zeros((self.emission_dim, self.emission_dim))
                 rotation = rotation.at[:self.state_dim, self.state_dim:].set(v.reshape(self.dof_shape))
                 rotation -= rotation.T
@@ -1499,14 +1499,14 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 C = new_subspace[:, :self.state_dim]  # .reshape(-1)
 
                 # new params constructed from model_params
-                init_mean_t = model_params.initial.mean
-                init_cov_t = model_params.initial.cov
-                dynamics_weights = model_params.dynamics.weights
-                dynamics_cov = model_params.dynamics.cov
-                emissions_cov = model_params.emissions.cov
-                initial_velocity_mean = model_params.initial_velocity.mean
-                initial_velocity_cov = model_params.initial_velocity.cov
-                tau = model_params.emissions.tau
+                init_mean_t = _params.initial.mean
+                init_cov_t = _params.initial.cov
+                dynamics_weights = _params.dynamics.weights
+                dynamics_cov = _params.dynamics.cov
+                emissions_cov = _params.emissions.cov
+                initial_velocity_mean = _params.initial_velocity.mean
+                initial_velocity_cov = _params.initial_velocity.cov
+                tau = _params.emissions.tau
                 new_params = ParamsTVLGSSM(
                     initial=ParamsLGSSMInitial(
                         mean=init_mean_t,
