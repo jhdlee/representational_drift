@@ -1185,7 +1185,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             return_n_samples: int = 100,
             print_ll: bool = False,
             masks: jnp.array = None,
-            trial_masks: jnp.array = None,
             fixed_states: jnp.array = None,
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
@@ -1205,8 +1204,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             inputs = jnp.zeros((num_timesteps, 0))
         if masks is None:
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
-        if trial_masks is None:
-            trial_masks = jnp.ones(emissions.shape[0], dtype=bool)
 
         def sufficient_stats_from_sample(states, params):
             """Convert samples of states to sufficient statistics."""
@@ -1535,12 +1532,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                 # compute pred obs means and covs
                 pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
-                pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + emissions_cov
+                #pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + emissions_cov
 
                 pred_obs_means = pred_obs_means.flatten()
-                pred_obs_covs = jscipy.linalg.block_diag(*pred_obs_covs)
+                #pred_obs_covs = jscipy.linalg.block_diag(*pred_obs_covs)
 
-                return pred_obs_means, pred_obs_covs
+                return pred_obs_means#, pred_obs_covs
 
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=_params.initial_velocity.mean,
@@ -1548,11 +1545,13 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 dynamics_function=f,
                 dynamics_covariance=jnp.diag(_params.emissions.tau),
                 emission_function=h,
-                emission_covariance=None
+                emission_covariance=jscipy.linalg.block_diag(*jnp.tile(params.emissions.cov[None], (masks.shape[0], 1, 1)))
             )
 
-            posterior = iterated_extended_kalman_filter(NLGSSM_params, _params, emissions, num_iter=ieks_num_iter)
-            velocity = posterior.filtered_means
+            ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
+            velocity = unscented_kalman_posterior_sample(rngs[2],
+                                                         NLGSSM_params, emissions, ukf_hyperparams)
+            # velocity = posterior.filtered_means
             # velocity = extended_kalman_posterior_sample(rngs[2], NLGSSM_params, emissions, filtered_posterior=posterior)
 
             rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
