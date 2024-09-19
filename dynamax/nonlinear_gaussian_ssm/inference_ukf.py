@@ -180,7 +180,7 @@ def unscented_kalman_filter(
 
         # Condition on this emission
         log_likelihood, filtered_mean, filtered_cov = _condition_on(
-            pred_mean, pred_cov, h, R, lamb, w_mean, w_cov, u, y
+            pred_mean, pred_cov, h, R, lamb, w_mean, w_cov, y
         )
 
         # Update the log likelihood
