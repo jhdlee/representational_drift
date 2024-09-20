@@ -72,9 +72,9 @@ def _condition_on(m, P, h, H, R, u, y, eps, t, num_iter):
     """
     def _step(carry, _):
         prior_mean, prior_cov = carry
-        H_x, H_eps = H(pred_mean, eps, t) # (TN x V), (TN x T x N)
+        H_x, H_eps = H(prior_mean, eps, t) # (TN x V), (TN x T x N)
         H_eps = H_eps.reshape(H_eps.shape[0], -1)
-        y_pred = h(pred_mean, eps, t) # TN
+        y_pred = h(prior_mean, eps, t) # TN
 
         S = H_x @ prior_cov @ H_x.T + H_eps @ H_eps.T
         K = psd_solve(S, H_x @ prior_cov).T
