@@ -125,7 +125,7 @@ def extended_kalman_filter(
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
-        # R = _get_params(params.emission_covariance, 2, t)
+        R = None #_get_params(params.emission_covariance, 2, t)
         u = inputs[t]
         y = emissions[t]
 
