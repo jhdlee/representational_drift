@@ -72,7 +72,7 @@ def _condition_on(m, P, h, H, R, u, y, eps, t, num_iter):
     """
     def _step(carry, _):
         prior_mean, prior_cov = carry
-        H_x, H_eps = H(prior_mean, eps, t) # (TN x V), (TN x T x N)
+        H_x, H_eps = H(prior_mean, eps, y, t) # (TN x V), (TN x T x N)
         H_eps = H_eps.reshape(H_eps.shape[0], -1)
         y_pred = h(prior_mean, eps, t) # TN
 
@@ -130,9 +130,9 @@ def extended_kalman_filter(
         y = emissions[t]
 
         # Update the log likelihood
-        H_x, H_eps = H(pred_mean, eps, t) # (TN x V), (TN x T x N)
+        H_x, H_eps = H(pred_mean, eps, y, t) # (TN x V), (TN x T x N)
         H_eps = H_eps.reshape(H_eps.shape[0], -1)
-        y_pred = h(pred_mean, eps, t) # TN
+        y_pred = h(pred_mean, eps, y, t) # TN
         s_k = H_x @ pred_cov @ H_x.T + H_eps @ H_eps.T
         ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y.flatten()))
 
@@ -364,7 +364,7 @@ def extended_kalman_posterior_sample(
     )
     _, reversed_states = lax.scan(_step, last_state, args)
     states = jnp.vstack([reversed_states[::-1], last_state])
-    return states
+    return states, ll
 
 
 
