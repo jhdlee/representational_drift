@@ -1416,6 +1416,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 dynamics_cov = _params.dynamics.cov
                 emissions_cov = _params.emissions.cov
 
+                eps = eps.reshape(-1, self.emission_dim)
+
                 def _scan(carry, epst):
                     mu_ts, sigma_ts = carry
 
