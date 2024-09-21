@@ -84,10 +84,10 @@ def _predict(m, P, f, Q, lamb, w_mean, w_cov, u, n, n_noise):
 
     """
     # Form sigma points and propagate
-    sigmas_pred = _compute_sigmas(m, P, n, lamb)
+    sigmas_pred = _compute_sigmas(m, P, n + n_noise, lamb)
     sigmas_noise_pred = _compute_sigmas(jnp.zeros(n_noise),
                                         jnp.eye(n_noise),
-                                        n_noise, lamb)
+                                        n + n_noise, lamb)
 
     sigmas_pred_prop = vmap(f, (0, 0), 0)(sigmas_pred, sigmas_noise_pred)
 
@@ -120,10 +120,10 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, n, n_noise):
 
     """
     # Form sigma points and propagate
-    sigmas_cond = _compute_sigmas(m, P, n, lamb)
+    sigmas_cond = _compute_sigmas(m, P, n + n_noise, lamb)
     sigmas_noise_cond = _compute_sigmas(jnp.zeros(n_noise),
                                         jnp.eye(n_noise),
-                                        n_noise, lamb)
+                                        n + n_noise, lamb)
 
     sigmas_cond_prop = vmap(h, (0, 0), 0)(sigmas_cond,
                                           sigmas_noise_cond)
