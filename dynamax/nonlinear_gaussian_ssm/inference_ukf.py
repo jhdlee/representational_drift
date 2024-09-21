@@ -130,13 +130,9 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, n, n_noise):
                                         jnp.eye(n_noise),
                                         n + n_noise, n_noise, lamb)
 
-    print(sigmas_cond.shape)
-    print(sigmas_noise_cond.shape)
-    print(m.shape)
-
     sigmas_cond = jnp.concatenate([sigmas_cond,
-                                   jnp.tile(m[None], (n_noise, 1))], axis=0)
-    sigmas_noise_cond = jnp.concatenate([jnp.tile(jnp.zeros((1, n_noise)), (n, 1)),
+                                   jnp.tile(m[None], (2*n_noise, 1))], axis=0)
+    sigmas_noise_cond = jnp.concatenate([jnp.tile(jnp.zeros((1, n_noise)), (2*n, 1)),
                                          sigmas_noise_cond], axis=0)
 
     sigmas_cond_prop = vmap(h, (0, 0), 0)(sigmas_cond,
