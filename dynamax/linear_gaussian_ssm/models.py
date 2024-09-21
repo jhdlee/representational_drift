@@ -1401,7 +1401,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             def f(v, eps):
                 return v + jnp.linalg.cholesky(jnp.diag(_params.emissions.tau)) @ eps
 
-            def h(v, eps, t):
+            def h(v, eps, obs_t, t):
                 rotation = jnp.zeros((self.emission_dim, self.emission_dim))
                 rotation = rotation.at[:self.state_dim, self.state_dim:].set(v.reshape(self.dof_shape))
                 rotation -= rotation.T
@@ -1409,37 +1409,78 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 new_subspace = base_subspace @ rotation
                 C = new_subspace[:, :self.state_dim]  # .reshape(-1)
 
-                # new params constructed from _params
-                init_mean_t = _params.initial.mean[t]
-                init_cov_t = _params.initial.cov[t]
+                # # new params constructed from _params
+                # init_mean_t = _params.initial.mean[t]
+                # init_cov_t = _params.initial.cov[t]
+                # dynamics_weights = _params.dynamics.weights
+                # dynamics_cov = _params.dynamics.cov
+                # emissions_cov = _params.emissions.cov
+
+                # eps = eps.reshape(-1, self.emission_dim)
+                #
+                # def _scan(carry, epst):
+                #     mu_ts, sigma_ts = carry
+                #
+                #     s_rt = C @ sigma_ts @ C.T + emissions_cov
+                #     y_rt_hat = C @ mu_ts
+                #     r_rt = jnp.linalg.cholesky(s_rt) @ epst
+                #     y_rt = y_rt_hat + r_rt
+                #
+                #     k_rt = psd_solve(s_rt, C @ sigma_ts).T
+                #
+                #     sigma_tt = sigma_ts - k_rt @ s_rt @ k_rt.T
+                #     mu_tt = mu_ts + k_rt @ r_rt
+                #
+                #     mu_tt_pred = dynamics_weights @ mu_tt
+                #     sigma_tt_pred = dynamics_weights @ sigma_tt @ dynamics_weights.T + dynamics_cov
+                #
+                #     return (mu_tt_pred, sigma_tt_pred), y_rt
+                #
+                # init_carry = (init_mean_t, init_cov_t)
+                # _, y_rts = lax.scan(_scan, init_carry, eps)
+
+                # new params constructed from model_params
+                init_mean_t = _params.initial.mean
+                init_cov_t = _params.initial.cov
                 dynamics_weights = _params.dynamics.weights
                 dynamics_cov = _params.dynamics.cov
                 emissions_cov = _params.emissions.cov
+                initial_velocity_mean = _params.initial_velocity.mean
+                initial_velocity_cov = _params.initial_velocity.cov
+                tau = _params.emissions.tau
+                new_params = ParamsTVLGSSM(
+                    initial=ParamsLGSSMInitial(
+                        mean=init_mean_t,
+                        cov=init_cov_t),
+                    dynamics=ParamsLGSSMDynamics(
+                        weights=dynamics_weights,
+                        bias=None,
+                        input_weights=jnp.zeros((self.state_dim, 0)),
+                        cov=dynamics_cov),
+                    emissions=ParamsLGSSMEmissions(
+                        weights=C,
+                        bias=None,
+                        input_weights=jnp.zeros((self.emission_dim, 0)),
+                        cov=emissions_cov,
+                        tau=tau),
+                    initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
+                                                        cov=initial_velocity_cov),
+                )
 
-                eps = eps.reshape(-1, self.emission_dim)
+                filtered_posterior = lgssm_filter(new_params, obs_t,
+                                                  None, masks[t], trial_r=t)
 
-                def _scan(carry, epst):
-                    mu_ts, sigma_ts = carry
+                # get pred means and covs
+                pred_means = filtered_posterior.predicted_means
+                pred_covs = filtered_posterior.predicted_covariances
 
-                    s_rt = C @ sigma_ts @ C.T + emissions_cov
-                    y_rt_hat = C @ mu_ts
-                    r_rt = jnp.linalg.cholesky(s_rt) @ epst
-                    y_rt = y_rt_hat + r_rt
+                pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
+                pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + emissions_cov
+                pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
 
-                    k_rt = psd_solve(s_rt, C @ sigma_ts).T
+                y_r += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps.reshape(-1, self.emission_dim))
 
-                    sigma_tt = sigma_ts - k_rt @ s_rt @ k_rt.T
-                    mu_tt = mu_ts + k_rt @ r_rt
-
-                    mu_tt_pred = dynamics_weights @ mu_tt
-                    sigma_tt_pred = dynamics_weights @ sigma_tt @ dynamics_weights.T + dynamics_cov
-
-                    return (mu_tt_pred, sigma_tt_pred), y_rt
-
-                init_carry = (init_mean_t, init_cov_t)
-                _, y_rts = lax.scan(_scan, init_carry, eps)
-
-                return y_rts.flatten()
+                return y_r.flatten()
 
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=_params.initial_velocity.mean,

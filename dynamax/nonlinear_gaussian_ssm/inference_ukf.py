@@ -135,7 +135,7 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, n, n_noise):
     sigmas_noise_cond = jnp.concatenate([jnp.tile(jnp.zeros((1, n_noise)), (2*n, 1)),
                                          sigmas_noise_cond], axis=0)
 
-    sigmas_cond_prop = vmap(h, (0, 0, None), 0)(sigmas_cond, sigmas_noise_cond, t)
+    sigmas_cond_prop = vmap(h, (0, 0, None, None), 0)(sigmas_cond, sigmas_noise_cond, y, t)
 
     # Compute parameters needed to filter
     pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
