@@ -104,7 +104,7 @@ def _predict(m, P, f, Q, lamb, w_mean, w_cov, u, n, n_noise):
     return m_pred, P_pred, P_cross
 
 
-def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, n, n_noise):
+def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, n, n_noise):
     """Condition a Gaussian potential on a new observation
 
     Args:
@@ -135,8 +135,7 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, n, n_noise):
     sigmas_noise_cond = jnp.concatenate([jnp.tile(jnp.zeros((1, n_noise)), (2*n, 1)),
                                          sigmas_noise_cond], axis=0)
 
-    sigmas_cond_prop = vmap(h, (0, 0), 0)(sigmas_cond,
-                                          sigmas_noise_cond)
+    sigmas_cond_prop = vmap(h, (0, 0, None), 0)(sigmas_cond, sigmas_noise_cond, t)
 
     # Compute parameters needed to filter
     pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
@@ -203,7 +202,7 @@ def unscented_kalman_filter(
 
         # Condition on this emission
         log_likelihood, filtered_mean, filtered_cov = _condition_on(
-            pred_mean, pred_cov, h, R, lamb_pp, w_mean_pp, w_cov_pp, u, y,
+            pred_mean, pred_cov, h, R, lamb_pp, w_mean_pp, w_cov_pp, u, y, t,
             state_dim, cov_dim
         )
 
