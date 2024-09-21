@@ -28,7 +28,7 @@ _process_input = lambda x, y: jnp.zeros((y,)) if x is None else x
 _compute_lambda = lambda x, y, z: x**2 * (y + z) - z
 
 
-def _compute_sigmas(m, P, n, lamb):
+def _compute_sigmas(m, P, n_total, n, lamb):
     """Compute (2n+1) sigma points used for inputs to  unscented transform.
 
     Args:
@@ -40,7 +40,7 @@ def _compute_sigmas(m, P, n, lamb):
     Returns:
         sigmas (2*D_hid+1,): 2n+1 sigma points.
     """
-    distances = jnp.sqrt(n + lamb) * jnp.linalg.cholesky(P)
+    distances = jnp.sqrt(n_total + lamb) * jnp.linalg.cholesky(P)
     sigma_plus = jnp.array([m + distances[:, i] for i in range(n)])
     sigma_minus = jnp.array([m - distances[:, i] for i in range(n)])
     return jnp.concatenate((jnp.array([m]), sigma_plus, sigma_minus))
@@ -84,10 +84,15 @@ def _predict(m, P, f, Q, lamb, w_mean, w_cov, u, n, n_noise):
 
     """
     # Form sigma points and propagate
-    sigmas_pred = _compute_sigmas(m, P, n + n_noise, lamb)
+    sigmas_pred = _compute_sigmas(m, P, n + n_noise, n, lamb)
     sigmas_noise_pred = _compute_sigmas(jnp.zeros(n_noise),
                                         jnp.eye(n_noise),
-                                        n + n_noise, lamb)
+                                        n + n_noise, n_noise, lamb)
+
+    sigmas_pred = jnp.concatenate([sigmas_pred,
+                                   jnp.tile(m[None], (n_noise, 1))], axis=0)
+    sigmas_noise_pred = jnp.concatenate([jnp.tile(jnp.zeros((1, n)), (n_noise, 1)),
+                                         sigmas_noise_pred], axis=0)
 
     sigmas_pred_prop = vmap(f, (0, 0), 0)(sigmas_pred, sigmas_noise_pred)
 
@@ -120,10 +125,15 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, n, n_noise):
 
     """
     # Form sigma points and propagate
-    sigmas_cond = _compute_sigmas(m, P, n + n_noise, lamb)
+    sigmas_cond = _compute_sigmas(m, P, n + n_noise, n, lamb)
     sigmas_noise_cond = _compute_sigmas(jnp.zeros(n_noise),
                                         jnp.eye(n_noise),
-                                        n + n_noise, lamb)
+                                        n + n_noise, n_noise, lamb)
+
+    sigmas_cond = jnp.concatenate([sigmas_cond,
+                                   jnp.tile(m[None], (n_noise, 1))], axis=0)
+    sigmas_noise_cond = jnp.concatenate([jnp.tile(jnp.zeros((1, n)), (n_noise, 1)),
+                                         sigmas_noise_cond], axis=0)
 
     sigmas_cond_prop = vmap(h, (0, 0), 0)(sigmas_cond,
                                           sigmas_noise_cond)
