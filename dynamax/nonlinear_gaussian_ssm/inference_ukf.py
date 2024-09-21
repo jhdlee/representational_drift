@@ -387,4 +387,4 @@ def unscented_kalman_posterior_sample(
     )
     _, reversed_states = lax.scan(_step, (filtered_means[-1], filtered_covs[-1]), args)
     states = jnp.vstack([reversed_states[::-1], last_state])
-    return states
+    return states, ll

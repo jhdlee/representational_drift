@@ -1407,37 +1407,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 rotation -= rotation.T
                 rotation = jscipy.linalg.expm(rotation)
                 new_subspace = base_subspace @ rotation
-                C = new_subspace[:, :self.state_dim]  # .reshape(-1)
-
-                # # new params constructed from _params
-                # init_mean_t = _params.initial.mean[t]
-                # init_cov_t = _params.initial.cov[t]
-                # dynamics_weights = _params.dynamics.weights
-                # dynamics_cov = _params.dynamics.cov
-                # emissions_cov = _params.emissions.cov
-
-                # eps = eps.reshape(-1, self.emission_dim)
-                #
-                # def _scan(carry, epst):
-                #     mu_ts, sigma_ts = carry
-                #
-                #     s_rt = C @ sigma_ts @ C.T + emissions_cov
-                #     y_rt_hat = C @ mu_ts
-                #     r_rt = jnp.linalg.cholesky(s_rt) @ epst
-                #     y_rt = y_rt_hat + r_rt
-                #
-                #     k_rt = psd_solve(s_rt, C @ sigma_ts).T
-                #
-                #     sigma_tt = sigma_ts - k_rt @ s_rt @ k_rt.T
-                #     mu_tt = mu_ts + k_rt @ r_rt
-                #
-                #     mu_tt_pred = dynamics_weights @ mu_tt
-                #     sigma_tt_pred = dynamics_weights @ sigma_tt @ dynamics_weights.T + dynamics_cov
-                #
-                #     return (mu_tt_pred, sigma_tt_pred), y_rt
-                #
-                # init_carry = (init_mean_t, init_cov_t)
-                # _, y_rts = lax.scan(_scan, init_carry, eps)
+                C = new_subspace[:, :self.state_dim]
 
                 # new params constructed from model_params
                 init_mean_t = _params.initial.mean
@@ -1492,7 +1462,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             )
 
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
-            velocity = unscented_kalman_posterior_sample(rngs[2],
+            velocity, approx_marginal_ll = unscented_kalman_posterior_sample(rngs[2],
                                                          NLGSSM_params, emissions, ukf_hyperparams)
 
             rotation = jnp.zeros((self.num_trials, self.emission_dim, self.emission_dim))
@@ -1546,18 +1516,22 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             _ll = self.log_joint(_new_params, _new_states, velocity,
                                  _emissions, _inputs, masks)
 
-            return _new_params, _new_states, velocity, _ll
+            return _new_params, _new_states, velocity, _ll, approx_marginal_ll
 
         sample_of_params = []
         sample_of_states = []
         sample_of_velocity = []
         lls = []
+        marginal_lls = []
         keys = iter(jr.split(key, sample_size + 1))
         current_params = initial_params
         lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample, in_axes=(None, None, 0, None, 0, 0))
 
         for sample_itr in progress_bar(range(sample_size)):
-            current_params, current_states, current_velocity, ll = one_sample(current_params, emissions, inputs, next(keys))
+            current_params, current_states, current_velocity, ll, approx_marginal_ll = one_sample(current_params,
+                                                                                                  emissions,
+                                                                                                  inputs,
+                                                                                                  next(keys))
             if sample_itr >= sample_size - return_n_samples:
                 sample_of_params.append(current_params)
                 sample_of_velocity.append(current_velocity)
@@ -1570,7 +1544,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 # print(jnp.diag(current_params.emissions.cov))
                 # print(jnp.diag(current_params.initial_velocity.cov))
                 # print(current_params.emissions.tau)
-                print(ll)
+                print(ll, approx_marginal_ll)
             lls.append(ll)
+            marginal_lls.append(approx_marginal_ll)
 
-        return pytree_stack(sample_of_params), lls, sample_of_states, sample_of_velocity
+        return pytree_stack(sample_of_params), sample_of_states, sample_of_velocity, lls, marginal_lls
