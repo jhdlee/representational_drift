@@ -99,8 +99,7 @@ def _predict(m, P, f, Q, lamb, w_mean, w_cov, u, n, n_noise):
     # Compute predicted mean and covariance
     m_pred = jnp.tensordot(w_mean, sigmas_pred_prop, axes=1)
     P_pred = jnp.tensordot(w_cov, _outer(sigmas_pred_prop - m_pred, sigmas_pred_prop - m_pred), axes=1)
-    P_cross = jnp.tensordot(w_cov, _outer(sigmas_pred - jnp.concatenate([m, jnp.zeros(n_noise)]),
-                                          sigmas_pred_prop - m_pred), axes=1)
+    P_cross = jnp.tensordot(w_cov, _outer(sigmas_pred - m, sigmas_pred_prop - m_pred), axes=1)
     return m_pred, P_pred, P_cross
 
 
@@ -140,8 +139,7 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, n, n_noise):
     # Compute parameters needed to filter
     pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
     pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1)
-    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond - jnp.concatenate([m, jnp.zeros(n_noise)]),
-                                             sigmas_cond_prop - pred_mean), axes=1)
+    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond - m, sigmas_cond_prop - pred_mean), axes=1)
 
     # Compute log-likelihood of observation
     ll = MVN(pred_mean, pred_cov).log_prob(y.flatten())
