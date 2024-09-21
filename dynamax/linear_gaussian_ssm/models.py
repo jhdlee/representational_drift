@@ -1443,7 +1443,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_mean=_params.initial_velocity.mean,
                 initial_covariance=_params.initial_velocity.cov,
                 dynamics_function=f,
-                dynamics_covariance=None, #jnp.diag(_params.emissions.tau),
+                dynamics_covariance=jnp.diag(_params.emissions.tau),
                 emission_function=h,
                 emission_covariance=None
             )
