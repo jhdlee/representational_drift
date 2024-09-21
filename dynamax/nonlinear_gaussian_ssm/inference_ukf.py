@@ -90,8 +90,8 @@ def _predict(m, P, f, Q, lamb, w_mean, w_cov, u, n, n_noise):
                                         n + n_noise, n_noise, lamb)
 
     sigmas_pred = jnp.concatenate([sigmas_pred,
-                                   jnp.tile(m[None], (n_noise, 1))], axis=0)
-    sigmas_noise_pred = jnp.concatenate([jnp.tile(jnp.zeros((1, n_noise)), (n, 1)),
+                                   jnp.tile(m[None], (2*n_noise, 1))], axis=0)
+    sigmas_noise_pred = jnp.concatenate([jnp.tile(jnp.zeros((1, n_noise)), (2*n, 1)),
                                          sigmas_noise_pred], axis=0)
 
     sigmas_pred_prop = vmap(f, (0, 0), 0)(sigmas_pred, sigmas_noise_pred)
