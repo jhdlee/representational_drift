@@ -1478,9 +1478,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + emissions_cov
                 pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
 
-                y_r += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps.reshape(-1, self.emission_dim))
+                pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps.reshape(-1, self.emission_dim))
 
-                return y_r.flatten()
+                return pred_obs_means.flatten()
 
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=_params.initial_velocity.mean,
