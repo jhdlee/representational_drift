@@ -340,7 +340,7 @@ def extended_kalman_posterior_sample(
 
     # Dynamics and emission functions and their Jacobians
     f = params.dynamics_function
-    F = jacfwd(f)
+    F = None #jacfwd(f)
     inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, args):
@@ -353,9 +353,16 @@ def extended_kalman_posterior_sample(
         u = inputs[t]
 
         # Condition on next state
-        smoothed_mean, smoothed_cov = _condition_on_original(filtered_mean, filtered_cov,
-                                                             f, F, Q, u,
-                                                             next_state, 1)
+        # smoothed_mean, smoothed_cov = _condition_on_original(filtered_mean, filtered_cov,
+        #                                                      f, F, Q, u,
+        #                                                      next_state, 1)
+
+        S = Q + filtered_cov
+        K = psd_solve(S, filtered_cov).T
+        smoothed_cov = filtered_cov - K @ S @ K.T
+        smoothed_cov = symmetrize(smoothed_cov)
+        smoothed_mean = filtered_mean + K @ (next_state - filtered_mean)
+
         state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
         return state, state
 
