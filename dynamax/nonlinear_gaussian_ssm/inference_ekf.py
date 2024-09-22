@@ -35,10 +35,11 @@ def _predict(m, P, f, F, Q, u):
         mu_pred (D_hid,): predicted mean.
         Sigma_pred (D_hid,D_hid): predicted covariance.
     """
-    F_x = F(m)
-    mu_pred = f(m)
-    Sigma_pred = F_x @ P @ F_x.T + Q
-    return mu_pred, Sigma_pred
+    # F_x = F(m)
+    # mu_pred = f(m)
+    # Sigma_pred = F_x @ P @ F_x.T + Q
+    # return mu_pred, Sigma_pred
+    return m, P + Q
 
 
 def _condition_on(m, P, h, H, R, u, y, eps, t, num_iter):
@@ -115,7 +116,8 @@ def extended_kalman_filter(
 
     # Dynamics and emission functions and their Jacobians
     f, h = params.dynamics_function, params.emission_function
-    F, H = jacfwd(f), jacfwd(h, argnums=(0, 1))
+    # F, H = jacfwd(f), jacfwd(h, argnums=(0, 1))
+    F, H = None, jacfwd(h, argnums=(0, 1))
     inputs = _process_input(inputs, num_trials)
 
     eps = jnp.zeros((num_timesteps, emissions_dim))
@@ -137,8 +139,13 @@ def extended_kalman_filter(
         ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y.flatten()))
 
         # Condition on this emission
-        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u,
-                                                    y, eps, t, num_iter)
+        # filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u,
+        #                                             y, eps, t, num_iter)
+
+        K = psd_solve(s_k, H_x @ pred_cov).T
+        filtered_cov = pred_cov - K @ s_k @ K.T
+        filtered_mean = pred_mean + K @ (y.flatten() - y_pred)
+        filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, f, F, Q, u)
