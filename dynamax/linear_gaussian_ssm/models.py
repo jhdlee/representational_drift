@@ -1220,7 +1220,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.has_dynamics_bias:
                 xp = jnp.pad(xp, ((0, 0), (0, 0), (0, 1)), constant_values=1)
             Qinv = jnp.linalg.inv(params.dynamics.cov + jnp.eye(params.dynamics.cov.shape[-1]) * self.EPS)
-            dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, :-1]).reshape(reshape_dim, reshape_dim)
+            dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, 1:]).reshape(reshape_dim, reshape_dim)
             dynamics_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', xn, Qinv, xp, masks[:, 1:]).reshape(-1)
             dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
 
@@ -1264,8 +1264,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 B = params.dynamics.input_weights
                 Q = params.dynamics.cov
             else:
-                xp, xn = states[:, :-1], states[:, 1:]
-
                 dynamics_posterior = mvn_posterior_update(self.dynamics_prior, dynamics_stats)
                 _dynamics_weights = dynamics_posterior.sample(seed=next(rngs))
 
@@ -1362,7 +1360,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
                                                     cov=initial_velocity_cov),
             )
-            return params, velocity
+            return params
 
         def velocity_sample(_params, _emissions, rng):
             def f(v):
@@ -1471,8 +1469,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             # Sample parameters
             _stats = sufficient_stats_from_sample(_new_states, _new_params_emissions_updated)
-            _new_params, _ = lgssm_params_sample(rngs[1], _stats, _new_states,
-                                                 _new_params_emissions_updated, velocity, _updated_emission_weights)
+            _new_params = lgssm_params_sample(rngs[1], _stats, _new_states,
+                                              _new_params_emissions_updated, velocity, _updated_emission_weights)
 
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs, masks)
