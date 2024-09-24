@@ -1423,7 +1423,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_covariance=None
             )
 
-            velocity, approx_marginal_ll = extended_kalman_posterior_sample(rngs, NLGSSM_params, _emissions,
+            velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
                                                                             masks=masks)
 
             return velocity, approx_marginal_ll
