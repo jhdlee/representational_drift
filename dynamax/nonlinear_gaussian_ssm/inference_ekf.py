@@ -92,6 +92,7 @@ def _condition_on(m, P, h, H, R, u, y, eps, t, num_iter):
 def extended_kalman_filter(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
+    masks,
     num_iter: int = 1,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None,
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
@@ -130,21 +131,33 @@ def extended_kalman_filter(
         R = None #_get_params(params.emission_covariance, 2, t)
         u = inputs[t]
         y = emissions[t]
+        y_flattened = y.flatten()
+        mask = jnp.repeat(masks[t], emissions_dim)
 
         # Update the log likelihood
         H_x, H_eps = H(pred_mean, eps, y, t) # (TN x V), (TN x T x N)
-        H_eps = H_eps.reshape(H_eps.shape[0], -1)
+        H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
+
+        # H_eps, H_x masking
+        H_x = H_x.at[~mask].set(0.0)
+        H_eps = H_eps.at[~mask].set(0.0)
+        H_eps = H_eps.at[:, ~mask].set(0.0)
+
         y_pred = h(pred_mean, eps, y, t) # TN
-        s_k = H_x @ pred_cov @ H_x.T + H_eps @ H_eps.T
-        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y.flatten()))
+        s_k = H_x @ pred_cov @ H_x.T + H_eps @ H_eps.T # masking
+
+        y_pred_masked = y_pred.at[~mask].set(y_flattened[~mask])
+        s_k_masked = s_k.at[~mask, ~mask].set(1/(2*jnp.pi))
+
+        ll += MVN(y_pred_masked, s_k_masked).log_prob(jnp.atleast_1d(y_flattened))
 
         # Condition on this emission
         # filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u,
         #                                             y, eps, t, num_iter)
 
-        K = psd_solve(s_k, H_x @ pred_cov).T
-        filtered_cov = pred_cov - K @ s_k @ K.T
-        filtered_mean = pred_mean + K @ (y.flatten() - y_pred)
+        K = psd_solve(s_k_masked, H_x @ pred_cov).T
+        filtered_cov = pred_cov - K @ s_k_masked @ K.T
+        filtered_mean = pred_mean + K @ (y_flattened - y_pred)
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
@@ -315,6 +328,7 @@ def extended_kalman_posterior_sample(
     key: PRNGKey,
     params: ParamsNLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
+    masks,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None,
     filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
 ) -> Float[Array, "ntime state_dim"]:
@@ -329,11 +343,11 @@ def extended_kalman_posterior_sample(
     Returns:
         Float[Array, "ntime state_dim"]: one sample of $z_{1:T}$ from the posterior distribution on latent states.
     """
-    num_timesteps = len(emissions)
+    num_trials = len(emissions)
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, inputs=inputs)
+        filtered_posterior = extended_kalman_filter(params, emissions, masks, inputs=inputs)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
@@ -341,7 +355,7 @@ def extended_kalman_posterior_sample(
     # Dynamics and emission functions and their Jacobians
     f = params.dynamics_function
     F = None #jacfwd(f)
-    inputs = _process_input(inputs, num_timesteps)
+    inputs = _process_input(inputs, num_trials)
 
     def _step(carry, args):
         # Unpack the inputs
@@ -371,10 +385,10 @@ def extended_kalman_posterior_sample(
     last_state = MVN(filtered_means[-1], filtered_covs[-1]).sample(seed=this_key)
 
     args = (
-        jr.split(key, num_timesteps - 1),
+        jr.split(key, num_trials - 1),
         filtered_means[:-1][::-1],
         filtered_covs[:-1][::-1],
-        jnp.arange(num_timesteps - 2, -1, -1),
+        jnp.arange(num_trials - 2, -1, -1),
     )
     _, reversed_states = lax.scan(_step, last_state, args)
     states = jnp.vstack([reversed_states[::-1], last_state])

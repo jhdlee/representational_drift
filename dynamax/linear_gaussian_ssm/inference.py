@@ -554,7 +554,6 @@ def lgssm_filter(
                                  filtered_means=filtered_means,
                                  filtered_covariances=filtered_covs)
 
-
 @preprocess_args
 def lgssm_smoother(
         params: ParamsLGSSM,
