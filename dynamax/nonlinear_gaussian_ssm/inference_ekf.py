@@ -132,31 +132,35 @@ def extended_kalman_filter(
         u = inputs[t]
         y = emissions[t]
         y_flattened = y.flatten()
-        mask = jnp.repeat(masks[t], emissions_dim)
+        mask = jnp.repeat(masks[t], emissions_dim)[:, None]
 
         # Update the log likelihood
         H_x, H_eps = H(pred_mean, eps, y, t) # (TN x V), (TN x T x N)
         H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
 
         # H_eps, H_x masking
-        H_x = H_x.at[~mask].set(0.0)
-        H_eps = H_eps.at[~mask].set(0.0)
-        H_eps = H_eps.at[:, ~mask].set(0.0)
+        H_x = H_x * mask
+        H_eps = H_eps * mask
+        H_eps = H_eps * mask.T
 
         y_pred = h(pred_mean, eps, y, t) # TN
         s_k = H_x @ pred_cov @ H_x.T + H_eps @ H_eps.T # masking
 
-        y_pred_masked = y_pred.at[~mask].set(y_flattened[~mask])
-        s_k_masked = s_k.at[~mask, ~mask].set(1/(2*jnp.pi))
+        y_pred = y_pred * mask.squeeze()
+        # s_k = s_k.at[~mask, ~mask].set(1/(2*jnp.pi))
+        s_k = s_k * mask
+        s_k = s_k * mask.T
+        s_k_diag = jnp.where(mask.squeeze(), 0.0, 1 / (2 * jnp.pi))
+        s_k += jnp.diag(s_k_diag)
 
-        ll += MVN(y_pred_masked, s_k_masked).log_prob(jnp.atleast_1d(y_flattened))
+        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
 
         # Condition on this emission
         # filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u,
         #                                             y, eps, t, num_iter)
 
-        K = psd_solve(s_k_masked, H_x @ pred_cov).T
-        filtered_cov = pred_cov - K @ s_k_masked @ K.T
+        K = psd_solve(s_k, H_x @ pred_cov).T
+        filtered_cov = pred_cov - K @ s_k @ K.T
         filtered_mean = pred_mean + K @ (y_flattened - y_pred)
         filtered_cov = symmetrize(filtered_cov)
 
