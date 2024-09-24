@@ -689,7 +689,7 @@ def lgssm_posterior_sample(
     )
     _, reversed_states = lax.scan(_step, last_state, args)
     states = jnp.vstack([reversed_states[::-1], last_state])
-    return states
+    return states, ll
 
 
 def _predict_identity(m, S, F, B, b, Q, u):
