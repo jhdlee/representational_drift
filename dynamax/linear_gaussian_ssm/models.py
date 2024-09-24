@@ -1264,6 +1264,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 B = params.dynamics.input_weights
                 Q = params.dynamics.cov
             else:
+                xp, xn = states[:, :-1], states[:, 1:]
                 dynamics_posterior = mvn_posterior_update(self.dynamics_prior, dynamics_stats)
                 _dynamics_weights = dynamics_posterior.sample(seed=next(rngs))
 
