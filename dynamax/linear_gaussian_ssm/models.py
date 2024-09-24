@@ -1014,14 +1014,13 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             mean += params.emissions.bias[timestep]
         return MVN(mean, params.emissions.cov)
 
+    # this is exact for the stationary model
     def marginal_log_prob(
             self,
             params: ParamsLGSSM,
             emissions: Float[Array, "ntime emission_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
-            add_prior_and_posterior: bool = True,
-            states_samples: jnp.array = None,
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
@@ -1037,6 +1036,32 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         marginal_ll = marginal_lls.sum()
 
         return marginal_ll
+
+    def ekf_approx_marginal_log_prob(
+            self,
+            base_subspace,
+            params: ParamsLGSSM,
+            emissions: Float[Array, "ntime emission_dim"],
+            inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+            masks: jnp.array = None,
+    ) -> Scalar:
+
+        f = self.get_f()
+        h = self.get_h(base_subspace, params, masks)
+
+        NLGSSM_params = ParamsNLGSSM(
+            initial_mean=params.initial_velocity.mean,
+            initial_covariance=params.initial_velocity.cov,
+            dynamics_function=f,
+            dynamics_covariance=jnp.diag(params.emissions.tau),
+            emission_function=h,
+            emission_covariance=None
+        )
+
+        filtered_posterior = extended_kalman_filter(NLGSSM_params, emissions,
+                                                    masks, inputs=inputs)
+
+        return filtered_posterior.marginal_loglik
 
     def filter(
             self,
@@ -1201,6 +1226,77 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             props: ParamsTVLGSSM
     ) -> Any:
         return None
+
+    def get_f(self):
+        def f(v):
+            return v
+        return f
+
+    def get_h(self, base_subspace, _params, masks):
+        def h(v, eps, obs_t, t):
+            C = rotate_subspace(base_subspace, self.state_dim, v)
+
+            # new params constructed from model_params
+            mu_0 = _params.initial.mean
+            Sigma_0 = _params.initial.cov
+            A = _params.dynamics.weights
+            Q = _params.dynamics.cov
+            R = _params.emissions.cov
+            mu_v_0 = _params.initial_velocity.mean
+            Sigma_v_0 = _params.initial_velocity.cov
+            tau = _params.emissions.tau
+            h_params = ParamsTVLGSSM(
+                initial=ParamsLGSSMInitial(
+                    mean=mu_0,
+                    cov=Sigma_0),
+                dynamics=ParamsLGSSMDynamics(
+                    weights=A,
+                    bias=None,
+                    input_weights=jnp.zeros((self.state_dim, 0)),
+                    cov=Q),
+                emissions=ParamsLGSSMEmissions(
+                    weights=C,
+                    bias=None,
+                    input_weights=jnp.zeros((self.emission_dim, 0)),
+                    cov=R,
+                    tau=tau),
+                initial_velocity=ParamsLGSSMInitial(mean=mu_v_0,
+                                                    cov=Sigma_v_0),
+            )
+
+            filtered_posterior = lgssm_filter(h_params, obs_t, masks=masks[t], trial_r=t)
+
+            # get pred means and covs
+            pred_means = filtered_posterior.predicted_means
+            pred_covs = filtered_posterior.predicted_covariances
+
+            pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
+            pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
+            pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
+
+            pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps.reshape(-1, self.emission_dim))
+
+            return pred_obs_means.flatten()
+
+        return h
+
+    def velocity_sample(self, base_subspace, _params, _emissions, masks, rng):
+        f = self.get_f()
+        h = self.get_h(base_subspace, _params, masks)
+
+        NLGSSM_params = ParamsNLGSSM(
+            initial_mean=_params.initial_velocity.mean,
+            initial_covariance=_params.initial_velocity.cov,
+            dynamics_function=f,
+            dynamics_covariance=jnp.diag(_params.emissions.tau),
+            emission_function=h,
+            emission_covariance=None
+        )
+
+        velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
+                                                                        masks=masks)
+
+        return velocity, approx_marginal_ll
 
     def fit_blocked_gibbs(
             self,
@@ -1413,69 +1509,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             )
             return params
 
-        def velocity_sample(_params, _emissions, rng):
-            def f(v):
-                return v
-
-            def h(v, eps, obs_t, t):
-                C = rotate_subspace(base_subspace, self.state_dim, v)
-
-                # new params constructed from model_params
-                mu_0 = _params.initial.mean
-                Sigma_0 = _params.initial.cov
-                A = _params.dynamics.weights
-                Q = _params.dynamics.cov
-                R = _params.emissions.cov
-                mu_v_0 = _params.initial_velocity.mean
-                Sigma_v_0 = _params.initial_velocity.cov
-                tau = _params.emissions.tau
-                h_params = ParamsTVLGSSM(
-                    initial=ParamsLGSSMInitial(
-                        mean=mu_0,
-                        cov=Sigma_0),
-                    dynamics=ParamsLGSSMDynamics(
-                        weights=A,
-                        bias=None,
-                        input_weights=jnp.zeros((self.state_dim, 0)),
-                        cov=Q),
-                    emissions=ParamsLGSSMEmissions(
-                        weights=C,
-                        bias=None,
-                        input_weights=jnp.zeros((self.emission_dim, 0)),
-                        cov=R,
-                        tau=tau),
-                    initial_velocity=ParamsLGSSMInitial(mean=mu_v_0,
-                                                        cov=Sigma_v_0),
-                )
-
-                filtered_posterior = lgssm_filter(h_params, obs_t, masks=masks[t], trial_r=t)
-
-                # get pred means and covs
-                pred_means = filtered_posterior.predicted_means
-                pred_covs = filtered_posterior.predicted_covariances
-
-                pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
-                pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
-                pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
-
-                pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps.reshape(-1, self.emission_dim))
-
-                return pred_obs_means.flatten()
-
-            NLGSSM_params = ParamsNLGSSM(
-                initial_mean=_params.initial_velocity.mean,
-                initial_covariance=_params.initial_velocity.cov,
-                dynamics_function=f,
-                dynamics_covariance=jnp.diag(_params.emissions.tau),
-                emission_function=h,
-                emission_covariance=None
-            )
-
-            velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
-                                                                            masks=masks)
-
-            return velocity, approx_marginal_ll
-
         @jit
         def one_sample(_params, _emissions, _inputs, rng):
             rngs = jr.split(rng, 3)
@@ -1485,7 +1518,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 velocity = None
                 _updated_emission_weights = None
             else:
-                velocity, approx_marginal_ll = velocity_sample(_params, _emissions, rngs[2])
+                velocity, approx_marginal_ll = self.velocity_sample(base_subspace, _params,
+                                                                    _emissions, masks, rngs[2])
                 _updated_emission_weights = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace,
                                                                                            self.state_dim,
                                                                                            velocity)
