@@ -139,14 +139,15 @@ def extended_kalman_filter(
         H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
 
         # H_eps, H_x masking
-        H_x_masked = H_x * mask
+        H_x = H_x * mask
         H_eps = H_eps * mask
         H_eps = H_eps * mask.T
 
         y_pred = h(pred_mean, eps, y, t) # TN
-        s_k = H_x_masked @ pred_cov @ H_x_masked.T + H_eps @ H_eps.T # masking
+        s_k = H_x @ pred_cov @ H_x.T + H_eps @ H_eps.T # masking
 
         y_pred = y_pred * mask.squeeze()
+        y_flattened = y_flattened * mask.squeeze()
         # s_k = s_k.at[~mask, ~mask].set(1/(2*jnp.pi))
         s_k = s_k * mask
         s_k = s_k * mask.T
