@@ -1404,7 +1404,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             init_stats_1 = jnp.einsum('bc,bi->ci',
                                       conditions_one_hot,
                                       x[:, 0])
-            init_stats_1 = jnp.where(conditions_count > 0, init_stats_1, 0.0)
+            init_stats_1 = jnp.where(conditions_count[:, None] > 0, init_stats_1, 0.0)
             init_stats = (init_stats_1,)
 
             N, D = y.shape[-1], states.shape[-1]
