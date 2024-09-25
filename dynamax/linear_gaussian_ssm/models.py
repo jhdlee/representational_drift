@@ -715,11 +715,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         self.initial_mean_prior = default_prior(
             'initial_mean_prior',
             MVN(loc=jnp.zeros(self.state_dim),
-                covariance_matrix=1e0*jnp.eye(self.state_dim)))
+                covariance_matrix=1e2*jnp.eye(self.state_dim)))
 
         self.initial_covariance_prior = default_prior(
             'initial_covariance_prior',
-            IG(concentration=1.0, scale=1e0)
+            IG(concentration=1.0, scale=1e-2)
         )
 
         # prior on dynamics parameters
