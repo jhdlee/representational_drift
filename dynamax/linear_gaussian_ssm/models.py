@@ -1388,7 +1388,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             inputs = jnp.zeros((num_timesteps, 0))
         if masks is None:
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
-        if conditions is NOne:
+        if conditions is None:
             conditions = jnp.zeros(num_timesteps, dtype=int)
 
         def sufficient_stats_from_sample(states, params):
