@@ -824,6 +824,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         if self.stationary_emissions:
             _initial_velocity_mean = None
             _initial_velocity_cov = None
+            _velocity = None
 
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
