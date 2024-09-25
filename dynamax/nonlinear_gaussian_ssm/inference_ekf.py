@@ -93,6 +93,7 @@ def extended_kalman_filter(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
     masks,
+    conditions,
     num_iter: int = 1,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None,
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
@@ -133,9 +134,10 @@ def extended_kalman_filter(
         y = emissions[t]
         y_flattened = y.flatten()
         mask = jnp.repeat(masks[t], emissions_dim)[:, None]
+        condition = conditions[t]
 
         # Update the log likelihood
-        H_x, H_eps = H(pred_mean, eps, y, t) # (TN x V), (TN x T x N)
+        H_x, H_eps = H(pred_mean, eps, y, t, condition) # (TN x V), (TN x T x N)
         H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
 
         # H_eps, H_x masking
@@ -143,7 +145,7 @@ def extended_kalman_filter(
         H_eps = H_eps * mask
         H_eps = H_eps * mask.T
 
-        y_pred = h(pred_mean, eps, y, t) # TN
+        y_pred = h(pred_mean, eps, y, t, condition) # TN
         s_k = H_x @ pred_cov @ H_x.T + H_eps @ H_eps.T # masking
 
         y_pred = y_pred * mask.squeeze()
@@ -334,6 +336,7 @@ def extended_kalman_posterior_sample(
     params: ParamsNLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
     masks,
+    conditions,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None,
     filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
 ) -> Float[Array, "ntime state_dim"]:
@@ -352,7 +355,7 @@ def extended_kalman_posterior_sample(
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, masks, inputs=inputs)
+        filtered_posterior = extended_kalman_filter(params, emissions, masks, conditions, inputs=inputs)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances

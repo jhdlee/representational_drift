@@ -6,6 +6,7 @@ from jax import jit, lax, vmap
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jscipy
+import jax.nn as jnn
 from jax.scipy.special import logsumexp
 from jax.tree_util import tree_map
 from jaxtyping import Array, Float, PyTree
@@ -675,6 +676,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             input_dim: int = 0,
             num_trials: int = 1,  # number of trials
             sequence_length: int = 1,  # number of timesteps per trial
+            num_conditions: int = 1,
             has_dynamics_bias: bool = False,
             has_emissions_bias: bool = False,
             stationary_emissions: bool = False,
@@ -696,6 +698,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         self.num_trials = num_trials
         self.sequence_length = sequence_length
+        self.num_conditions = num_conditions
 
         self.fix_initial = fix_initial
         self.fix_dynamics = fix_dynamics
@@ -712,11 +715,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         self.initial_mean_prior = default_prior(
             'initial_mean_prior',
             MVN(loc=jnp.zeros(self.state_dim),
-                covariance_matrix=1e2*jnp.eye(self.state_dim)))
+                covariance_matrix=1e0*jnp.eye(self.state_dim)))
 
         self.initial_covariance_prior = default_prior(
             'initial_covariance_prior',
-            IG(concentration=1.0, scale=1e-2)
+            IG(concentration=1.0, scale=1e0)
         )
 
         # prior on dynamics parameters
@@ -808,8 +811,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         """
 
         # Arbitrary default values, for demo purposes.
-        _initial_mean = jnp.zeros((self.num_trials, self.state_dim))
-        _initial_covariance = jnp.tile(jnp.eye(self.state_dim)[None], (self.num_trials, 1, 1))
+        _initial_mean = jnp.zeros((self.num_conditions, self.state_dim))
+        _initial_covariance = jnp.tile(jnp.eye(self.state_dim)[None], (self.num_conditions, 1, 1))
 
         key1, key = jr.split(key, 2)
         _dynamics_weights = jr.normal(key1, shape=(self.state_dim, self.state_dim))
@@ -915,6 +918,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             params: ParameterSet,
             key: PRNGKey,
             num_timesteps: int,
+            conditions=None,
             inputs: Optional[Float[Array, "num_timesteps input_dim"]] = None,
     ) -> Tuple[Float[Array, "num_timesteps state_dim"],
     Float[Array, "num_timesteps emission_dim"]]:
@@ -929,6 +933,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         Returns:
             latent states and emissions
         """
+
+        if conditions is None:
+            conditions = jnp.zeros(self.num_trials, dtype=int)
+
         def _dynamics_outer_step(carry, outer_args):
             key, t = outer_args
 
@@ -940,7 +948,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             # Sample the initial state
             key1, key = jr.split(key, 2)
             initial_input = tree_map(lambda x: x[0], inputs)
-            initial_state = self.initial_distribution(t, params, initial_input).sample(seed=key1)
+            initial_state = self.initial_distribution(t, params, conditions, initial_input).sample(seed=key1)
 
             # Sample the remaining emissions and states
             next_keys = jr.split(key, self.sequence_length - 1)
@@ -985,9 +993,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             self,
             timestep: int,
             params: ParamsLGSSM,
+            conditions,
             inputs: Optional[Float[Array, "ntime input_dim"]] = None
     ) -> tfd.Distribution:
-        return MVN(params.initial.mean[timestep], params.initial.cov[timestep])
+        return MVN(params.initial.mean[conditions[timestep]],
+                   params.initial.cov[conditions[timestep]])
 
     def transition_distribution(
             self,
@@ -1150,7 +1160,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             velocity,
             emissions,
             inputs,
-            masks
+            masks,
+            conditions
     ) -> Scalar:
 
         """"""""
@@ -1162,7 +1173,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         lp = self.initial_mean_prior.log_prob(params.initial.mean).sum()
         flattened_cov = vmap(jnp.diag)(params.initial.cov)
         lp += self.initial_covariance_prior.log_prob(flattened_cov.flatten()).sum()
-        lp += MVN(params.initial.mean, params.initial.cov).log_prob(states[:, 0]).sum()
+        lp += MVN(params.initial.mean[conditions], params.initial.cov[conditions]).log_prob(states[:, 0]).sum()
 
         # dynamics & states
         dynamics_bias = params.dynamics.bias if self.has_dynamics_bias else jnp.zeros((self.state_dim, 0))
@@ -1236,7 +1247,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         return f
 
     def get_h(self, base_subspace, _params, masks):
-        def h(v, eps, obs_t, t):
+        def h(v, eps, obs_t, t, condition):
             C = rotate_subspace(base_subspace, self.state_dim, v)
 
             # new params constructed from model_params
@@ -1267,7 +1278,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                     cov=Sigma_v_0),
             )
 
-            filtered_posterior = lgssm_filter(h_params, obs_t, masks=masks[t], trial_r=t)
+            filtered_posterior = lgssm_filter(h_params, obs_t, masks=masks[t], trial_r=t, condition=condition)
 
             # get pred means and covs
             pred_means = filtered_posterior.predicted_means
@@ -1283,7 +1294,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         return h
 
-    def velocity_sample(self, base_subspace, _params, _emissions, masks, rng):
+    def velocity_sample(self, base_subspace, _params, _emissions,
+                        masks, conditions, rng):
         f = self.get_f()
         h = self.get_h(base_subspace, _params, masks)
 
@@ -1297,7 +1309,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         )
 
         velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
-                                                                        masks=masks)
+                                                                        masks=masks, conditions=conditions)
 
         return velocity, approx_marginal_ll
 
@@ -1313,6 +1325,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             return_n_samples: int = 100,
             print_ll: bool = False,
             masks: jnp.array = None,
+            conditions: jnp.array = None,
             fixed_states: jnp.array = None,
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
@@ -1332,6 +1345,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             inputs = jnp.zeros((num_timesteps, 0))
         if masks is None:
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        if conditions is NOne:
+            conditions = jnp.zeros(num_timesteps, dtype=int)
 
         def sufficient_stats_from_sample(states, params):
             """Convert samples of states to sufficient statistics."""
@@ -1341,7 +1356,13 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             u, up = inputs_joint, inputs_joint[:-1]
             y = emissions
 
-            init_stats = (x[:, 0],)
+            conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)
+            conditions_count = conditions_one_hot.sum(0)
+            init_stats_1 = jnp.einsum('bc,bi->ci',
+                                      conditions_one_hot,
+                                      x[:, 0])
+            init_stats_1 = jnp.where(conditions_count > 0, init_stats_1, 0.0)
+            init_stats = (init_stats_1,)
 
             N, D = y.shape[-1], states.shape[-1]
             # Optimized Code
@@ -1377,7 +1398,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_initial:
                 S, m = params.initial.cov, params.initial.mean
             else:
-                initial_stats_1 = jnp.linalg.inv(params.initial.cov + jnp.eye(params.initial.cov.shape[-1]))
+                initial_stats_1 = jnp.linalg.inv(params.initial.cov)
                 initial_stats_2 = jnp.einsum('bij,bj->bi',
                                              initial_stats_1,
                                              init_stats[0])
@@ -1385,14 +1406,14 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_posterior = mvn_posterior_update(self.initial_mean_prior, initial_stats)
                 m = initial_posterior.sample(seed=next(rngs))
 
-                init_cov_stats_1 = jnp.ones((self.num_trials * self.state_dim, 1)) / 2
+                init_cov_stats_1 = jnp.ones((self.num_conditions * self.state_dim, 1)) / 2
                 init_cov_stats_2 = jnp.square(init_stats[0] - m) / 2
                 init_cov_stats_2 = init_cov_stats_2.flatten()
                 init_cov_stats_2 = jnp.expand_dims(init_cov_stats_2, -1)
                 init_cov_stats = (init_cov_stats_1, init_cov_stats_2)
                 init_cov_posterior = ig_posterior_update(self.initial_covariance_prior, init_cov_stats)
                 init_cov = init_cov_posterior.sample(seed=next(rngs))
-                init_cov = jnp.ravel(init_cov).reshape(self.num_trials, self.state_dim)
+                init_cov = jnp.ravel(init_cov).reshape(self.num_conditions, self.state_dim)
                 S = vmap(jnp.diag)(init_cov)
 
             # Sample the dynamics params
@@ -1525,7 +1546,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 _updated_emission_weights = None
             else:
                 velocity, approx_marginal_ll = self.velocity_sample(base_subspace, _params,
-                                                                    _emissions, masks, rngs[2])
+                                                                    _emissions, masks, conditions, rngs[2])
                 _updated_emission_weights = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace,
                                                                                            self.state_dim,
                                                                                            velocity)
@@ -1564,7 +1585,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                                                 _new_params_emissions_updated,
                                                                                 _emissions,
                                                                                 inputs, masks,
-                                                                                jnp.arange(self.num_trials, dtype=int))
+                                                                                jnp.arange(self.num_trials, dtype=int),
+                                                                                conditions)
                 if self.stationary_emissions:
                     approx_marginal_ll = _approx_marginal_lls.sum() # This is exact
 
@@ -1576,7 +1598,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             # compute the log joint
             # _ll = self.log_joint(_new_params, _states, _emissions, _inputs, masks)
             _ll = self.log_joint(_new_params, _new_states, velocity,
-                                 _emissions, _inputs, masks)
+                                 _emissions, _inputs, masks, conditions)
 
             return _new_params, _new_states, velocity, _ll, approx_marginal_ll
 
