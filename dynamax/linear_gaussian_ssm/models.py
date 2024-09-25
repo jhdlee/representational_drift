@@ -1400,12 +1400,14 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             y = emissions
 
             conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)
-            conditions_count = conditions_one_hot.sum(0)
+            conditions_count = jnp.sum(conditions_one_hot, axis=0, keepdims=True).T
             init_stats_1 = jnp.einsum('bc,bi->ci',
                                       conditions_one_hot,
                                       x[:, 0])
-            init_stats_1 = jnp.where(conditions_count[:, None] > 0, init_stats_1, 0.0)
-            init_stats = (init_stats_1,)
+            init_stats_1 = jnp.where(conditions_count > 0,
+                                     jnp.divide(init_stats_1, conditions_count),
+                                     0.0)
+            init_stats = (init_stats_1, conditions_count)
 
             N, D = y.shape[-1], states.shape[-1]
             # Optimized Code
@@ -1442,6 +1444,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 S, m = params.initial.cov, params.initial.mean
             else:
                 initial_stats_1 = jnp.linalg.inv(params.initial.cov)
+                initial_stats_1 = initial_stats_1 * init_stats[1][:, :, None]
                 initial_stats_2 = jnp.einsum('bij,bj->bi',
                                              initial_stats_1,
                                              init_stats[0])
