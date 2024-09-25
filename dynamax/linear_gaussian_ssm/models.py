@@ -1483,7 +1483,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                         tau = jnp.ravel(tau)
 
                 emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
-                emissions_mean = jnp.einsum('btx,byx->bty', states, H)
+                emissions_mean = jnp.einsum('...tx,...yx->...ty', states, H)
                 if self.has_emissions_bias:
                     emissions_mean += d[:, None]
                 sqr_err_flattened = jnp.square(y - emissions_mean).reshape(-1, self.emission_dim)
