@@ -1053,7 +1053,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         return marginal_ll
 
-    def ekf_approx_marginal_log_prob(
+    def ekf_marginal_log_prob(
             self,
             base_subspace,
             params: ParamsLGSSM,
@@ -1100,6 +1100,38 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         lgssm_filter_vmap = vmap(lgssm_filter, in_axes=(None, 0, 0, 0, 0))
         filters = lgssm_filter_vmap(params, emissions, inputs, masks, trials)
         return filters
+
+    def ekf(
+            self,
+            params: ParamsLGSSM,
+            emissions: Float[Array, "ntime emission_dim"],
+            inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+            masks: jnp.array = None,
+            conditions: jnp.array = None
+    ):
+        num_trials = emissions.shape[0]
+        if masks is None:
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
+
+        f = self.get_f()
+        h = self.get_h(base_subspace, params, masks)
+
+        NLGSSM_params = ParamsNLGSSM(
+            initial_mean=params.initial_velocity.mean,
+            initial_covariance=params.initial_velocity.cov,
+            dynamics_function=f,
+            dynamics_covariance=jnp.diag(params.emissions.tau),
+            emission_function=h,
+            emission_covariance=None
+        )
+
+        filtered_posterior = extended_kalman_filter(NLGSSM_params, emissions,
+                                                    masks, conditions=conditions,
+                                                    inputs=inputs)
+
+        return filtered_posterior
 
     def smoother(
             self,
