@@ -1652,7 +1652,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         marginal_lls = []
         keys = iter(jr.split(key, sample_size + 1))
         current_params = initial_params
-        lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample, in_axes=(None, None, 0, None, 0, 0))
+        lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample,
+                                           in_axes=(None, None, 0, None, 0, 0, 0))
 
         for sample_itr in progress_bar(range(sample_size)):
             current_params, current_states, current_velocity, ll, approx_marginal_ll = one_sample(current_params,
