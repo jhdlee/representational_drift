@@ -1452,7 +1452,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_posterior = mvn_posterior_update(self.initial_mean_prior, initial_stats)
                 m = initial_posterior.sample(seed=next(rngs))
 
-                init_cov_stats_1 = jnp.repeat(init_stats[1], (self.state_dim, 1)) / 2
+                init_cov_stats_1 = jnp.repeat(init_stats[1].squeeze(), self.state_dim) / 2
+                init_cov_stats_1 = jnp.expand_dims(init_cov_stats_1, -1)
                 init_cov_stats_2 = jnp.square(states[:, 0] - m[conditions])
                 conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)
                 init_cov_stats_2 = jnp.einsum('bc,bi->ci',
