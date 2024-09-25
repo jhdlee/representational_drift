@@ -745,11 +745,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             self.initial_velocity_mean_prior = default_prior(
                 'init_vel_mean_prior',
                 MVN(loc=jnp.zeros(self.dof),
-                    covariance_matrix=1e8*jnp.eye(self.dof)))
+                    covariance_matrix=1e0*jnp.eye(self.dof)))
 
             self.initial_velocity_covariance_prior = default_prior(
                 'init_vel_cov_prior',
-                IG(concentration=1.0, scale=1e-8)
+                IG(concentration=1e0, scale=1e-8)
             )
 
             self.tau_prior = default_prior(
@@ -1034,18 +1034,21 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emissions: Float[Array, "ntime emission_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
+            conditions: jnp.array = None,
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
         if masks is None:
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
         trials = jnp.arange(num_trials, dtype=int)
 
-        def _get_marginal_ll(emission, input, mask, trial_r):
-            return lgssm_filter(params, emission, input, mask, trial_r).marginal_loglik
+        def _get_marginal_ll(emission, input, mask, trial_r, condition):
+            return lgssm_filter(params, emission, input, mask, trial_r, condition).marginal_loglik
 
         _get_marginal_ll_vmap = vmap(_get_marginal_ll, in_axes=(0, 0, 0, 0))
-        marginal_lls = _get_marginal_ll_vmap(emissions, inputs, masks, trials)
+        marginal_lls = _get_marginal_ll_vmap(emissions, inputs, masks, trials, conditions)
         marginal_ll = marginal_lls.sum()
 
         return marginal_ll
@@ -1057,7 +1060,14 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emissions: Float[Array, "ntime emission_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
+            conditions: jnp.array = None,
     ) -> Scalar:
+
+        num_trials = emissions.shape[0]
+        if masks is None:
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
 
         f = self.get_f()
         h = self.get_h(base_subspace, params, masks)
@@ -1072,7 +1082,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         )
 
         filtered_posterior = extended_kalman_filter(NLGSSM_params, emissions,
-                                                    masks, inputs=inputs)
+                                                    masks, conditions=conditions,
+                                                    inputs=inputs)
 
         return filtered_posterior.marginal_loglik
 
