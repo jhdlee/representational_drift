@@ -681,6 +681,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             fix_initial: bool = False,
             fix_dynamics: bool = False,
             fix_emissions: bool = False,
+            fix_emissions_cov: bool = False,
             fix_tau: bool = False,
             EPS: float = 1e-8,
             **kw_priors
@@ -699,6 +700,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         self.fix_initial = fix_initial
         self.fix_dynamics = fix_dynamics
         self.fix_emissions = fix_emissions
+        self.fix_emissions_cov = fix_emissions_cov
         self.fix_tau = fix_tau
 
         self.EPS = EPS
@@ -1470,7 +1472,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     initial_velocity_cov = init_velocity_cov_posterior.sample(seed=next(rngs))
                     initial_velocity_cov = jnp.diag(jnp.ravel(initial_velocity_cov))
 
-                    if self.fix_tau:
+                    if self.fix_tau: # set to true during test time
                         tau = params.emissions.tau
                     else:
                         tau_stats_1 = jnp.ones((self.dof, 1)) * (self.num_trials - 1) / 2
@@ -1482,23 +1484,26 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                         tau = tau_posterior.sample(seed=next(rngs))
                         tau = jnp.ravel(tau)
 
-                emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
-                emissions_mean = jnp.einsum('...tx,...yx->...ty', states, H)
-                if self.has_emissions_bias:
-                    emissions_mean += d[:, None]
-                sqr_err_flattened = jnp.square(y - emissions_mean).reshape(-1, self.emission_dim)
-                masks_flattened = masks.reshape(-1)
-                sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
-                emissions_cov_stats_2 = jnp.nansum(sqr_err_flattened, axis=0) / 2
+                if self.fix_emissions_cov:
+                    R = params.emissions.cov
+                else:
+                    emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
+                    emissions_mean = jnp.einsum('...tx,...yx->...ty', states, H)
+                    if self.has_emissions_bias:
+                        emissions_mean += d[:, None]
+                    sqr_err_flattened = jnp.square(y - emissions_mean).reshape(-1, self.emission_dim)
+                    masks_flattened = masks.reshape(-1)
+                    sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
+                    emissions_cov_stats_2 = jnp.nansum(sqr_err_flattened, axis=0) / 2
 
-                emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
-                emissions_cov_stats = (emissions_cov_stats_1, emissions_cov_stats_2)
-                emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
-                                                              emissions_cov_stats)
-                emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
-                # emissions_cov = jnp.where(jnp.logical_or(jnp.isnan(emissions_cov), emissions_cov < self.EPS),
-                #                           self.EPS, emissions_cov)
-                R = jnp.diag(jnp.ravel(emissions_cov))
+                    emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
+                    emissions_cov_stats = (emissions_cov_stats_1, emissions_cov_stats_2)
+                    emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
+                                                                  emissions_cov_stats)
+                    emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
+                    # emissions_cov = jnp.where(jnp.logical_or(jnp.isnan(emissions_cov), emissions_cov < self.EPS),
+                    #                           self.EPS, emissions_cov)
+                    R = jnp.diag(jnp.ravel(emissions_cov))
 
             params = ParamsTVLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
