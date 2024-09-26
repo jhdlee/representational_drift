@@ -491,7 +491,6 @@ def lgssm_filter(
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         masks: jnp.array = None,
         trial_r: int = 0,
-        condition: int = 0
 ) -> PosteriorGSSMFiltered:
     r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
 
@@ -547,7 +546,7 @@ def lgssm_filter(
         return (ll, pred_mean, pred_cov), (_pred_mean, _pred_cov, filtered_mean, filtered_cov)
 
     # Run the Kalman filter
-    carry = (0.0, params.initial.mean[condition], params.initial.cov[condition])
+    carry = (0.0, params.initial.mean, params.initial.cov)
     (ll, _, _), (pred_means, pred_covs, filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
     return PosteriorGSSMFiltered(marginal_loglik=ll,
                                  predicted_means=pred_means,
@@ -636,7 +635,6 @@ def lgssm_posterior_sample(
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         masks: jnp.array = None,
         trial_r: int = 0,
-        condition: int = 0,
         jitter: Optional[Scalar] = 0
         #     args
 
@@ -660,8 +658,7 @@ def lgssm_posterior_sample(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs, masks,
-                                      trial_r, condition=condition)
+    filtered_posterior = lgssm_filter(params, emissions, inputs, masks, trial_r)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Sample backward in time
