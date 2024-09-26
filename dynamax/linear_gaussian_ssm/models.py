@@ -1379,7 +1379,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 S, m = params.initial.cov, params.initial.mean
             else:
                 initial_stats_1 = jnp.linalg.inv(params.initial.cov) * init_stats[1]
-                initial_stats_2 = jnp.einsum('bij,bj->bi',
+                initial_stats_2 = jnp.einsum('...ij,...j->...i',
                                              initial_stats_1,
                                              init_stats[0].mean(0))
                 initial_stats = (initial_stats_1, initial_stats_2)
