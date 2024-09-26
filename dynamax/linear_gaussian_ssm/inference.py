@@ -562,7 +562,6 @@ def lgssm_smoother(
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         masks: jnp.array = None,
         trial_r: int = 0,
-        condition: int = 0
 ) -> PosteriorGSSMSmoothed:
     r"""Run forward-filtering, backward-smoother to compute expectations
     under the posterior distribution on latent states. Technically, this
@@ -581,7 +580,7 @@ def lgssm_smoother(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs, masks, trial_r, condition=condition)
+    filtered_posterior = lgssm_filter(params, emissions, inputs, masks, trial_r)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Run the smoother backward in time
