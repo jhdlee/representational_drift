@@ -119,10 +119,10 @@ def extended_kalman_filter(
     # Dynamics and emission functions and their Jacobians
     f, h = params.dynamics_function, params.emission_function
     # F, H = jacfwd(f), jacfwd(h, argnums=(0, 1))
-    F, H = None, jacfwd(h, argnums=(0, 1))
+    F, H = None, jacfwd(h, argnums=0, has_aux=True)
     inputs = _process_input(inputs, num_trials)
 
-    eps = jnp.zeros((num_timesteps, emissions_dim))
+    # eps = jnp.zeros((num_timesteps, emissions_dim))
 
     def _step(carry, t):
         ll, pred_mean, pred_cov = carry
@@ -134,25 +134,25 @@ def extended_kalman_filter(
         y = emissions[t]
         y_flattened = y.flatten()
         mask = jnp.repeat(masks[t], emissions_dim)[:, None]
+        square_mask = mask @ mask.T
         condition = conditions[t]
 
         # Update the log likelihood
-        H_x, H_eps = H(pred_mean, eps, y, t, condition) # (TN x V), (TN x T x N)
-        H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
+        H_x, pred_obs_covs = H(pred_mean, y, t, condition) # (TN x V), (TN x T x N)
+        # H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
+        H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
 
         # H_eps, H_x masking
         H_x = H_x * mask
-        H_eps = H_eps * mask
-        H_eps = H_eps * mask.T
+        # H_eps = H_eps * square_mask
 
-        y_pred = h(pred_mean, eps, y, t, condition) # TN
-        s_k = H_x @ pred_cov @ H_x.T + H_eps @ H_eps.T # masking
+        y_pred, _ = h(pred_mean, y, t, condition) # TN
+        s_k = H_x @ pred_cov @ H_x.T + H_eps
 
         y_pred = y_pred * mask.squeeze()
         y_flattened = y_flattened * mask.squeeze()
         # s_k = s_k.at[~mask, ~mask].set(1/(2*jnp.pi))
-        s_k = s_k * mask
-        s_k = s_k * mask.T
+        s_k = s_k * square_mask
         s_k_diag = jnp.where(mask.squeeze(), 0.0, 1 / (2 * jnp.pi))
         s_k += jnp.diag(s_k_diag)
 
@@ -327,108 +327,78 @@ def _condition_on_original(m, P, h, H, R, u, y, num_iter):
     (mu_cond, Sigma_cond), _ = lax.scan(_step, carry, jnp.arange(num_iter))
     return mu_cond, symmetrize(Sigma_cond)
 
-def extended_kalman_filter(
+def extended_kalman_posterior_sample(
+    key: PRNGKey,
     params: ParamsNLGSSM,
-    emissions: Float[Array, "ntime emission_dim"],
+    emissions:  Float[Array, "ntime emission_dim"],
     masks,
     conditions,
-    num_iter: int = 1,
     inputs: Optional[Float[Array, "ntime input_dim"]] = None,
-    output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
-) -> PosteriorGSSMFiltered:
-    r"""Run an (iterated) extended Kalman filter to produce the
-    marginal likelihood and filtered state estimates.
+    filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
+) -> Float[Array, "ntime state_dim"]:
+    r"""Run forward-filtering, backward-sampling to draw samples.
 
     Args:
+        key: random number key.
         params: model parameters.
         emissions: observation sequence.
-        num_iter: number of linearizations around posterior for update step (default 1).
         inputs: optional array of inputs.
-        output_fields: list of fields to return in posterior object.
-            These can take the values "filtered_means", "filtered_covariances",
-            "predicted_means", "predicted_covariances", and "marginal_loglik".
 
     Returns:
-        post: posterior object.
-
+        Float[Array, "ntime state_dim"]: one sample of $z_{1:T}$ from the posterior distribution on latent states.
     """
-    num_trials, num_timesteps, emissions_dim = emissions.shape
+    num_trials = len(emissions)
+
+    # Get filtered posterior
+    if filtered_posterior is None:
+        filtered_posterior = extended_kalman_filter(params, emissions, masks, conditions, inputs=inputs)
+    ll = filtered_posterior.marginal_loglik
+    filtered_means = filtered_posterior.filtered_means
+    filtered_covs = filtered_posterior.filtered_covariances
 
     # Dynamics and emission functions and their Jacobians
-    f, h = params.dynamics_function, params.emission_function
-    # F, H = jacfwd(f), jacfwd(h, argnums=(0, 1))
-    F, H = None, jacfwd(h, argnums=0, has_aux=True)
+    f = params.dynamics_function
+    F = None #jacfwd(f)
     inputs = _process_input(inputs, num_trials)
 
-    # eps = jnp.zeros((num_timesteps, emissions_dim))
-
-    def _step(carry, t):
-        ll, pred_mean, pred_cov = carry
+    def _step(carry, args):
+        # Unpack the inputs
+        next_state = carry
+        key, filtered_mean, filtered_cov, t = args
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
-        R = None #_get_params(params.emission_covariance, 2, t)
         u = inputs[t]
-        y = emissions[t]
-        y_flattened = y.flatten()
-        mask = jnp.repeat(masks[t], emissions_dim)[:, None]
-        square_mask = mask @ mask.T
-        condition = conditions[t]
 
-        # Update the log likelihood
-        H_x, pred_obs_covs = H(pred_mean, y, t, condition) # (TN x V), (TN x T x N)
-        # H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
-        H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
+        # Condition on next state
+        # smoothed_mean, smoothed_cov = _condition_on_original(filtered_mean, filtered_cov,
+        #                                                      f, F, Q, u,
+        #                                                      next_state, 1)
 
-        # H_eps, H_x masking
-        H_x = H_x * mask
-        # H_eps = H_eps * square_mask
+        S = Q + filtered_cov
+        K = psd_solve(S, filtered_cov).T
 
-        y_pred, _ = h(pred_mean, y, t, condition) # TN
-        s_k = H_x @ pred_cov @ H_x.T + H_eps
+        smoothed_mean = filtered_mean + K @ (next_state - filtered_mean)
+        smoothed_cov = filtered_cov - K @ S @ K.T
+        smoothed_cov = symmetrize(smoothed_cov)
 
-        y_pred = y_pred * mask.squeeze()
-        y_flattened = y_flattened * mask.squeeze()
-        # s_k = s_k.at[~mask, ~mask].set(1/(2*jnp.pi))
-        s_k = s_k * square_mask
-        s_k_diag = jnp.where(mask.squeeze(), 0.0, 1 / (2 * jnp.pi))
-        s_k += jnp.diag(s_k_diag)
+        state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
+        return state, state
 
-        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
+    # Initialize the last state
+    key, this_key = jr.split(key, 2)
+    last_state = MVN(filtered_means[-1], filtered_covs[-1]).sample(seed=this_key)
 
-        # Condition on this emission
-        # filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u,
-        #                                             y, eps, t, num_iter)
-
-        K = psd_solve(s_k, H_x @ pred_cov).T
-        filtered_cov = pred_cov - K @ s_k @ K.T
-        filtered_mean = pred_mean + K @ (y_flattened - y_pred)
-        filtered_cov = symmetrize(filtered_cov)
-
-        # Predict the next state
-        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, f, F, Q, u)
-
-        # Build carry and output states
-        carry = (ll, pred_mean, pred_cov)
-        outputs = {
-            "filtered_means": filtered_mean,
-            "filtered_covariances": filtered_cov,
-            "predicted_means": pred_mean,
-            "predicted_covariances": pred_cov,
-            "marginal_loglik": ll,
-        }
-        outputs = {key: val for key, val in outputs.items() if key in output_fields}
-
-        return carry, outputs
-
-    # Run the extended Kalman filter
-    carry = (0.0, params.initial_mean, params.initial_covariance)
-    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_trials))
-    outputs = {"marginal_loglik": ll, **outputs}
-    posterior_filtered = PosteriorGSSMFiltered(
-        **outputs,
+    args = (
+        jr.split(key, num_trials - 1),
+        filtered_means[:-1][::-1],
+        filtered_covs[:-1][::-1],
+        jnp.arange(num_trials - 2, -1, -1),
     )
-    return posterior_filtered
+    _, reversed_states = lax.scan(_step, last_state, args)
+    states = jnp.vstack([reversed_states[::-1], last_state])
+    return states, ll
+
 
 
 def iterated_extended_kalman_smoother(
