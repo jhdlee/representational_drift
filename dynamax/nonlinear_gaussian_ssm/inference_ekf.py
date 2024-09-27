@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy as jscipy
 from jax import lax
 from jax import jacfwd
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
@@ -119,10 +120,10 @@ def extended_kalman_filter(
     # Dynamics and emission functions and their Jacobians
     f, h = params.dynamics_function, params.emission_function
     # F, H = jacfwd(f), jacfwd(h, argnums=(0, 1))
-    F, H = None, jacfwd(h, argnums=(0, 1))
+    F, H = None, jacfwd(h, argnums=0, has_aux=True)
     inputs = _process_input(inputs, num_trials)
 
-    eps = jnp.zeros((num_timesteps, emissions_dim))
+    # eps = jnp.zeros((num_timesteps, emissions_dim))
 
     def _step(carry, t):
         ll, pred_mean, pred_cov = carry
@@ -134,25 +135,25 @@ def extended_kalman_filter(
         y = emissions[t]
         y_flattened = y.flatten()
         mask = jnp.repeat(masks[t], emissions_dim)[:, None]
+        square_mask = mask @ mask.T
         condition = conditions[t]
 
         # Update the log likelihood
-        H_x, H_eps = H(pred_mean, eps, y, t, condition) # (TN x V), (TN x T x N)
-        H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
+        H_x, pred_obs_covs = H(pred_mean, y, t, condition) # (TN x V), (TN x T x N)
+        # H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
+        H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
 
         # H_eps, H_x masking
         H_x = H_x * mask
-        H_eps = H_eps * mask
-        H_eps = H_eps * mask.T
+        # H_eps = H_eps * square_mask
 
-        y_pred = h(pred_mean, eps, y, t, condition) # TN
-        s_k = H_x @ pred_cov @ H_x.T + H_eps @ H_eps.T # masking
+        y_pred, _ = h(pred_mean, y, t, condition) # TN
+        s_k = H_x @ pred_cov @ H_x.T + H_eps
 
         y_pred = y_pred * mask.squeeze()
         y_flattened = y_flattened * mask.squeeze()
         # s_k = s_k.at[~mask, ~mask].set(1/(2*jnp.pi))
-        s_k = s_k * mask
-        s_k = s_k * mask.T
+        s_k = s_k * square_mask
         s_k_diag = jnp.where(mask.squeeze(), 0.0, 1 / (2 * jnp.pi))
         s_k += jnp.diag(s_k_diag)
 
