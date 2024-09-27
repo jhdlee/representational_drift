@@ -2058,6 +2058,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             if print_ll:
                 print(ll, approx_marginal_ll)
+            lls.append(ll)
             marginal_lls.append(approx_marginal_ll)
 
         return current_params, current_states, current_velocity, lls, marginal_lls
