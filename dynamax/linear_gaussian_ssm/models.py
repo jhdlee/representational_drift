@@ -685,7 +685,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             fix_emissions: bool = False,
             fix_emissions_cov: bool = False,
             fix_tau: bool = False,
-            EPS: float = 1e-8,
+            EPS: float = 1e-4,
             **kw_priors
     ):
         super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
@@ -1509,6 +1509,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 init_cov_posterior = ig_posterior_update(self.initial_covariance_prior, init_cov_stats)
                 init_cov = init_cov_posterior.sample(seed=next(rngs))
                 init_cov = jnp.ravel(init_cov).reshape(self.num_conditions, self.state_dim)
+                init_cov += self.EPS
                 S = vmap(jnp.diag)(init_cov)
 
             # Sample the dynamics params
@@ -1541,6 +1542,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 dynamics_cov_posterior = ig_posterior_update(self.dynamics_covariance_prior,
                                                              dynamics_cov_stats)
                 dynamics_cov = dynamics_cov_posterior.sample(seed=next(rngs))
+                dynamics_cov += self.EPS
                 Q = jnp.diag(jnp.ravel(dynamics_cov))
 
             # Sample the emission params
@@ -1586,6 +1588,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     init_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior,
                                                                       init_velocity_cov_stats)
                     initial_velocity_cov = init_velocity_cov_posterior.sample(seed=next(rngs))
+                    initial_velocity_cov += self.EPS
                     initial_velocity_cov = jnp.diag(jnp.ravel(initial_velocity_cov))
 
                     if self.fix_tau: # set to true during test time
@@ -1619,6 +1622,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
                     # emissions_cov = jnp.where(jnp.logical_or(jnp.isnan(emissions_cov), emissions_cov < self.EPS),
                     #                           self.EPS, emissions_cov)
+                    emissions_cov += self.EPS
                     R = jnp.diag(jnp.ravel(emissions_cov))
 
             params = ParamsTVLGSSM(
