@@ -2031,7 +2031,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                 conditions)
 
                  _new_states, _approx_marginal_lls = smoothers.smoothed_means, smoothers.marginal_loglik
-                if self.stationary_emissions:
+                 if self.stationary_emissions:
                     approx_marginal_ll = _approx_marginal_lls.sum() # This is exact
 
             # Sample parameters
