@@ -147,7 +147,7 @@ def extended_kalman_filter(
         H_x = H_x * mask
         H_eps = H_eps * square_mask
 
-        y_pred = h(pred_mean, y, t, condition) # TN
+        y_pred, _ = h(pred_mean, y, t, condition) # TN
         s_k = H_x @ pred_cov @ H_x.T + H_eps
 
         y_pred = y_pred * mask.squeeze()
