@@ -2025,10 +2025,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 _new_states = fixed_states
             else:
                  smoothers = lgssm_smoother_vmap(_new_params_emissions_updated,
-                                                _emissions,
-                                                inputs, masks,
-                                                jnp.arange(self.num_trials, dtype=int),
-                                                conditions)
+                                                 _emissions,
+                                                 inputs,
+                                                 masks,
+                                                 jnp.arange(self.num_trials, dtype=int),
+                                                 conditions)
 
                  _new_states, _approx_marginal_lls = smoothers.smoothed_means, smoothers.marginal_loglik
                  if self.stationary_emissions:
@@ -2048,7 +2049,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         lls = []
         marginal_lls = []
         current_params = initial_params
-        lgssm_smoother_vmap = vmap(lgssm_smoother, in_axes=(None, None, 0, None, 0, 0, 0))
+        lgssm_smoother_vmap = vmap(lgssm_smoother, in_axes=(None, 0, None, 0, 0, 0))
 
         for itr in progress_bar(range(num_iters)):
             current_params, current_states, current_velocity, ll, approx_marginal_ll = one_itr(current_params,
