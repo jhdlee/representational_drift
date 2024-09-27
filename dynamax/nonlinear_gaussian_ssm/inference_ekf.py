@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy as jscipy
 from jax import lax
 from jax import jacfwd
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
