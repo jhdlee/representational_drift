@@ -1092,13 +1092,18 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             params: ParamsLGSSM,
             emissions: Float[Array, "ntime emission_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
-            masks: jnp.array = None
+            masks: jnp.array = None,
+            conditions: jnp.array = None
     ) -> PosteriorGSSMFiltered:
+        num_trials = emissions.shape[0]
         if masks is None:
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
-        trials = jnp.arange(self.num_trials, dtype=int)
-        lgssm_filter_vmap = vmap(lgssm_filter, in_axes=(None, 0, 0, 0, 0))
-        filters = lgssm_filter_vmap(params, emissions, inputs, masks, trials)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
+        trials = jnp.arange(num_trials, dtype=int)
+
+        lgssm_filter_vmap = vmap(lgssm_filter, in_axes=(None, 0, 0, 0, 0, 0))
+        filters = lgssm_filter_vmap(params, emissions, inputs, masks, trials, conditions)
         return filters
 
     def ekf(
@@ -1141,12 +1146,49 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None
     ) -> PosteriorGSSMSmoothed:
+        num_trials = emissions.shape[0]
         if masks is None:
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
-        trials = jnp.arange(self.num_trials, dtype=int)
-        lgssm_smoother_vmap = vmap(lgssm_smoother, in_axes=(None, 0, 0, 0, 0))
-        smoothers = lgssm_smoother_vmap(params, emissions, inputs, masks, trials)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
+        trials = jnp.arange(num_trials, dtype=int)
+
+        lgssm_smoother_vmap = vmap(lgssm_smoother, in_axes=(None, 0, 0, 0, 0, 0))
+        smoothers = lgssm_smoother_vmap(params, emissions, inputs, masks, trials, conditions)
         return smoothers
+
+    def eks(
+            self,
+            base_subspace,
+            params: ParamsLGSSM,
+            emissions: Float[Array, "ntime emission_dim"],
+            inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+            masks: jnp.array = None,
+            conditions: jnp.array = None
+    ):
+        num_trials = emissions.shape[0]
+        if masks is None:
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
+
+        f = self.get_f()
+        h = self.get_h(base_subspace, params, masks)
+
+        NLGSSM_params = ParamsNLGSSM(
+            initial_mean=params.initial_velocity.mean,
+            initial_covariance=params.initial_velocity.cov,
+            dynamics_function=f,
+            dynamics_covariance=jnp.diag(params.emissions.tau),
+            emission_function=h,
+            emission_covariance=None
+        )
+
+        smoothed_posterior = extended_kalman_smoother(NLGSSM_params, emissions,
+                                                    masks, conditions=conditions,
+                                                    inputs=inputs)
+
+        return smoothed_posterior
 
     def posterior_sample(
             self,

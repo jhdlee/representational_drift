@@ -219,8 +219,10 @@ def iterated_extended_kalman_filter(
 def extended_kalman_smoother(
     params: ParamsNLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
+    masks,
+    conditions,
+    inputs: Optional[Float[Array, "ntime input_dim"]] = None,
     filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None
 ) -> PosteriorGSSMSmoothed:
     r"""Run an extended Kalman (RTS) smoother.
 
@@ -234,20 +236,19 @@ def extended_kalman_smoother(
         post: posterior object.
 
     """
-    num_timesteps = len(emissions)
+    num_trials = len(emissions)
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, inputs=inputs)
+        filtered_posterior = extended_kalman_filter(params, emissions, masks, conditions, inputs=inputs)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
 
     # Dynamics and emission functions and their Jacobians
     f = params.dynamics_function
-    F = jacfwd(f)
-    f, F = (_process_fn(fn, inputs) for fn in (f, F))
-    inputs = _process_input(inputs, num_timesteps)
+    F = None #jacfwd(f)
+    inputs = _process_input(inputs, num_trials)
 
     def _step(carry, args):
         # Unpack the inputs
@@ -256,24 +257,19 @@ def extended_kalman_smoother(
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
-        R = _get_params(params.emission_covariance, 2, t)
-        u = inputs[t]
-        F_x = F(filtered_mean, u)
 
-        # Prediction step
-        m_pred = f(filtered_mean, u)
-        S_pred = Q + F_x @ filtered_cov @ F_x.T
-        G = psd_solve(S_pred, F_x @ filtered_cov).T
+        S = Q + filtered_cov
+        G = psd_solve(S, filtered_cov).T
 
-        # Compute smoothed mean and covariance
-        smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
-        smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
+        smoothed_mean = filtered_mean + G @ (smoothed_mean_next - filtered_mean)
+        smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S) @ G.T
+        smoothed_cov = symmetrize(smoothed_cov)
 
         return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov)
 
     # Run the extended Kalman smoother
     init_carry = (filtered_means[-1], filtered_covs[-1])
-    args = (jnp.arange(num_timesteps - 2, -1, -1), filtered_means[:-1][::-1], filtered_covs[:-1][::-1])
+    args = (jnp.arange(num_trials - 2, -1, -1), filtered_means[:-1][::-1], filtered_covs[:-1][::-1])
     _, (smoothed_means, smoothed_covs) = lax.scan(_step, init_carry, args)
 
     # Reverse the arrays and return
@@ -381,9 +377,10 @@ def extended_kalman_posterior_sample(
 
         S = Q + filtered_cov
         K = psd_solve(S, filtered_cov).T
+
+        smoothed_mean = filtered_mean + K @ (next_state - filtered_mean)
         smoothed_cov = filtered_cov - K @ S @ K.T
         smoothed_cov = symmetrize(smoothed_cov)
-        smoothed_mean = filtered_mean + K @ (next_state - filtered_mean)
 
         state = MVN(smoothed_mean, smoothed_cov).sample(seed=key)
         return state, state
