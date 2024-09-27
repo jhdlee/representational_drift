@@ -1333,7 +1333,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         return f
 
     def get_h(self, base_subspace, _params, masks):
-        def h(v, eps, obs_t, t, condition):
+        def h(v, obs_t, t, condition):
             C = rotate_subspace(base_subspace, self.state_dim, v)
 
             # new params constructed from model_params
@@ -1372,11 +1372,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
             pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
-            pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
+            # pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
 
-            pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps.reshape(-1, self.emission_dim))
+            # pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps.reshape(-1, self.emission_dim))
 
-            return pred_obs_means.flatten()
+            return pred_obs_means.flatten(), pred_obs_covs
 
         return h
 
