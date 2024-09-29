@@ -1461,7 +1461,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
             pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
 
-            return jnp.swapaxes(pred_obs_covs_sqrt, 1, 2).reshape(-1, self.emission_dim)
+            return jscipy.linalg.block_diag(*jnp.swapaxes(pred_obs_covs_sqrt, 1, 2))
 
         return (h_mean, h_cov)
 
