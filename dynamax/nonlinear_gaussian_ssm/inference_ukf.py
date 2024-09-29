@@ -30,7 +30,7 @@ _process_input = lambda x, y: jnp.zeros((y,)) if x is None else x
 _compute_lambda = lambda x, y, z: x**2 * (y + z) - z
 
 
-def _compute_sigmas(m, P, n_distance, n, lamb):
+def _compute_sigmas(m, P, n, lamb):
     """Compute (2n+1) sigma points used for inputs to  unscented transform.
 
     Args:
@@ -42,11 +42,10 @@ def _compute_sigmas(m, P, n_distance, n, lamb):
     Returns:
         sigmas (2*D_hid+1,): 2n+1 sigma points.
     """
-    distance_weight = jnp.sqrt(n_distance + lamb)
-    distances = distance_weight * jnp.linalg.cholesky(P)
+    distances = jnp.sqrt(n + lamb) * jnp.linalg.cholesky(P)
     sigma_plus = jnp.array([m + distances[:, i] for i in range(n)])
     sigma_minus = jnp.array([m - distances[:, i] for i in range(n)])
-    return jnp.concatenate((jnp.array([m]), sigma_plus, sigma_minus)), distance_weight
+    return jnp.concatenate((jnp.array([m]), sigma_plus, sigma_minus))
 
 
 def _compute_weights(n, alpha, beta, lamb):
@@ -111,27 +110,17 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r):
     """
     # Form sigma points and propagate
     n_prime = n + n_r
-    # m_tilde = jnp.concatenate([m, jnp.zeros(n_r)])
-    # P_tilde = jscipy.linalg.block_diag(P, jnp.eye(n_r))
+    m_tilde = jnp.concatenate([m, jnp.zeros(n_r)])
+    P_tilde = jscipy.linalg.block_diag(P, jnp.eye(n_r))
 
-    # sigmas_cond = _compute_sigmas(m_tilde, P_tilde, n_prime, lamb)
-    # sigmas_cond_m, sigmas_cond_r = jnp.hsplit(sigmas_cond, [n])
-    # sigmas_cond_prop = vmap(h, (0, 0, None, None, None), 0)(sigmas_cond_m, sigmas_cond_r, y, t, condition)
-
-    sigmas_cond, distance_weight = _compute_sigmas(m, P, n_prime, n, lamb)
-    sigmas_cond_prop = vmap(h[0], (0, None, None, None), 0)(sigmas_cond, y, t, condition)
-    cov_prop = h[1](sigmas_cond[0], y, t, condition)
-    weighted_cov_prop = cov_prop * distance_weight
-    weighted_cov_prop = jscipy.linalg.block_diag(*weighted_cov_prop)
-    sigmas_cond_prop_r_plus = sigmas_cond_prop[:1] + weighted_cov_prop
-    sigmas_cond_prop_r_minus = sigmas_cond_prop[:1] - weighted_cov_prop
-    sigmas_cond_prop = jnp.vstack([sigmas_cond_prop, sigmas_cond_prop_r_plus, sigmas_cond_prop_r_minus])
+    sigmas_cond = _compute_sigmas(m_tilde, P_tilde, n_prime, lamb)
+    sigmas_cond_m, sigmas_cond_r = jnp.hsplit(sigmas_cond, [n])
+    sigmas_cond_prop = vmap(h, (0, 0, None, None, None), 0)(sigmas_cond_m, sigmas_cond_r, y, t, condition)
 
     # Compute parameters needed to filter
-    sigmas_cond_extended = jnp.vstack([sigmas_cond, jnp.tile(m[None], (2*n_r, 1))])
     pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
     pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1)
-    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond_extended - m, sigmas_cond_prop - pred_mean), axes=1)
+    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond_m - m, sigmas_cond_prop - pred_mean), axes=1)
 
     # Compute log-likelihood of observation
     ll = MVN(pred_mean, pred_cov).log_prob(y.flatten())
