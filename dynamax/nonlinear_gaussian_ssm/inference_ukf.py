@@ -123,11 +123,11 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r):
     pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond_m - m, sigmas_cond_prop - pred_mean), axes=1)
 
     # Compute log-likelihood of observation
-    ll = MVN(pred_mean, pred_cov).log_prob(y)
+    ll = MVN(pred_mean, pred_cov).log_prob(y.flatten())
 
     # Compute filtered mean and covariace
     K = psd_solve(pred_cov, pred_cross.T).T  # Filter gain
-    m_cond = m + K @ (y - pred_mean)
+    m_cond = m + K @ (y.flatten() - pred_mean)
     P_cond = P - K @ pred_cov @ K.T
     return ll, m_cond, P_cond
 
@@ -175,7 +175,7 @@ def unscented_kalman_filter(
         Q = _get_params(params.dynamics_covariance, 2, t)
         R = None #_get_params(params.emission_covariance, 2, t)
         u = inputs[t]
-        y = emissions[t].flatten()
+        y = emissions[t]
         condition = conditions[t]
 
         # Condition on this emission
