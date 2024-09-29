@@ -126,9 +126,10 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r):
     sigmas_cond_prop = jnp.vstack([sigmas_cond_prop, sigmas_cond_prop_r_plus, sigmas_cond_prop_r_minus])
 
     # Compute parameters needed to filter
+    sigmas_cond_extended = jnp.vstack([sigmas_cond, jnp.tile(m[None], (2*n_r))])
     pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
     pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1)
-    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond - m, sigmas_cond_prop - pred_mean), axes=1)
+    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond_extended - m, sigmas_cond_prop - pred_mean), axes=1)
 
     # Compute log-likelihood of observation
     ll = MVN(pred_mean, pred_cov).log_prob(y.flatten())
