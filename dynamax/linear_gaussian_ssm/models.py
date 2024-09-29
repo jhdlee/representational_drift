@@ -1450,8 +1450,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
                                                                             masks=masks, conditions=conditions)
         elif velocity_sampler == 'ukf':
+            ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
             velocity, approx_marginal_ll = unscented_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
-                                                                            masks=masks, conditions=conditions)
+                                                                             conditions=conditions,
+                                                                             hyperparams=ukf_hyperparams)
 
 
         return velocity, approx_marginal_ll
