@@ -1382,7 +1382,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         return h
 
     def get_h_v2(self, base_subspace, _params, masks):
-        def h(v, eps, obs_t, t, condition):
+        def h_mean(v, obs_t, t, condition):
             C = rotate_subspace(base_subspace, self.state_dim, v)
 
             # new params constructed from model_params
@@ -1417,17 +1417,53 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             # get pred means and covs
             pred_means = filtered_posterior.predicted_means
-            pred_covs = filtered_posterior.predicted_covariances
 
             pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
-            pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
-            pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
-
-            pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps.reshape(-1, self.emission_dim)) # could be optimized
 
             return pred_obs_means.flatten()
 
-        return h
+        def h_cov(v, obs_t, t, condition):
+            C = rotate_subspace(base_subspace, self.state_dim, v)
+
+            # new params constructed from model_params
+            mu_0 = _params.initial.mean
+            Sigma_0 = _params.initial.cov
+            A = _params.dynamics.weights
+            Q = _params.dynamics.cov
+            R = _params.emissions.cov
+            mu_v_0 = _params.initial_velocity.mean
+            Sigma_v_0 = _params.initial_velocity.cov
+            tau = _params.emissions.tau
+            h_params = ParamsTVLGSSM(
+                initial=ParamsLGSSMInitial(
+                    mean=mu_0,
+                    cov=Sigma_0),
+                dynamics=ParamsLGSSMDynamics(
+                    weights=A,
+                    bias=None,
+                    input_weights=jnp.zeros((self.state_dim, 0)),
+                    cov=Q),
+                emissions=ParamsLGSSMEmissions(
+                    weights=C,
+                    bias=None,
+                    input_weights=jnp.zeros((self.emission_dim, 0)),
+                    cov=R,
+                    tau=tau),
+                initial_velocity=ParamsLGSSMInitial(mean=mu_v_0,
+                                                    cov=Sigma_v_0),
+            )
+
+            filtered_posterior = lgssm_filter(h_params, obs_t, masks=masks[t], trial_r=t, condition=condition)
+
+            # get pred means and covs
+            pred_covs = filtered_posterior.predicted_covariances
+
+            pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
+            pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
+
+            return jnp.swapaxes(pred_obs_covs_sqrt, 1, 2).reshape(-1, self.emission_dim)
+
+        return (h_mean, h_cov)
 
     def velocity_sample(self, base_subspace, _params, _emissions,
                         masks, conditions, rng, velocity_sampler='ekf'):
