@@ -121,8 +121,9 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r):
     sigmas_cond, distance_weight = _compute_sigmas(m, P, n_prime, n, lamb)
     sigmas_cond_prop = vmap(h[0], (0, None, None, None), 0)(sigmas_cond, y, t, condition)
     cov_prop = h[1](sigmas_cond[0], y, t, condition)
-    sigmas_cond_prop_r_plus = sigmas_cond_prop[:1] + cov_prop * distance_weight
-    sigmas_cond_prop_r_minus = sigmas_cond_prop[:1] - cov_prop * distance_weight
+    weighted_cov_prop = cov_prop * distance_weight
+    sigmas_cond_prop_r_plus = sigmas_cond_prop[:1] + weighted_cov_prop
+    sigmas_cond_prop_r_minus = sigmas_cond_prop[:1] - weighted_cov_prop
     sigmas_cond_prop = jnp.vstack([sigmas_cond_prop, sigmas_cond_prop_r_plus, sigmas_cond_prop_r_minus])
 
     # Compute parameters needed to filter
