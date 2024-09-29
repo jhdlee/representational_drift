@@ -1144,7 +1144,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             params: ParamsLGSSM,
             emissions: Float[Array, "ntime emission_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
-            masks: jnp.array = None
+            masks: jnp.array = None,
+            conditions: jnp.array = None
     ) -> PosteriorGSSMSmoothed:
         num_trials = emissions.shape[0]
         if masks is None:
@@ -1332,7 +1333,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             return v
         return f
 
-    def get_h(self, base_subspace, _params, masks):
+    def get_h_v1(self, base_subspace, _params, masks):
         def h(v, obs_t, t, condition):
             C = rotate_subspace(base_subspace, self.state_dim, v)
 
@@ -1380,10 +1381,61 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         return h
 
+    def get_h_v2(self, base_subspace, _params, masks):
+        def h(v, eps, obs_t, t, condition):
+            C = rotate_subspace(base_subspace, self.state_dim, v)
+
+            # new params constructed from model_params
+            mu_0 = _params.initial.mean
+            Sigma_0 = _params.initial.cov
+            A = _params.dynamics.weights
+            Q = _params.dynamics.cov
+            R = _params.emissions.cov
+            mu_v_0 = _params.initial_velocity.mean
+            Sigma_v_0 = _params.initial_velocity.cov
+            tau = _params.emissions.tau
+            h_params = ParamsTVLGSSM(
+                initial=ParamsLGSSMInitial(
+                    mean=mu_0,
+                    cov=Sigma_0),
+                dynamics=ParamsLGSSMDynamics(
+                    weights=A,
+                    bias=None,
+                    input_weights=jnp.zeros((self.state_dim, 0)),
+                    cov=Q),
+                emissions=ParamsLGSSMEmissions(
+                    weights=C,
+                    bias=None,
+                    input_weights=jnp.zeros((self.emission_dim, 0)),
+                    cov=R,
+                    tau=tau),
+                initial_velocity=ParamsLGSSMInitial(mean=mu_v_0,
+                                                    cov=Sigma_v_0),
+            )
+
+            filtered_posterior = lgssm_filter(h_params, obs_t, masks=masks[t], trial_r=t, condition=condition)
+
+            # get pred means and covs
+            pred_means = filtered_posterior.predicted_means
+            pred_covs = filtered_posterior.predicted_covariances
+
+            pred_obs_means = jnp.einsum('ij,tj->ti', C, pred_means)
+            pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
+            pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
+
+            pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt, eps)
+
+            return pred_obs_means.flatten()
+
+        return h
+
     def velocity_sample(self, base_subspace, _params, _emissions,
-                        masks, conditions, rng):
+                        masks, conditions, rng, velocity_sampler='ekf'):
         f = self.get_f()
-        h = self.get_h(base_subspace, _params, masks)
+        if velocity_sampler == 'ekf':
+            h = self.get_h_v1(base_subspace, _params, masks)
+        elif velocity_sampler == 'ukf':
+            h = self.get_h_v2(base_subspace, _params, masks)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=_params.initial_velocity.mean,
@@ -1394,8 +1446,13 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_covariance=None
         )
 
-        velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
-                                                                        masks=masks, conditions=conditions)
+        if velocity_sampler == 'ekf':
+            velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
+                                                                            masks=masks, conditions=conditions)
+        elif velocity_sampler == 'ukf':
+            velocity, approx_marginal_ll = unscented_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
+                                                                            masks=masks, conditions=conditions)
+
 
         return velocity, approx_marginal_ll
 
@@ -1413,6 +1470,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masks: jnp.array = None,
             conditions: jnp.array = None,
             fixed_states: jnp.array = None,
+            velocity_sampler = 'ekf',
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
@@ -1645,7 +1703,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 _updated_emission_weights = None
             else:
                 velocity, approx_marginal_ll = self.velocity_sample(base_subspace, _params,
-                                                                    _emissions, masks, conditions, rngs[2])
+                                                                    _emissions, masks, conditions,
+                                                                    rngs[2], velocity_sampler)
                 _updated_emission_weights = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace,
                                                                                            self.state_dim,
                                                                                            velocity)
