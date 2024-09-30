@@ -1070,7 +1070,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             conditions = jnp.zeros(num_trials, dtype=int)
 
         f = self.get_f()
-        h = self.get_h(base_subspace, params, masks)
+        h = self.get_h_v1(base_subspace, params, masks)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.initial_velocity.mean,
@@ -1122,7 +1122,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             conditions = jnp.zeros(num_trials, dtype=int)
 
         f = self.get_f()
-        h = self.get_h(base_subspace, params, masks)
+        h = self.get_h_v1(base_subspace, params, masks)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.initial_velocity.mean,

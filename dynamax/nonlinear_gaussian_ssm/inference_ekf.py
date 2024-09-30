@@ -152,16 +152,11 @@ def extended_kalman_filter(
 
         y_pred = y_pred * mask.squeeze()
         y_flattened = y_flattened * mask.squeeze()
-        # s_k = s_k.at[~mask, ~mask].set(1/(2*jnp.pi))
         s_k = s_k * square_mask
         s_k_diag = jnp.where(mask.squeeze(), 0.0, 1 / (2 * jnp.pi))
         s_k += jnp.diag(s_k_diag)
 
         ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
-
-        # Condition on this emission
-        # filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u,
-        #                                             y, eps, t, num_iter)
 
         K = psd_solve(s_k, H_x @ pred_cov).T
         filtered_cov = pred_cov - K @ s_k @ K.T
