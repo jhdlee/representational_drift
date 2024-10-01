@@ -158,7 +158,7 @@ def extended_kalman_filter(
 
         ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
 
-        K = psd_solve(s_k, H_x @ pred_cov, diagonal_boost=1e-12).T
+        K = psd_solve(s_k, H_x @ pred_cov).T
         filtered_cov = pred_cov - K @ s_k @ K.T
         filtered_mean = pred_mean + K @ (y_flattened - y_pred)
         filtered_cov = symmetrize(filtered_cov)
@@ -255,7 +255,7 @@ def extended_kalman_smoother(
         Q = _get_params(params.dynamics_covariance, 2, t)
 
         S = Q + filtered_cov
-        G = psd_solve(S, filtered_cov, diagonal_boost=1e-12).T
+        G = psd_solve(S, filtered_cov).T
 
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - filtered_mean)
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S) @ G.T
@@ -372,7 +372,7 @@ def extended_kalman_posterior_sample(
         #                                                      next_state, 1)
 
         S = Q + filtered_cov
-        K = psd_solve(S, filtered_cov, diagonal_boost=1e-12).T
+        K = psd_solve(S, filtered_cov).T
 
         smoothed_mean = filtered_mean + K @ (next_state - filtered_mean)
         smoothed_cov = filtered_cov - K @ S @ K.T
