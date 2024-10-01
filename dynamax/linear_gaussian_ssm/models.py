@@ -1817,11 +1817,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             init_stats = (init_stats_1_sum, init_stats_2, conditions_count)
 
             sum_zpzpT = jnp.einsum('bti,btl,bt->il', xp, xp, masks[:, 1:])
-            sum_zpzpT += jnp.einsum('btij,bt->ij', covariances[:-1], masks[:, 1:])
+            sum_zpzpT += jnp.einsum('btij,bt->ij', covariances[:, :-1], masks[:, 1:])
             # sum_zpxnT = jnp.einsum('bti,btl,bt->il', xp, xn, masks[:, 1:])
-            sum_zpxnT = jnp.einsum('btij,bt->ij', cross_covariances[:-1], masks[:, 1:])
+            sum_zpxnT = jnp.einsum('btij,bt->ij', cross_covariances[:, :-1], masks[:, 1:])
             sum_xnxnT = jnp.einsum('bti,btl,bt->il', xn, xn, masks[:, 1:])
-            sum_xnxnT += jnp.einsum('btij,bt->ij', covariances[1:], masks[:, 1:])
+            sum_xnxnT += jnp.einsum('btij,bt->ij', covariances[:, 1:], masks[:, 1:])
             dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, masks.sum() - len(emissions))
 
             # Quantities for the emissions
