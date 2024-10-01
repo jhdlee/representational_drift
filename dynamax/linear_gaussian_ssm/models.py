@@ -1808,11 +1808,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)
             conditions_count = jnp.sum(conditions_one_hot, axis=0)
             init_stats_1 = jnp.einsum('bc,bi->bci',
-                                      conditions_one_hot[:, None],
+                                      conditions_one_hot,
                                       x[:, 0])
             init_stats_1_sum = init_stats_1.sum(0)
             init_stats_2 = jnp.einsum('bci,bcj->cij', init_stats_1, init_stats_1)
-            init_stats_2_add = jnp.einsum('bc,bij->cij', conditions_one_hot[:, None], covariances[:, 0])
+            init_stats_2_add = jnp.einsum('bc,bij->cij', conditions_one_hot, covariances[:, 0])
             init_stats_2 += init_stats_2_add
             init_stats = (init_stats_1_sum, init_stats_2, conditions_count)
 
