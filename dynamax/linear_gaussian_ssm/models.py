@@ -1251,7 +1251,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             (params.dynamics.weights,
              params.dynamics.input_weights,
              dynamics_bias))
-        lp += self.dynamics_prior.log_prob((params.dynamics.cov, dynamics_matrix)))
+        lp += self.dynamics_prior.log_prob((params.dynamics.cov, dynamics_matrix))
         def _compute_dynamics_lp(prev_lp, current_t):
             current_state_mean = jnp.einsum('ij,rj->ri', params.dynamics.weights, states[:, current_t])
             if self.has_dynamics_bias:
