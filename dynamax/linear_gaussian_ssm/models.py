@@ -1242,7 +1242,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         # lp = self.initial_mean_prior.log_prob(params.initial.mean).sum()
         # flattened_cov = vmap(jnp.diag)(params.initial.cov)
         # lp += self.initial_covariance_prior.log_prob(flattened_cov.flatten()).sum()
-        lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
+        lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean)).sum()
         lp += MVN(params.initial.mean[conditions], params.initial.cov[conditions]).log_prob(states[:, 0]).sum()
 
         # dynamics & states
