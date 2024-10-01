@@ -1441,7 +1441,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         return velocity, approx_marginal_ll
 
     def velocity_smoother(self, base_subspace, _params, _emissions,
-                        masks, conditions, rng, velocity_sampler='ekf'):
+                        masks, conditions, velocity_sampler='ekf'):
         f = self.get_f()
         if velocity_sampler == 'ekf':
             h = self.get_h_v1(base_subspace, _params, masks)
@@ -1944,16 +1944,14 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         @jit
         def one_sample(_params, _emissions, _inputs):
-            rngs = jr.split(rng, 3)
-
             if self.stationary_emissions:
                 _new_params_emissions_updated = _params
                 velocity = None
                 _updated_emission_weights = None
             else:
-                velocity, approx_marginal_ll = self.velocity_sample(base_subspace, _params,
+                velocity, approx_marginal_ll = self.velocity_smoother(base_subspace, _params,
                                                                     _emissions, masks, conditions,
-                                                                    rngs[2], velocity_sampler)
+                                                                    velocity_sampler)
                 _updated_emission_weights = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace,
                                                                                            self.state_dim,
                                                                                            velocity)
