@@ -1528,7 +1528,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             init_stats_2 = init_stats_1 - init_stats_1_avg
             init_stats_2 = jnp.einsum('bci,bcj->cij', init_stats_2, init_stats_2)
 
-            init_stats = (init_stats_1_sum, init_stats_2, conditions_count)
+            init_stats = (init_stats_1_sum, init_stats_2, conditions_count[:, 0])
 
             # N, D = y.shape[-1], states.shape[-1]
             # # Optimized Code
@@ -1569,8 +1569,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_initial:
                 S, m = params.initial.cov, params.initial.mean
             else:
-                initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
-                S, m = initial_posterior.sample(seed=next(rngs))
+                def sample_from_initial_posterior(init_stats_c):
+                    initial_posterior = niw_posterior_update(self.initial_prior, init_stats_c)
+                    S_c, m_c = initial_posterior.sample(seed=next(rngs))
+                    return S_c, m_c
+                S, m = vmap(sample_from_initial_posterior)(init_stats)
 
             # Sample the dynamics params
             if self.fix_dynamics:
@@ -1812,7 +1815,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             init_stats_2 = init_stats_1 - init_stats_1_avg
             init_stats_2 = jnp.einsum('bci,bcj->cij', init_stats_2, init_stats_2)
 
-            init_stats = (init_stats_1_sum, init_stats_2, conditions_count)
+            init_stats = (init_stats_1_sum, init_stats_2, conditions_count[:, 0])
 
             # N, D = y.shape[-1], states.shape[-1]
             # # Optimized Code
@@ -1851,8 +1854,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_initial:
                 S, m = params.initial.cov, params.initial.mean
             else:
-                initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
-                S, m = initial_posterior.mode()
+                def sample_from_initial_posterior(init_stats_c):
+                    initial_posterior = niw_posterior_update(self.initial_prior, init_stats_c)
+                    S_c, m_c = initial_posterior.mode()
+                    return S_c, m_c
+                S, m = vmap(sample_from_initial_posterior)(init_stats)
 
             # Sample the dynamics params
             if self.fix_dynamics:
