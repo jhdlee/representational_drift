@@ -254,23 +254,27 @@ def extended_kalman_smoother(
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
 
-        S = Q + filtered_cov
-        G = psd_solve(S, filtered_cov).T
+        m_pred = filtered_mean
+        S_pred = Q + filtered_cov
+        G = psd_solve(S_pred, filtered_cov).T
 
-        smoothed_mean = filtered_mean + G @ (smoothed_mean_next - filtered_mean)
-        smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S) @ G.T
-        smoothed_cov = symmetrize(smoothed_cov)
+        smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
+        smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
 
         return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov)
 
     # Run the extended Kalman smoother
-    init_carry = (filtered_means[-1], filtered_covs[-1])
-    args = (jnp.arange(num_trials - 2, -1, -1), filtered_means[:-1][::-1], filtered_covs[:-1][::-1])
-    _, (smoothed_means, smoothed_covs) = lax.scan(_step, init_carry, args)
+    _, (smoothed_means, smoothed_covs) = lax.scan(
+        _step,
+        (filtered_means[-1], filtered_covs[-1]),
+        (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1]),
+        reverse=True,
+    )
 
-    # Reverse the arrays and return
-    smoothed_means = jnp.vstack((smoothed_means[::-1], filtered_means[-1][None, ...]))
-    smoothed_covs = jnp.vstack((smoothed_covs[::-1], filtered_covs[-1][None, ...]))
+    # Concatenate the arrays and return
+    smoothed_means = jnp.vstack((smoothed_means, filtered_means[-1][None, ...]))
+    smoothed_covs = jnp.vstack((smoothed_covs, filtered_covs[-1][None, ...]))
+
     return PosteriorGSSMSmoothed(
         marginal_loglik=ll,
         filtered_means=filtered_means,
