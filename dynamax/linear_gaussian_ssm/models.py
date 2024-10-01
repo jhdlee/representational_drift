@@ -1239,9 +1239,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         # initial state
         # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
-        lp = self.initial_mean_prior.log_prob(params.initial.mean).sum()
-        flattened_cov = vmap(jnp.diag)(params.initial.cov)
-        lp += self.initial_covariance_prior.log_prob(flattened_cov.flatten()).sum()
+        # lp = self.initial_mean_prior.log_prob(params.initial.mean).sum()
+        # flattened_cov = vmap(jnp.diag)(params.initial.cov)
+        # lp += self.initial_covariance_prior.log_prob(flattened_cov.flatten()).sum()
+        lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
         lp += MVN(params.initial.mean[conditions], params.initial.cov[conditions]).log_prob(states[:, 0]).sum()
 
         # dynamics & states
@@ -1250,7 +1251,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             (params.dynamics.weights,
              params.dynamics.input_weights,
              dynamics_bias))
-        lp += self.dynamics_prior.log_prob(jnp.ravel(dynamics_matrix))
+        lp += self.dynamics_prior.log_prob((params.dynamics.cov, dynamics_matrix)))
         def _compute_dynamics_lp(prev_lp, current_t):
             current_state_mean = jnp.einsum('ij,rj->ri', params.dynamics.weights, states[:, current_t])
             if self.has_dynamics_bias:
@@ -1260,7 +1261,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             current_lp = prev_lp + masked_new_lp
             return current_lp, None
         lp, _ = jax.lax.scan(_compute_dynamics_lp, lp, jnp.arange(self.sequence_length - 1))
-        lp += self.dynamics_covariance_prior.log_prob(jnp.diag(params.dynamics.cov)).sum()
 
         # emissions & observations
         def _compute_emissions_lp(prev_lp, current_t):
@@ -1292,8 +1292,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_velocity = velocity[0]
             lp += MVN(params.initial_velocity.mean,
                       params.initial_velocity.cov).log_prob(initial_velocity)
-            lp += self.initial_velocity_mean_prior.log_prob(params.initial_velocity.mean)
-            lp += self.initial_velocity_covariance_prior.log_prob(jnp.diag(params.initial_velocity.cov)).sum()
+            lp += self.initial_velocity_prior.log_prob((params.initial_velocity.cov,
+                                                        params.initial_velocity.mean))
 
             tau_lp = self.tau_prior.log_prob(params.emissions.tau)
             # lp += tau_lp
