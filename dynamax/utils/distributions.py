@@ -326,11 +326,8 @@ def niw_posterior_update(niw_prior, sufficient_stats):
     loc_pos = (precision_pri * loc_pri + Sx) / (precision_pri + N)
     precision_pos = precision_pri + N
     df_pos = df_pri + N
-    # scale_pos = scale_pri + SxxT \
-    #     + precision_pri*jnp.outer(loc_pri, loc_pri) - precision_pos*jnp.outer(loc_pos, loc_pos)
-    X = Sx/N - loc_pri
     scale_pos = scale_pri + SxxT \
-                + ((precision_pri * N)/(precision_pri + N)) * jnp.outer(X, X)
+        + precision_pri*jnp.outer(loc_pri, loc_pri) - precision_pos*jnp.outer(loc_pos, loc_pos)
 
     return NormalInverseWishart(loc=loc_pos, mean_concentration=precision_pos, df=df_pos, scale=scale_pos)
 

@@ -1467,7 +1467,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                  hyperparams=ukf_hyperparams)
 
 
-        return smoother.smoothed_means, smoother.marginal_loglik
+        return smoother
 
     def fit_blocked_gibbs(
             self,
@@ -1792,7 +1792,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         if conditions is None:
             conditions = jnp.zeros(num_timesteps, dtype=int)
 
-        def sufficient_stats_from_sample(states, params):
+        def sufficient_stats_from_sample(states_smoother, params):
+
+            states = states_smoother.smoothed_means
+            covariances = states_smoother.smoothed_covariances
+            cross_covariances = states_smoother.smoothed_cross_covariances
+
             """Convert samples of states to sufficient statistics."""
             inputs_joint = jnp.concatenate((inputs, jnp.ones((num_timesteps, 1))), axis=1)
             # Let xn[t] = x[t+1]          for t = 0...T-2
@@ -1801,35 +1806,22 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             y = emissions
 
             conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)
-            conditions_count = jnp.sum(conditions_one_hot, axis=0)[:, None]
+            conditions_count = jnp.sum(conditions_one_hot, axis=0)
             init_stats_1 = jnp.einsum('bc,bi->bci',
-                                      conditions_one_hot,
+                                      conditions_one_hot[:, None],
                                       x[:, 0])
             init_stats_1_sum = init_stats_1.sum(0)
-            init_stats_1_avg = jnp.where(conditions_count > 0.0,
-                                         jnp.divide(init_stats_1_sum, conditions_count),
-                                         0.0) # average (C, D)
-            init_stats_1_avg = jnp.einsum('bc,ci->bci',
-                                          conditions_one_hot,
-                                          init_stats_1_avg)
-            init_stats_2 = init_stats_1 - init_stats_1_avg
-            init_stats_2 = jnp.einsum('bci,bcj->cij', init_stats_2, init_stats_2)
-
-            init_stats = (init_stats_1_sum, init_stats_2, conditions_count[:, 0])
-
-            # N, D = y.shape[-1], states.shape[-1]
-            # # Optimized Code
-            # reshape_dim = D * (D + self.has_dynamics_bias)
-            # if self.has_dynamics_bias:
-            #     xp = jnp.pad(xp, ((0, 0), (0, 0), (0, 1)), constant_values=1)
-            # Qinv = jnp.linalg.inv(params.dynamics.cov)# + jnp.eye(params.dynamics.cov.shape[-1]) * self.EPS)
-            # dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, 1:]).reshape(reshape_dim, reshape_dim)
-            # dynamics_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', xn, Qinv, xp, masks[:, 1:]).reshape(-1)
-            # dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
+            init_stats_2 = jnp.einsum('bci,bcj->cij', init_stats_1, init_stats_1)
+            init_stats_2_add = jnp.einsum('bc,bij->cij', conditions_one_hot[:, None], covariances[:, 0])
+            init_stats_2 += init_stats_2_add
+            init_stats = (init_stats_1_sum, init_stats_2, conditions_count)
 
             sum_zpzpT = jnp.einsum('bti,btl,bt->il', xp, xp, masks[:, 1:])
-            sum_zpxnT = jnp.einsum('bti,btl,bt->il', xp, xn, masks[:, 1:])
+            sum_zpzpT += jnp.einsum('btij,bt->ij', covariances[:-1], masks[:, 1:])
+            # sum_zpxnT = jnp.einsum('bti,btl,bt->il', xp, xn, masks[:, 1:])
+            sum_zpxnT = jnp.einsum('btij,bt->ij', cross_covariances[:-1], masks[:, 1:])
             sum_xnxnT = jnp.einsum('bti,btl,bt->il', xn, xn, masks[:, 1:])
+            sum_xnxnT += jnp.einsum('btij,bt->ij', covariances[1:], masks[:, 1:])
             dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, masks.sum() - len(emissions))
 
             # Quantities for the emissions
@@ -1846,7 +1838,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             return init_stats, dynamics_stats, emission_stats
 
-        def lgssm_params_sample(stats, states, params, velocity, _emission_weights):
+        def lgssm_params_sample(stats, states, params, velocity, _emission_weights, velocity_smoother):
             """Sample parameters of the model given sufficient statistics from observed states and emissions."""
             init_stats, dynamics_stats, emission_stats = stats
 
@@ -1900,8 +1892,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     H = _emission_weights
                     d = None
 
-                    initial_velocity_stats = (velocity[0], 0.0, 1.0)
-                    initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior, initial_velocity_stats)
+                    Ev0 = velocity_smoother.smoothed_means[0]
+                    Ev0v0T = velocity_smoother.smoothed_means[0] + jnp.outer(Ev0, Ev0)
+
+                    initial_velocity_stats = (Ev0, Ev0v0T, 1.0)
+                    initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior,
+                                                                      initial_velocity_stats)
                     initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.mode()
 
                     if self.fix_tau: # set to true during test time
@@ -1955,9 +1951,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 velocity = None
                 _updated_emission_weights = None
             else:
-                velocity, approx_marginal_ll = self.velocity_smoother(base_subspace, _params,
-                                                                    _emissions, masks, conditions,
-                                                                    velocity_sampler)
+                velocity_smoother = self.velocity_smoother(base_subspace, _params,
+                                                    _emissions, masks, conditions,
+                                                    velocity_sampler)
+                velocity, approx_marginal_ll = velocity_smoother.smoothed_means, velocity_smoother.marginal_loglik
                 _updated_emission_weights = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace,
                                                                                            self.state_dim,
                                                                                            velocity)
@@ -2002,9 +1999,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     approx_marginal_ll = _approx_marginal_lls.sum() # This is exact
 
             # Sample parameters
-            _stats = sufficient_stats_from_sample(_new_states, _new_params_emissions_updated)
+            _stats = sufficient_stats_from_sample(states_smoother, _new_params_emissions_updated)
             _new_params = lgssm_params_sample(_stats, _new_states,
-                                              _new_params_emissions_updated, velocity, _updated_emission_weights)
+                                              _new_params_emissions_updated, velocity,
+                                              _updated_emission_weights, velocity_smoother)
 
             return _new_params, _new_states, velocity, approx_marginal_ll
 
