@@ -1826,6 +1826,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             # Quantities for the emissions
             if self.stationary_emissions:
+                N, D = emissions.shape[-1], states.shape[-1]
                 reshape_dim = N * (D + self.has_emissions_bias)
                 if self.has_emissions_bias:
                     x = jnp.pad(x, ((0, 0), (0, 0), (0, 1)), constant_values=1)
