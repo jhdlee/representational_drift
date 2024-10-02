@@ -1805,20 +1805,20 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             u, up = inputs_joint, inputs_joint[:-1]
             y = emissions
 
-            conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)
-            conditions_count = jnp.sum(conditions_one_hot, axis=0)
-            init_stats_1 = jnp.einsum('bc,bi->bci',
-                                      conditions_one_hot,
-                                      x[:, 0])
-            init_stats_1_sum = init_stats_1.sum(0)
-            init_stats_2 = jnp.einsum('bci,bcj->cij', init_stats_1, init_stats_1)
-            init_stats_2_add = jnp.einsum('bc,bij->cij', conditions_one_hot, covariances[:, 0])
-            init_stats_2 += init_stats_2_add
-            init_stats = (init_stats_1_sum, init_stats_2, conditions_count)
+            conditions_one_hot = jnn.one_hot(conditions, self.num_conditions) # B x C
+            conditions_count = jnp.sum(conditions_one_hot, axis=0) # C
+            init_stats_1 = jnp.einsum('bc,bi->bci', conditions_one_hot, x[:, 0])
+            init_stats_1 = init_stats_1.sum(0)
+            init_stats_1_avg = jnp.where(conditions_count[:, None] > 0.0,
+                                         jnp.divide(init_stats_1, conditions_count[:, None]),
+                                         0.0) # average (C, D)
+            init_stats_2 = jnp.einsum('c,ci,cj->cij', conditions_count,
+                                      init_stats_1_avg, init_stats_1_avg)
+            init_stats_2 += jnp.einsum('bc,bij->cij', conditions_one_hot, covariances[:, 0])
+            init_stats = (init_stats_1, init_stats_2, conditions_count)
 
             sum_zpzpT = jnp.einsum('bti,btl,bt->il', xp, xp, masks[:, 1:])
             sum_zpzpT += jnp.einsum('btij,bt->ij', covariances[:, :-1], masks[:, 1:])
-            # sum_zpxnT = jnp.einsum('bti,btl,bt->il', xp, xn, masks[:, 1:])
             sum_zpxnT = jnp.einsum('btij,bt->ij', cross_covariances, masks[:, 1:])
             sum_xnxnT = jnp.einsum('bti,btl,bt->il', xn, xn, masks[:, 1:])
             sum_xnxnT += jnp.einsum('btij,bt->ij', covariances[:, 1:], masks[:, 1:])
@@ -1893,7 +1893,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     d = None
 
                     Ev0 = velocity_smoother.smoothed_means[0]
-                    Ev0v0T = velocity_smoother.smoothed_means[0] + jnp.outer(Ev0, Ev0)
+                    Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)
 
                     initial_velocity_stats = (Ev0, Ev0v0T, 1.0)
                     initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior,
@@ -1904,8 +1904,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                         tau = params.emissions.tau
                     else:
                         tau_stats_1 = jnp.ones((self.dof, 1)) * (self.num_trials - 1) / 2
-                        tau_stats_2 = jnp.diff(velocity, axis=0)
-                        tau_stats_2 = jnp.nansum(jnp.square(tau_stats_2), axis=0) / 2
+                        tau_stats_2 = velocity_smoother.smoothed_covariances[1:].sum(0) / 2
+                        tau_stats_2 = jnp.diag(tau_stats_2)
                         tau_stats_2 = jnp.expand_dims(tau_stats_2, -1)
                         tau_stats = (tau_stats_1, tau_stats_2)
                         tau_posterior = ig_posterior_update(self.tau_prior, tau_stats)
