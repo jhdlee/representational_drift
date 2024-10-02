@@ -32,10 +32,11 @@ from dynamax.nonlinear_gaussian_ssm import extended_kalman_filter, iterated_exte
 from dynamax.parameters import ParameterProperties, ParameterSet
 from dynamax.types import PRNGKey, Scalar
 from dynamax.utils.bijectors import RealToPSDBijector
+from dynamax.utils.distributions import MatrixNormalPrecision as MNP
 from dynamax.utils.distributions import MatrixNormalInverseWishart as MNIW
 from dynamax.utils.distributions import NormalInverseWishart as NIW
 from dynamax.utils.distributions import mniw_posterior_update, niw_posterior_update, mvn_posterior_update, \
-    ig_posterior_update
+    ig_posterior_update, mnp_posterior_update
 from dynamax.utils.utils import pytree_stack, psd_solve, symmetrize, rotate_subspace
 
 class SuffStatsLGSSM(Protocol):
@@ -1830,12 +1831,15 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 reshape_dim = N * (D + self.has_emissions_bias)
                 if self.has_emissions_bias:
                     x = jnp.pad(x, ((0, 0), (0, 0), (0, 1)), constant_values=1)
-                Rinv = jnp.linalg.inv(params.emissions.cov)
+                # Rinv = jnp.linalg.inv(params.emissions.cov)
                 # emissions_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', x, Rinv, x, masks).reshape(reshape_dim, reshape_dim)
+                # emissions_stats_1 = jnp.einsum('bti,btl,bt->il', x, x, masks)
+                # emissions_stats_1 += jnp.einsum('btil,bt->il', covariances, masks)
+                # emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
+                # emissions_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', y, Rinv, x, masks).reshape(-1)
                 emissions_stats_1 = jnp.einsum('bti,btl,bt->il', x, x, masks)
-                emissions_stats_1 += jnp.einsum('btil,bt->il', covariances, masks)
-                emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
-                emissions_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', y, Rinv, x, masks).reshape(-1)
+                emissions_stats_1 += jnp.einsum('btij,bt->ij', covariances, masks)
+                emissions_stats_2 = jnp.einsum('bti,btl,bt->il', y, x, masks)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
                 emission_stats = None
@@ -1887,9 +1891,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     initial_velocity_mean = params.initial_velocity.mean
                     tau = params.emissions.tau
 
-                    emission_posterior = mvn_posterior_update(self.emissions_prior, emission_stats)
+                    prior = MNP(loc=jnp.zeros((self.emission_dim, self.state_dim + self.has_emissions_bias)),
+                                row_covariance=jnp.eye(self.emission_dim),
+                                col_precision=jnp.linalg.inv(params.emissions.cov))
+
+                    emission_posterior = mnp_posterior_update(prior, emission_stats)
                     _emissions_weights = emission_posterior.mode()
-                    _emissions_weights = _emissions_weights.reshape(self.emission_dim, (self.state_dim + self.has_emissions_bias))
                     H, d = (_emissions_weights[:, :-1], _emissions_weights[:, -1]) if self.has_emissions_bias \
                         else (_emissions_weights, None)
                 else:

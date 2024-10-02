@@ -282,6 +282,16 @@ class MatrixNormalInverseWishart(tfd.JointDistributionSequential):
 
 ###############################################################################
 
+def mnp_posterior_update(mnp_prior, sufficient_stats):
+    loc_pri, row_cov_pri, col_pre_pri = mnp_prior.parameters.values()
+
+    SxxT, SyxT = sufficient_stats
+
+    row_cov_pri_inv = jnp.linalg.inv(row_cov_pri)
+    row_cov_pos = jnp.linalg.inv(row_cov_pri_inv + SxxT)
+    loc_pos = (SyxT + loc_pri @ row_cov_pri_inv) @ row_cov_pos
+
+    return MatrixNormalPrecision(loc=loc_pos, row_covariance=row_cov_pos, col_precision=col_pre_pri)
 
 def mvn_posterior_update(mvn_prior, sufficient_stats):
 
