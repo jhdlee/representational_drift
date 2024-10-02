@@ -1951,6 +1951,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 _new_params_emissions_updated = _params
                 velocity = None
                 _updated_emission_weights = None
+                velocity_smoother = None
             else:
                 velocity_smoother = self.velocity_smoother(base_subspace, _params,
                                                     _emissions, masks, conditions,
