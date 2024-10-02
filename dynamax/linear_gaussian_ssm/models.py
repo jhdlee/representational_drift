@@ -1892,7 +1892,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     tau = params.emissions.tau
 
                     prior = MNP(loc=jnp.zeros((self.emission_dim, self.state_dim + self.has_emissions_bias)),
-                                row_covariance=jnp.eye(self.emission_dim),
+                                row_covariance=jnp.eye(self.state_dim),
                                 col_precision=jnp.linalg.inv(params.emissions.cov))
 
                     emission_posterior = mnp_posterior_update(prior, emission_stats)
