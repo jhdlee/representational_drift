@@ -1831,7 +1831,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 if self.has_emissions_bias:
                     x = jnp.pad(x, ((0, 0), (0, 0), (0, 1)), constant_values=1)
                 Rinv = jnp.linalg.inv(params.emissions.cov)
-                emissions_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', x, Rinv, x, masks).reshape(reshape_dim, reshape_dim)
+                # emissions_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', x, Rinv, x, masks).reshape(reshape_dim, reshape_dim)
+                emissions_stats_1 = jnp.einsum('bti,btl,bt->il', x, x, masks)
+                emissions_stats_1 += jnp.einsum('btil,bt->il', covariances, masks)
+                emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
                 emissions_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', y, Rinv, x, masks).reshape(-1)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
