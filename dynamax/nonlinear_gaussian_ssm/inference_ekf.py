@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jscipy
 from jax import lax
-from jax import jacfwd
+from jax import jacfwd, hessian
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
 from jaxtyping import Array, Float
 from typing import List, Optional
@@ -15,7 +15,7 @@ from dynamax.types import PRNGKey
 # Helper functions
 _get_params = lambda x, dim, t: x[t] if x.ndim == dim + 1 else x
 _process_fn = lambda f, u: (lambda x, y: f(x)) if u is None else f
-_process_input = lambda x, y: jnp.zeros((y,1)) if x is None else x
+_process_input = lambda x, y: jnp.zeros((y, 1)) if x is None else x
 
 
 def _predict(m, P, f, F, Q, u):
@@ -72,11 +72,12 @@ def _condition_on(m, P, h, H, R, u, y, eps, t, num_iter):
          mu_cond (D_hid,): filtered mean.
          Sigma_cond (D_hid,D_hid): filtered covariance.
     """
+
     def _step(carry, _):
         prior_mean, prior_cov = carry
-        H_x, H_eps = H(prior_mean, eps, y, t) # (TN x V), (TN x T x N)
+        H_x, H_eps = H(prior_mean, eps, y, t)  # (TN x V), (TN x T x N)
         H_eps = H_eps.reshape(H_eps.shape[0], -1)
-        y_pred = h(prior_mean, eps, y, t) # TN
+        y_pred = h(prior_mean, eps, y, t)  # TN
 
         S = H_x @ prior_cov @ H_x.T + H_eps @ H_eps.T
         K = psd_solve(S, H_x @ prior_cov).T
@@ -91,13 +92,14 @@ def _condition_on(m, P, h, H, R, u, y, eps, t, num_iter):
 
 
 def extended_kalman_filter(
-    params: ParamsNLGSSM,
-    emissions: Float[Array, "ntime emission_dim"],
-    masks,
-    conditions,
-    num_iter: int = 1,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None,
-    output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
+        params: ParamsNLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        masks,
+        conditions,
+        num_iter: int = 1,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
+                                              "predicted_covariances"],
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -115,12 +117,13 @@ def extended_kalman_filter(
         post: posterior object.
 
     """
-    num_trials, num_timesteps, emissions_dim = emissions.shape
+    num_trials, emissions_dim = emissions.shape
 
     # Dynamics and emission functions and their Jacobians
     f, h = params.dynamics_function, params.emission_function
     # F, H = jacfwd(f), jacfwd(h, argnums=(0, 1))
-    F, H = None, jacfwd(h, argnums=0, has_aux=True)
+    F, H = None, jacfwd(h)
+    # HH = hessian(h)
     inputs = _process_input(inputs, num_trials)
 
     # eps = jnp.zeros((num_timesteps, emissions_dim))
@@ -135,9 +138,15 @@ def extended_kalman_filter(
         y = emissions[t]
 
         # Update the log likelihood
-        H_x = H(pred_mean) # (ND x V)
-        y_pred = h(pred_mean) # ND
+        # HH_x = HH(pred_mean) # (ND x V x V)
+        H_x = H(pred_mean)  # (ND x V)
+
+        y_pred = h(pred_mean)  # ND
+        # y_pred += 0.5*jnp.einsum('nji,ji->n', HH_x, pred_cov)
+
         s_k = H_x @ pred_cov @ H_x.T + R
+        # HHPHHP = jnp.einsum('nij,jk,mkl,lx->nmix', HH_x, pred_cov, HH_x, pred_cov)
+        # s_k += 0.5*jnp.trace(HHPHHP, axis1=-2, axis2=-1)
 
         ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
@@ -173,10 +182,10 @@ def extended_kalman_filter(
 
 
 def iterated_extended_kalman_filter(
-    params: ParamsNLGSSM,
-    emissions:  Float[Array, "ntime emission_dim"],
-    num_iter: int = 2,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        params: ParamsNLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        num_iter: int = 2,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None
 ) -> PosteriorGSSMFiltered:
     r"""Run an iterated extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -196,12 +205,12 @@ def iterated_extended_kalman_filter(
 
 
 def extended_kalman_smoother(
-    params: ParamsNLGSSM,
-    emissions:  Float[Array, "ntime emission_dim"],
-    masks,
-    conditions,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None,
-    filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
+        params: ParamsNLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        masks,
+        conditions,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
 ) -> PosteriorGSSMSmoothed:
     r"""Run an extended Kalman (RTS) smoother.
 
@@ -242,10 +251,13 @@ def extended_kalman_smoother(
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
 
-        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov)
+        # Compute the smoothed expectation of z_t z_{t+1}^T
+        smoothed_cross = G @ smoothed_cov_next  # + jnp.outer(smoothed_mean, smoothed_mean_next)
+
+        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross)
 
     # Run the extended Kalman smoother
-    _, (smoothed_means, smoothed_covs) = lax.scan(
+    _, (smoothed_means, smoothed_covs, smoothed_cross) = lax.scan(
         _step,
         (filtered_means[-1], filtered_covs[-1]),
         (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1]),
@@ -255,13 +267,14 @@ def extended_kalman_smoother(
     # Concatenate the arrays and return
     smoothed_means = jnp.vstack((smoothed_means, filtered_means[-1][None, ...]))
     smoothed_covs = jnp.vstack((smoothed_covs, filtered_covs[-1][None, ...]))
-
+    smoothed_cross = smoothed_cross[::-1]
     return PosteriorGSSMSmoothed(
         marginal_loglik=ll,
         filtered_means=filtered_means,
         filtered_covariances=filtered_covs,
         smoothed_means=smoothed_means,
         smoothed_covariances=smoothed_covs,
+        smoothed_cross_covariances=smoothed_cross,
     )
 
 
@@ -294,6 +307,7 @@ def _condition_on_original(m, P, h, H, R, u, y, num_iter):
          mu_cond (D_hid,): filtered mean.
          Sigma_cond (D_hid,D_hid): filtered covariance.
     """
+
     def _step(carry, _):
         prior_mean, prior_cov = carry
         H_x = H(prior_mean)
@@ -308,14 +322,15 @@ def _condition_on_original(m, P, h, H, R, u, y, num_iter):
     (mu_cond, Sigma_cond), _ = lax.scan(_step, carry, jnp.arange(num_iter))
     return mu_cond, symmetrize(Sigma_cond)
 
+
 def extended_kalman_posterior_sample(
-    key: PRNGKey,
-    params: ParamsNLGSSM,
-    emissions:  Float[Array, "ntime emission_dim"],
-    masks,
-    conditions,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None,
-    filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
+        key: PRNGKey,
+        params: ParamsNLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        masks,
+        conditions,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
 ) -> Float[Array, "ntime state_dim"]:
     r"""Run forward-filtering, backward-sampling to draw samples.
 
@@ -339,7 +354,7 @@ def extended_kalman_posterior_sample(
 
     # Dynamics and emission functions and their Jacobians
     f = params.dynamics_function
-    F = None #jacfwd(f)
+    F = None  # jacfwd(f)
     inputs = _process_input(inputs, num_trials)
 
     def _step(carry, args):
@@ -381,12 +396,11 @@ def extended_kalman_posterior_sample(
     return states, ll
 
 
-
 def iterated_extended_kalman_smoother(
-    params: ParamsNLGSSM,
-    emissions:  Float[Array, "ntime emission_dim"],
-    num_iter: int = 2,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        params: ParamsNLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        num_iter: int = 2,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None
 ) -> PosteriorGSSMSmoothed:
     r"""Run an iterated extended Kalman smoother (IEKS).
 
@@ -412,11 +426,11 @@ def iterated_extended_kalman_smoother(
 
 
 def iterated_extended_kalman_posterior_sample(
-    key: PRNGKey,
-    params: ParamsNLGSSM,
-    emissions:  Float[Array, "ntime emission_dim"],
-    num_iter: int = 2,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        key: PRNGKey,
+        params: ParamsNLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        num_iter: int = 2,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None
 ) -> Float[Array, "ntime state_dim"]:
     r"""Run an iterated extended Kalman smoother (IEKS).
 
@@ -432,13 +446,14 @@ def iterated_extended_kalman_posterior_sample(
     """
 
     smoothed_posterior = extended_kalman_smoother(params, emissions, None, inputs)
+
     def _step(carry, _):
         # Relinearize around smoothed posterior from previous iteration
         smoothed_prior = carry
         smoothed_posterior = extended_kalman_smoother(params, emissions, smoothed_prior, inputs)
         return smoothed_posterior, None
 
-    smoothed_posterior, _ = lax.scan(_step, smoothed_posterior, jnp.arange(num_iter-1))
+    smoothed_posterior, _ = lax.scan(_step, smoothed_posterior, jnp.arange(num_iter - 1))
 
     states = extended_kalman_posterior_sample(key, params, emissions, filtered_posterior=smoothed_posterior)
 
