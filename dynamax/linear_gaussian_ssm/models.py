@@ -1056,7 +1056,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             conditions = jnp.zeros(num_trials, dtype=int)
 
         f = self.get_f()
-        h = self.get_h_v1(base_subspace, params, masks)
+        h = self.get_h_v3(base_subspace)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.initial_velocity.mean,
@@ -1874,9 +1874,13 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             # sufficient statistics for the emissions
             if self.stationary_emissions:
+                Rinv = jnp.linalg.inv(_params.emissions.cov)
+                reshape_dim = self.emission_dim * (self.state_dim + self.has_emissions_bias)
                 emissions_stats_1 = jnp.einsum('bti,btl->il', Ex, Ex)
                 emissions_stats_1 += jnp.einsum('btij->ij', Vx)
-                emissions_stats_2 = jnp.einsum('bti,btl->il', y, Ex)
+                emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
+                emissions_stats_2 = jnp.einsum('bti,btl->il', Ex, y)
+                emissions_stats_2 = jnp.einsum('il,lk->ki', emissions_stats_2, Rinv).reshape(-1)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
                 emissions_stats_1 = jnp.einsum('bti,btl->bil', Ex, Ex)
@@ -1909,21 +1913,19 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 Ev = None
                 marginal_ll = 0.0
 
+                d = _params.emissions.bias
                 D = _params.emissions.input_weights
                 initial_velocity_cov = _params.initial_velocity.cov
                 initial_velocity_mean = _params.initial_velocity.mean
                 tau = _params.emissions.tau
 
-                Rinv = jnp.linalg.inv(_params.emissions.cov)
+                # emissions_prior = MNP(loc=jnp.zeros((self.emission_dim, self.state_dim + self.has_emissions_bias)),
+                #                       row_covariance=jnp.eye(self.state_dim),
+                #                       col_precision=Rinv)
 
-                emissions_prior = MNP(loc=jnp.zeros((self.emission_dim, self.state_dim + self.has_emissions_bias)),
-                                      row_covariance=jnp.eye(self.state_dim),
-                                      col_precision=Rinv)
-
-                emission_posterior = mnp_posterior_update(emissions_prior, emission_stats)
+                emission_posterior = mvn_posterior_update(self.emissions_prior, emission_stats)
                 _emissions_weights = emission_posterior.mode()
-                H, d = (_emissions_weights[:, :-1], _emissions_weights[:, -1]) if self.has_emissions_bias \
-                    else (_emissions_weights, None)
+                H = _emissions_weights.reshape(self.emission_dim, self.state_dim)
             else:
                 d = _params.emissions.bias
                 D = _params.emissions.input_weights
