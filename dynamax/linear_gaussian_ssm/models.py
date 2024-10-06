@@ -746,10 +746,14 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             # prior on initial velocity
             self.initial_velocity_prior = default_prior(
                 'initial_velocity_prior',
-                NIW(loc=jnp.zeros(self.dof),
-                    mean_concentration=1.,
-                    df=self.dof + 0.1,
-                    scale=jnp.eye(self.dof)))
+                MVN(loc=jnp.zeros(self.dof),
+                    covariance_matrix=jnp.eye(self.dof))
+            )
+
+            self.initial_velocity_covariance_prior = default_prior(
+                'initial_velocity_covariance_prior',
+                IG(concentration=1.0, scale=1.0)
+            )
 
             self.tau_prior = default_prior(
                 'tau_prior',
@@ -2004,12 +2008,33 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 Ev = velocity_smoother.smoothed_means
                 H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, Ev)
 
+                # Ev0 = velocity_smoother.smoothed_means[0]
+                # Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)
+                # initial_velocity_stats = (Ev0, Ev0v0T, 1.0)
+                # initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior,
+                #                                                   initial_velocity_stats)
+                # initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.mode()
+                v0inv = jnp.linalg.inv(_params.initial_velocity.cov)
                 Ev0 = velocity_smoother.smoothed_means[0]
-                Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)
-                initial_velocity_stats = (Ev0, Ev0v0T, 1.0)
-                initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior,
-                                                                  initial_velocity_stats)
-                initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.mode()
+                initial_velocity_mean_stats_1 = v0inv
+                initial_velocity_mean_stats_2 = jnp.einsum('i,ij->j', Ev0, v0inv)
+                initial_velocity_mean_stats = (initial_velocity_mean_stats_1, initial_velocity_mean_stats_2)
+                initial_velocity_mean_posterior = mvn_posterior_update(self.initial_velocity_prior, initial_velocity_mean_stats)
+                initial_velocity_mean = initial_velocity_mean_posterior.mode()
+
+                initial_velocity_cov_stats_1 = 0.5
+                Ev0vmT = jnp.outer(Ev0, initial_velocity_mean)
+                initial_velocity_cov_stats_2 = velocity_smoother.smoothed_covariances[0] # Vv0
+                initial_velocity_cov_stats_2 += jnp.outer(Ev0, Ev0) # Ev0v0T
+                initial_velocity_cov_stats_2 += jnp.outer(initial_velocity_mean, initial_velocity_mean) # VmVmT
+                initial_velocity_cov_stats_2 -= (Ev0vmT + Ev0vmT.T) # - (EV0VmT + VmEV0T)
+                initial_velocity_cov_stats_2 = jnp.diag(initial_velocity_cov_stats_2) / 2
+
+                def update_initial_velocity_cov(s1, s2):
+                    initial_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior, (s1, s2))
+                    initial_velocity_cov_i = initial_velocity_cov_posterior.mode()
+                    return initial_velocity_cov_i
+                initial_velocity_cov = jnp.diag(vmap(update_initial_velocity_cov, in_axes=(None, 0))(initial_velocity_cov_stats_1, initial_velocity_cov_stats_2))
 
                 if self.fix_tau:  # set to true during test time
                     tau = _params.emissions.tau
