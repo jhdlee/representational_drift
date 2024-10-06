@@ -1929,10 +1929,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                                 (initial_cov_stats_c_1, initial_cov_stats_ci_2))
                         S_ci = initial_posterior.mode()
                         return S_ci
-
                     S_c = vmap(_update_initial_params)(initial_cov_stats_c_2)
                     return jnp.diag(S_c)
-
                 S = vmap(update_initial_params)(initial_cov_stats_1, initial_cov_stats_2)
 
             # Update the dynamics params

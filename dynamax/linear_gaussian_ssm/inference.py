@@ -606,8 +606,8 @@ def lgssm_smoother(
         smoothed_mean = filtered_mean + mask * G @ (smoothed_mean_next - F @ filtered_mean - B @ u - b)
         smoothed_cov = filtered_cov + mask * G @ (smoothed_cov_next - F @ filtered_cov @ F.T - Q) @ G.T
 
-        # Compute the smoothed cross-covariance
-        smoothed_cross = G @ smoothed_cov_next
+        # Compute the smoothed expectation of z_t z_{t+1}^T
+        smoothed_cross = G @ smoothed_cov_next + jnp.outer(smoothed_mean, smoothed_mean_next)
 
         return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross)
 
