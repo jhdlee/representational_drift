@@ -247,7 +247,7 @@ def make_lgssm_params(initial_mean,
     return params
 
 
-def _predict(m, S, F, B, b, Q, u):
+def _predict(m, S, F, B, b, Q, u, mask):
     r"""Predict next mean and covariance under a linear Gaussian model.
 
         p(z_{t+1}) = int N(z_t \mid m, S) N(z_{t+1} \mid Fz_t + Bu + b, Q)
@@ -268,7 +268,11 @@ def _predict(m, S, F, B, b, Q, u):
     """
     mu_pred = F @ m + B @ u + b
     Sigma_pred = F @ S @ F.T + Q
-    return mu_pred, Sigma_pred
+
+    mu_pred = mask * mu_pred + (1 - mask) * m
+    Sigma_pred = mask * Sigma_pred + (1 - mask) * S
+
+    return mu_pred, symmetrize(Sigma_pred)
 
 
 def _condition_on(m, P, H, D, d, R, u, y, mask):
@@ -542,7 +546,7 @@ def lgssm_filter(
         filtered_mean, filtered_cov = _condition_on(_pred_mean, _pred_cov, H, D, d, R, u, y, mask)
 
         # Predict the next state
-        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u)
+        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u, mask)
 
         return (ll, pred_mean, pred_cov), (_pred_mean, _pred_cov, filtered_mean, filtered_cov)
 
@@ -602,8 +606,8 @@ def lgssm_smoother(
         smoothed_mean = filtered_mean + mask * G @ (smoothed_mean_next - F @ filtered_mean - B @ u - b)
         smoothed_cov = filtered_cov + mask * G @ (smoothed_cov_next - F @ filtered_cov @ F.T - Q) @ G.T
 
-        # Compute the smoothed expectation of z_t z_{t+1}^T
-        smoothed_cross = G @ smoothed_cov_next + jnp.outer(smoothed_mean, smoothed_mean_next)
+        # Compute the smoothed cross-covariance
+        smoothed_cross = G @ smoothed_cov_next
 
         return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross)
 

@@ -710,24 +710,30 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         self.fix_tau = fix_tau
 
         # Initialize prior distributions
-        # prior on initial distributions
         def default_prior(arg, default):
             return kw_priors[arg] if arg in kw_priors else default
 
         self.initial_prior = default_prior(
             'initial_prior',
-            NIW(loc=jnp.zeros(self.state_dim),
-                mean_concentration=1.,
-                df=self.state_dim + 0.1,
-                scale=jnp.eye(self.state_dim)))
+            MVN(loc=jnp.zeros(self.state_dim),
+                covariance_matrix=jnp.eye(self.state_dim))
+        )
 
-        # prior on dynamics parameters
+        self.initial_covariance_prior = default_prior(
+            'initial_covariance_prior',
+            IG(concentration=1.0, scale=1.0)
+        )
+
         self.dynamics_prior = default_prior(
             'dynamics_prior',
-            MNIW(loc=jnp.zeros((self.state_dim, self.state_dim + self.has_dynamics_bias)),
-                 col_precision=jnp.eye(self.state_dim + self.has_dynamics_bias),
-                 df=self.state_dim + 0.1,
-                 scale=jnp.eye(self.state_dim)))
+            MVN(loc=jnp.zeros(self.state_dim * (self.state_dim + self.has_dynamics_bias)),
+                covariance_matrix=jnp.eye(self.state_dim * (self.state_dim + self.has_dynamics_bias)))
+        )
+
+        self.dynamics_covariance_prior = default_prior(
+            'dynamics_covariance_prior',
+            IG(concentration=1.0, scale=1.0)
+        )
 
         # prior on emissions parameters
         if self.stationary_emissions:
@@ -1854,23 +1860,20 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             Expxn = states_smoother.smoothed_cross_covariances * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
 
             # sufficient statistics for the initial distribution
-            init_stats_1 = jnp.einsum('bc,bi->bci', conditions_one_hot, Ex[:, 0])
-            init_stats_1 = init_stats_1.sum(0)
-            init_stats_1_avg = jnp.where(conditions_count[:, None] > 0.0,
-                                         jnp.divide(init_stats_1, conditions_count[:, None]),
-                                         0.0)  # average (C, D)
-            init_stats_2 = jnp.einsum('c,ci,cj->cij', conditions_count,
-                                      init_stats_1_avg, init_stats_1_avg)
-            init_stats_2 += jnp.einsum('bc,bij->cij', conditions_one_hot, Vx[:, 0])
-            init_stats = (init_stats_1, init_stats_2, conditions_count)
+            init_stats_1 = conditions_count
+            init_stats_2 = jnp.einsum('bc,bi->ci', conditions_one_hot, Ex[:, 0])
+            init_stats_3 = jnp.einsum('bc,bij->cij', conditions_one_hot, Vx[:, 0])
+            init_stats_4 = jnp.einsum('bc,bi->bci', conditions_one_hot, Ex[:, 0])
+            init_stats_5 = conditions_one_hot
+            init_stats = (init_stats_1, init_stats_2, init_stats_3, init_stats_4, init_stats_5)
 
             # sufficient statistics for the dynamics
-            sum_zpzpT = jnp.einsum('bti,btl->il', Exp, Exp)
-            sum_zpzpT += jnp.einsum('btij->ij', Vxp)
-            sum_zpxnT = jnp.einsum('btij->ij', Expxn)
-            sum_xnxnT = jnp.einsum('bti,btl->il', Exn, Exn)
-            sum_xnxnT += jnp.einsum('btij->ij', Vxn)
-            dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, masks.sum() - num_trials)
+            dynamics_stats_1 = jnp.einsum('bti,btl->il', Exp, Exp)
+            dynamics_stats_1 += jnp.einsum('btij->ij', Vxp)
+            dynamics_stats_2 = jnp.einsum('btij->ij', Expxn)
+            dynamics_stats_3 = jnp.einsum('bti,btl->il', Exn, Exn)
+            dynamics_stats_3 += jnp.einsum('btij->ij', Vxn)
+            dynamics_stats = (dynamics_stats_1, dynamics_stats_2, dynamics_stats_3)
 
             # sufficient statistics for the emissions
             if self.stationary_emissions:
@@ -1899,6 +1902,74 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         def m_step(_params, _stats, states_smoother):
             init_stats, dynamics_stats, emission_stats = _stats
 
+            # Update the initial params
+            if self.fix_initial:
+                S, m = _params.initial.cov, _params.initial.mean
+            else:
+                init_stats_1, init_stats_2, init_stats_3, init_stats_4, init_stats_5 = init_stats
+                Sinv = jnp.linalg.inv(_params.initial.cov)
+                initial_mean_stats_1 = jnp.einsum('c,cij->cij', init_stats_1, Sinv)
+                initial_mean_stats_2 = jnp.einsum('ci,cij->cj', init_stats_2, Sinv)
+                initial_mean_stats = (initial_mean_stats_1, initial_mean_stats_2)
+                initial_mean_posterior = mvn_posterior_update(self.initial_prior, initial_mean_stats)
+                m = initial_mean_posterior.mode()
+
+                initial_cov_stats_1 = init_stats_1 / 2
+                mumT = jnp.einsum('ci,cj->cij', init_stats_2, m)
+                muTm = jnp.einsum('ci,cj->cji', init_stats_2, m)
+                initial_cov_stats_2 = init_stats_3 + jnp.einsum('bc,bci,bcj->cij', init_stats_5, init_stats_4,
+                                                                init_stats_4) + jnp.einsum('bc,ci,cj->cij',
+                                                                                           init_stats_5, m, m)
+                initial_cov_stats_2 -= (mumT + muTm)
+                initial_cov_stats_2 = vmap(jnp.diag)(initial_cov_stats_2) / 2
+
+                def update_initial_params(initial_cov_stats_c_1, initial_cov_stats_c_2):
+                    def _update_initial_params(initial_cov_stats_ci_2):
+                        initial_posterior = ig_posterior_update(self.initial_covariance_prior,
+                                                                (initial_cov_stats_c_1, initial_cov_stats_ci_2))
+                        S_ci = initial_posterior.mode()
+                        return S_ci
+
+                    S_c = vmap(_update_initial_params)(initial_cov_stats_c_2)
+                    return jnp.diag(S_c)
+
+                S = vmap(update_initial_params)(initial_cov_stats_1, initial_cov_stats_2)
+
+            # Update the dynamics params
+            if self.fix_dynamics:
+                F = _params.dynamics.weights
+                b = _params.dynamics.bias
+                B = _params.dynamics.input_weights
+                Q = _params.dynamics.cov
+            else:
+                b = _params.dynamics.bias
+                B = _params.dynamics.input_weights
+
+                dynamics_stats_1, dynamics_stats_2, dynamics_stats_3 = dynamics_stats
+                Qinv = jnp.linalg.inv(_params.dynamics.cov)
+                reshape_dim = self.state_dim * (self.state_dim + self.has_dynamics_bias)
+
+                dynamics_weights_stats_1 = jnp.einsum('il,jk->jikl', dynamics_stats_1, Qinv).reshape(reshape_dim,
+                                                                                                     reshape_dim)
+                dynamics_weights_stats_2 = jnp.einsum('il,lk->ki', dynamics_stats_2, Qinv).reshape(-1)
+                dynamics_weights_stats = (dynamics_weights_stats_1, dynamics_weights_stats_2)
+                dynamics_weights_posterior = mvn_posterior_update(self.dynamics_prior, dynamics_weights_stats)
+                F = dynamics_weights_posterior.mode()
+                F = F.reshape(self.state_dim, self.state_dim)
+
+                def sample_dynamics_cov(s1, s2):
+                    dynamics_cov_posterior = ig_posterior_update(self.dynamics_covariance_prior, (s1, s2))
+                    dynamics_cov = dynamics_cov_posterior.mode()
+                    return dynamics_cov
+
+                dynamics_cov_stats_1 = (jnp.sum(masks) - num_trials) / 2
+                nnn = jnp.einsum('ij,jk->ik', F, dynamics_stats_2)
+                dynamics_cov_stats_2 = dynamics_stats_3 - nnn - nnn.T + jnp.einsum('ij,jk,lk->il', F, dynamics_stats_1,
+                                                                                   F)
+                dynamics_cov_stats_2 = jnp.diag(dynamics_cov_stats_2) / 2
+                Q = jnp.diag(vmap(sample_dynamics_cov, in_axes=(None, 0))(dynamics_cov_stats_1,
+                                                                          dynamics_cov_stats_2))
+
             if self.fix_emissions:
                 Ev = None
                 marginal_ll = 0.0
@@ -1918,10 +1989,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_velocity_cov = _params.initial_velocity.cov
                 initial_velocity_mean = _params.initial_velocity.mean
                 tau = _params.emissions.tau
-
-                # emissions_prior = MNP(loc=jnp.zeros((self.emission_dim, self.state_dim + self.has_emissions_bias)),
-                #                       row_covariance=jnp.eye(self.state_dim),
-                #                       col_precision=Rinv)
 
                 emission_posterior = mvn_posterior_update(self.emissions_prior, emission_stats)
                 _emissions_weights = emission_posterior.mode()
@@ -1981,12 +2048,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                 Ex = states_smoother.smoothed_means * masks_a
                 Vx = states_smoother.smoothed_covariances * masks_aa
-                ExxT = jnp.einsum('bti,btj->btij', Ex, Ex)
+                ExxT = jnp.einsum('bti,btj->bij', Ex, Ex) + jnp.einsum('btij->bij', Vx)
                 Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
                 yEyT = jnp.einsum('...tx,...ty->xy', emissions, Ey)
 
                 emissions_cov_stats_2 = jnp.diag(yyT - yEyT - yEyT.T)
-                emissions_cov_stats_2 += jnp.diag(jnp.einsum('...ax,...txz,...bz->ab', H, ExxT + Vx, H))
+                emissions_cov_stats_2 += jnp.diag(jnp.einsum('...ix,...xz,...jz->ij', H, ExxT, H))
                 emissions_cov_stats_2 = emissions_cov_stats_2 / 2
 
                 def sample_emissions_cov(s1, s2):
@@ -1997,30 +2064,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                 R = jnp.diag(vmap(sample_emissions_cov, in_axes=(None, 0))(emissions_cov_stats_1,
                                                                            emissions_cov_stats_2))
-
-            # Update the initial params
-            if self.fix_initial:
-                S, m = _params.initial.cov, _params.initial.mean
-            else:
-                def update_initial_posterior(init_stats_c):
-                    initial_posterior = niw_posterior_update(self.initial_prior, init_stats_c)
-                    S_c, m_c = initial_posterior.mode()
-                    return S_c, m_c
-
-                S, m = vmap(update_initial_posterior)(init_stats)
-
-            # Update the dynamics params
-            if self.fix_dynamics:
-                F = _params.dynamics.weights
-                b = _params.dynamics.bias
-                B = _params.dynamics.input_weights
-                Q = _params.dynamics.cov
-            else:
-                dynamics_posterior = mniw_posterior_update(self.dynamics_prior, dynamics_stats)
-                Q, FB = dynamics_posterior.mode()
-                F = FB[:, :self.state_dim]
-                B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
-                    else (FB[:, self.state_dim:], jnp.zeros(self.state_dim))
 
             params = ParamsTVLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
