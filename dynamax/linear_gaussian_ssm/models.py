@@ -1917,12 +1917,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                 initial_cov_stats_1 = conditions_count / 2
                 Ex0mT = jnp.einsum('bci,cj->cij', init_stats_1, m)
-                initial_cov_stats_2 = init_stats_2 # Vx0
-                initial_cov_stats_2 += jnp.einsum('bc,bci,bcj->cij', conditions_one_hot, init_stats_1, init_stats_1) # Ex0x0T
-                initial_cov_stats_2 += jnp.einsum('bc,ci,cj->cij', conditions_one_hot, m, m) # mmT
-                initial_cov_stats_2 -= (Ex0mT + jnp.swapaxes(Ex0mT, -2, -1)) # - (Ex0mT + mEx0T)
+                initial_cov_stats_2 = init_stats_2 \
+                        + jnp.einsum('bc,bci,bcj->cij', conditions_one_hot, init_stats_1, init_stats_1) \
+                        + jnp.einsum('bc,ci,cj->cij', conditions_one_hot, m, m) \
+                        - Ex0mT - jnp.swapaxes(Ex0mT, -2, -1)) # Vx0 + Ex0x0T + mmT - (Ex0mT + mEx0T)
                 initial_cov_stats_2 = vmap(jnp.diag)(initial_cov_stats_2) / 2
-
                 def update_initial_cov(initial_cov_stats_c_1, initial_cov_stats_c_2):
                     def _update_initial_cov(initial_cov_stats_ci_2):
                         initial_posterior = ig_posterior_update(self.initial_covariance_prior,
