@@ -1860,12 +1860,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             Expxn = states_smoother.smoothed_cross_covariances * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
 
             # sufficient statistics for the initial distribution
-            init_stats_1 = conditions_count
-            init_stats_2 = jnp.einsum('bc,bi->ci', conditions_one_hot, Ex[:, 0])
-            init_stats_3 = jnp.einsum('bc,bij->cij', conditions_one_hot, Vx[:, 0])
-            init_stats_4 = jnp.einsum('bc,bi->bci', conditions_one_hot, Ex[:, 0])
-            init_stats_5 = conditions_one_hot
-            init_stats = (init_stats_1, init_stats_2, init_stats_3, init_stats_4, init_stats_5)
+            init_stats_1 = jnp.einsum('bc,bi->bci', conditions_one_hot, Ex[:, 0])
+            init_stats_2 = jnp.einsum('bc,bij->cij', conditions_one_hot, Vx[:, 0])
+            init_stats = (init_stats_1, init_stats_2)
 
             # sufficient statistics for the dynamics
             dynamics_stats_1 = jnp.einsum('bti,btl->il', Exp, Exp)
@@ -1906,20 +1903,20 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_initial:
                 S, m = _params.initial.cov, _params.initial.mean
             else:
-                init_stats_1, init_stats_2, init_stats_3, init_stats_4, init_stats_5 = init_stats
+                init_stats_1, init_stats_2 = init_stats
                 Sinv = jnp.linalg.inv(_params.initial.cov)
-                initial_mean_stats_1 = jnp.einsum('c,cij->cij', init_stats_1, Sinv)
-                initial_mean_stats_2 = jnp.einsum('ci,cij->cj', init_stats_2, Sinv)
+                initial_mean_stats_1 = jnp.einsum('c,cij->cij', conditions_count, Sinv)
+                initial_mean_stats_2 = jnp.einsum('bci,cij->cj', init_stats_1, Sinv)
                 initial_mean_stats = (initial_mean_stats_1, initial_mean_stats_2)
                 initial_mean_posterior = mvn_posterior_update(self.initial_prior, initial_mean_stats)
                 m = initial_mean_posterior.mode()
 
-                initial_cov_stats_1 = init_stats_1 / 2
-                mumT = jnp.einsum('ci,cj->cij', init_stats_2, m)
-                muTm = jnp.einsum('ci,cj->cji', init_stats_2, m)
-                initial_cov_stats_2 = init_stats_3 + jnp.einsum('bc,bci,bcj->cij', init_stats_5, init_stats_4,
-                                                                init_stats_4) + jnp.einsum('bc,ci,cj->cij',
-                                                                                           init_stats_5, m, m)
+                initial_cov_stats_1 = conditions_count / 2
+                mumT = jnp.einsum('bci,cj->cij', init_stats_1, m)
+                muTm = jnp.einsum('bci,cj->cji', init_stats_1, m)
+                initial_cov_stats_2 = init_stats_2 + jnp.einsum('bc,bci,bcj->cij', conditions_one_hot, init_stats_1,
+                                                                init_stats_1) + jnp.einsum('bc,ci,cj->cij',
+                                                                                           conditions_one_hot, m, m)
                 initial_cov_stats_2 -= (mumT + muTm)
                 initial_cov_stats_2 = vmap(jnp.diag)(initial_cov_stats_2) / 2
 
