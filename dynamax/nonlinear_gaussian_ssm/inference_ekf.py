@@ -350,7 +350,7 @@ def extended_kalman_smoother(
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
 
         # Compute the smoothed expectation of z_t z_{t+1}^T
-        smoothed_cross = G @ smoothed_cov_next  + jnp.outer(smoothed_mean, smoothed_mean_next)
+        smoothed_cross = G @ smoothed_cov_next #+ jnp.outer(smoothed_mean, smoothed_mean_next)
 
         return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross)
 
