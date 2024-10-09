@@ -2160,28 +2160,30 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.stationary_emissions:
                 stats, marginal_ll, states_smoother = e_step(params)
                 Ex = states_smoother.smoothed_means * masks_a
-                new_params, Ev, _ = m_step(params, stats, states_smoother)
+                new_params, Ev, ekf_marginal_ll = m_step(params, stats, states_smoother)
             else:
                 stats, marginal_ll, states_smoother = e_step(params)
                 Ex = states_smoother.smoothed_means * masks_a
-                new_params, Ev, _ = m_step(params, stats, states_smoother)
+                new_params, Ev, ekf_marginal_ll = m_step(params, stats, states_smoother)
 
-            return new_params, Ex, Ev, marginal_ll
+            return new_params, Ex, Ev, marginal_ll, ekf_marginal_ll
 
         sample_of_params = []
         sample_of_states = []
         sample_of_velocity = []
         marginal_lls = []
+        ekf_marginal_lls = []
         current_params = initial_params
 
         for _ in progress_bar(range(num_iters)):
-            current_params, current_states, current_velocity, marginal_ll = em(current_params)
+            current_params, current_states, current_velocity, marginal_ll, ekf_marginal_ll = em(current_params)
             sample_of_params.append(current_params)
             sample_of_velocity.append(current_velocity)
             if return_states:
                 sample_of_states.append(current_states)
             if print_ll:
                 print(marginal_ll)
-            marginal_lls.append(marginal_ll)
+            marginal_lls.append(marginal_ll, ekf_marginal_ll)
+            ekf_marginal_lls.append(ekf_marginal_ll)
 
-        return pytree_stack(sample_of_params), sample_of_states, sample_of_velocity, marginal_lls
+        return pytree_stack(sample_of_params), sample_of_states, sample_of_velocity, marginal_lls, ekf_marginal_lls
