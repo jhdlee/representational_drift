@@ -272,7 +272,7 @@ def _predict(m, S, F, B, b, Q, u, mask):
     mu_pred = mask * mu_pred + (1 - mask) * m
     Sigma_pred = mask * Sigma_pred + (1 - mask) * S
 
-    return mu_pred, symmetrize(Sigma_pred)
+    return mu_pred, Sigma_pred
 
 
 def _condition_on(m, P, H, D, d, R, u, y, mask):
@@ -585,7 +585,7 @@ def lgssm_smoother(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs, masks, trial_r, condition=condition)
+    filtered_posterior = lgssm_filter(params, emissions, inputs=None, masks=masks, trial_r=trial_r, condition=condition)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Run the smoother backward in time

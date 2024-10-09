@@ -4,6 +4,7 @@ from fastprogress.fastprogress import progress_bar
 from functools import partial
 import jax.numpy as jnp
 import jax.random as jr
+import jax.nn as jnn
 from jax import jit, lax, vmap
 from jax.tree_util import tree_map
 from jaxtyping import Float, Array, PyTree
@@ -351,6 +352,8 @@ class SSM(ABC):
         props: PropertySet,
         emissions: Union[Float[Array, "num_timesteps emission_dim"],
                          Float[Array, "num_batches num_timesteps emission_dim"]],
+        masks,
+        conditions,
         inputs: Optional[Union[Float[Array, "num_timesteps input_dim"],
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
         num_iters: int=50,
@@ -383,9 +386,13 @@ class SSM(ABC):
         batch_emissions = ensure_array_has_batch_dim(emissions, self.emission_shape)
         batch_inputs = ensure_array_has_batch_dim(inputs, self.inputs_shape)
 
+        conditions_one_hot = jnn.one_hot(conditions, len(jnp.unique(conditions)))
+
         @jit
         def em_step(params, m_step_state):
-            batch_stats, lls = vmap(partial(self.e_step, params))(batch_emissions, batch_inputs)
+            batch_stats, lls = vmap(partial(self.e_step, params))(batch_emissions, batch_inputs,
+                                                                  masks, conditions, conditions_one_hot,
+                                                                  jnp.arange(len(batch_emissions)))
             lp = self.log_prior(params) + lls.sum()
             params, m_step_state = self.m_step(params, props, batch_stats, m_step_state)
             # debug.print('e_step: {x}', x=(batch_stats, lls))
