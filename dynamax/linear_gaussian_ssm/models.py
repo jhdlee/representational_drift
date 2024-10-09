@@ -1920,10 +1920,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_stats = (emissions_stats_1, emissions_stats_2)
 
             # marginal likelihood
-            if self.stationary_emissions:
-                marginal_ll = states_smoother.marginal_loglik.sum()  # This is exact
-            else:
-                marginal_ll = 0.0  # to be approximated from ekf
+            marginal_ll = states_smoother.marginal_loglik.sum()
 
             return (init_stats, dynamics_stats, emission_stats), marginal_ll, states_smoother  # also returning Ex for R
 
