@@ -2044,12 +2044,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                 # H_precision = jnp.einsum('bil,jk->bjikl', emission_stats_1, Rinv).reshape(self.num_trials,
                 #                                                                           reshape_dim, reshape_dim)
-                H_precision = vmap(jnp.kron, in_axes=(None, 0))(Rinv, emissions_stats_1)
+                H_precision = vmap(jnp.kron, in_axes=(None, 0))(Rinv, emission_stats_1)
                 H_cov = jnp.linalg.inv(H_precision)
                 # H_b = jnp.einsum('bil,lk->bki', emission_stats2, Rinv).reshape(self.num_trials, -1)
                 H_b = jnp.einsum('ij,bj->bi',
                                  jnp.kron(Rinv, jnp.eye(self.state_dim)),
-                                 emissions_stats_2.reshape(num_trials, -1))
+                                 emission_stats2.reshape(num_trials, -1))
                 H_mean = jnp.einsum('bij,bj->bi', H_cov, H_b)
 
                 velocity_smoother = self.velocity_smoother(base_subspace, _params,
