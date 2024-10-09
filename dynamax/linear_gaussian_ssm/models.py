@@ -2101,8 +2101,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     Vv = velocity_smoother.smoothed_covariances
                     Vvpvn = velocity_smoother.smoothed_cross_covariances
                     # tau_stats_2 = jnp.square(jnp.diff(Ev, axis=0)).sum(0)
-                    tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + Vv[1:].sum(0)
-                    tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + Vv[:-1].sum(0)
+                    # tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + Vv[1:].sum(0)
+                    # tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + Vv[:-1].sum(0)
+                    Ev_residual = jnp.diff(Ev, axis=0)
+                    tau_stats_2 = jnp.einsum('ti,tj->ij', Ev_residual, Ev_residual)
+                    tau_stats_2 += Vv[1:].sum(0) + Vv[:-1].sum(0)
                     tau_stats_2 -= (Vvpvn.sum(0) + Vvpvn.sum(0).T)
                     tau_stats_2 = jnp.diag(tau_stats_2)
                     tau_stats_2 = tau_stats_2 / 2
