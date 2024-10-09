@@ -28,7 +28,7 @@ from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, UKFHyperParams
 from dynamax.nonlinear_gaussian_ssm import unscented_kalman_posterior_sample
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_smoother, iterated_extended_kalman_posterior_sample
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_filter, iterated_extended_kalman_filter, \
-    extended_kalman_posterior_sample
+    extended_kalman_posterior_sample, extended_kalman_filter_v1
 
 from dynamax.parameters import ParameterProperties, ParameterSet
 from dynamax.types import PRNGKey, Scalar
@@ -1091,7 +1091,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             conditions = jnp.zeros(num_trials, dtype=int)
 
         f = self.get_f()
-        h = self.get_h_v3(base_subspace)
+        h = self.get_h_v1(base_subspace, params, masks)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.initial_velocity.mean,
@@ -1102,9 +1102,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_covariance=None
         )
 
-        filtered_posterior = extended_kalman_filter(NLGSSM_params, emissions,
-                                                    masks, conditions=conditions,
-                                                    inputs=inputs)
+        filtered_posterior = extended_kalman_filter_v1(NLGSSM_params, emissions,
+                                                       masks=masks, conditions=conditions,
+                                                       inputs=inputs)
 
         return filtered_posterior.marginal_loglik
 
