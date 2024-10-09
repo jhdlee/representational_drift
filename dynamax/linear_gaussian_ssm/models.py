@@ -1154,9 +1154,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_covariance=None
         )
 
-        filtered_posterior = extended_kalman_filter(NLGSSM_params, emissions,
-                                                    masks, conditions=conditions,
-                                                    inputs=inputs)
+        filtered_posterior = extended_kalman_filter_v1(NLGSSM_params, emissions,
+                                                       masks=masks, conditions=conditions,
+                                                       inputs=inputs)
 
         return filtered_posterior
 
