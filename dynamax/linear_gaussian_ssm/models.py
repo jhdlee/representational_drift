@@ -1519,7 +1519,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             h = self.get_h_v1(base_subspace, params, masks)
         elif filtering_method == 'ukf':
             h = self.get_h_v2(base_subspace, params, masks)
-        elif filtering_method == 'ekf_em':
+        elif filtering_method in ['ekf_em', 'ukf_em']:
             h = self.get_h_v3(base_subspace)
 
         if filtering_method in ['ekf', 'ukf']:
@@ -1531,7 +1531,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_function=h,
                 emission_covariance=covs
             )
-        elif filtering_method in ['ekf_em']:
+        elif filtering_method in ['ekf_em', 'ukf_em']:
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=params.initial_velocity.mean,
                 initial_covariance=params.initial_velocity.cov,
@@ -1552,6 +1552,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         elif filtering_method == 'ekf_em':
             smoother = extended_kalman_smoother(NLGSSM_params, emissions,
                                                 masks=masks, conditions=conditions)
+        elif filtering_method == 'ukf_em':
+            ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
+            smoother = unscented_kalman_smoother(NLGSSM_params, emissions,
+                                                 conditions=conditions,
+                                                 hyperparams=ukf_hyperparams)
 
         return smoother
 

@@ -88,7 +88,7 @@ def _predict(m, P, Q):
     return m, P + Q
 
 
-def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r):
+def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y):
     """Condition a Gaussian potential on a new observation
 
     Args:
@@ -108,34 +108,29 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r):
         P_cond (D_hid,D_hid): filtered covariance.
 
     """
+    n = len(m)
     # Form sigma points and propagate
-    n_prime = n + n_r
-    m_tilde = jnp.concatenate([m, jnp.zeros(n_r)])
-    P_tilde = jscipy.linalg.block_diag(P, jnp.eye(n_r))
-
-    sigmas_cond = _compute_sigmas(m_tilde, P_tilde, n_prime, lamb)
-    sigmas_cond_m, sigmas_cond_r = jnp.hsplit(sigmas_cond, [n])
-    sigmas_cond_prop = vmap(h, (0, 0, None, None, None), 0)(sigmas_cond_m, sigmas_cond_r, y, t, condition)
+    sigmas_cond = _compute_sigmas(m, P, n, lamb)
+    u_s = jnp.array([u] * len(sigmas_cond))
+    sigmas_cond_prop = vmap(h, (0, 0), 0)(sigmas_cond, u_s)
 
     # Compute parameters needed to filter
     pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
-    pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1)
-    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond_m - m, sigmas_cond_prop - pred_mean), axes=1)
+    pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1) + R
+    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond - m, sigmas_cond_prop - pred_mean), axes=1)
 
     # Compute log-likelihood of observation
-    ll = MVN(pred_mean, pred_cov).log_prob(y.flatten())
+    ll = MVN(pred_mean, pred_cov).log_prob(y)
 
     # Compute filtered mean and covariace
     K = psd_solve(pred_cov, pred_cross.T).T  # Filter gain
-    m_cond = m + K @ (y.flatten() - pred_mean)
+    m_cond = m + K @ (y - pred_mean)
     P_cond = P - K @ pred_cov @ K.T
     return ll, m_cond, P_cond
-
 
 def unscented_kalman_filter(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
-    conditions,
     hyperparams: UKFHyperParams,
     inputs: Optional[Float[Array, "ntime input_dim"]]=None,
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
@@ -153,41 +148,38 @@ def unscented_kalman_filter(
         filtered_posterior: posterior object.
 
     """
-    num_trials, num_timesteps, emissions_dim = emissions.shape
-    n = state_dim = params.dynamics_covariance.shape[0]
-    n_r = cov_dim = num_timesteps * emissions_dim # replace with mask sum
-    n_prime = state_dim + cov_dim
+    num_timesteps = len(emissions)
+    state_dim = params.dynamics_covariance.shape[0]
 
     # Compute lambda and weights from from hyperparameters
     alpha, beta, kappa = hyperparams.alpha, hyperparams.beta, hyperparams.kappa
-    lamb = _compute_lambda(alpha, kappa, n_prime)
-    w_mean, w_cov = _compute_weights(n_prime, alpha, beta, lamb)
+    lamb = _compute_lambda(alpha, kappa, state_dim)
+    w_mean, w_cov = _compute_weights(state_dim, alpha, beta, lamb)
 
     # Dynamics and emission functions
     f, h = params.dynamics_function, params.emission_function
-    # f, h = (_process_fn(fn, inputs) for fn in (f, h))
-    inputs = _process_input(inputs, num_trials)
+    f, h = (_process_fn(fn, inputs) for fn in (f, h))
+    inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, t):
         ll, pred_mean, pred_cov = carry
 
         # Get parameters and inputs for time t
         Q = _get_params(params.dynamics_covariance, 2, t)
-        R = None #_get_params(params.emission_covariance, 2, t)
+        R = _get_params(params.emission_covariance, 2, t)
         u = inputs[t]
         y = emissions[t]
-        condition = conditions[t]
 
         # Condition on this emission
         log_likelihood, filtered_mean, filtered_cov = _condition_on(
-            pred_mean, pred_cov, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r
+            pred_mean, pred_cov, h, R, lamb, w_mean, w_cov, u, y
         )
 
         # Update the log likelihood
         ll += log_likelihood
 
         # Predict the next state
-        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
+        pred_mean, pred_cov, _ = _predict(filtered_mean, filtered_cov, f, Q, lamb, w_mean, w_cov, u)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
@@ -204,7 +196,7 @@ def unscented_kalman_filter(
 
     # Run the Unscented Kalman Filter
     carry = (0.0, params.initial_mean, params.initial_covariance)
-    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_trials))
+    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_timesteps))
     outputs = {"marginal_loglik": ll, **outputs}
     posterior_filtered = PosteriorGSSMFiltered(
         **outputs,
@@ -216,6 +208,8 @@ def unscented_kalman_smoother(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
     hyperparams: UKFHyperParams,
+    masks,
+    conditions,
     inputs: Optional[Float[Array, "ntime input_dim"]]=None
 ) -> PosteriorGSSMSmoothed:
     """Run a unscented Kalman (RTS) smoother.
@@ -231,7 +225,6 @@ def unscented_kalman_smoother(
 
     """
     num_timesteps = len(emissions)
-    state_dim = params.dynamics_covariance.shape[0]
 
     # Run the unscented Kalman filter
     ukf_posterior = unscented_kalman_filter(params, emissions, hyperparams, inputs)
@@ -239,14 +232,6 @@ def unscented_kalman_smoother(
     filtered_means = ukf_posterior.filtered_means
     filtered_covs = ukf_posterior.filtered_covariances
 
-    # Compute lambda and weights from from hyperparameters
-    alpha, beta, kappa = hyperparams.alpha, hyperparams.beta, hyperparams.kappa
-    lamb = _compute_lambda(alpha, kappa, state_dim)
-    w_mean, w_cov = _compute_weights(state_dim, alpha, beta, lamb)
-
-    # Dynamics and emission functions
-    f, h = params.dynamics_function, params.emission_function
-    f, h = (_process_fn(fn, inputs) for fn in (f, h))
     inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, args):
@@ -256,22 +241,23 @@ def unscented_kalman_smoother(
 
         # Get parameters and inputs for time t
         Q = _get_params(params.dynamics_covariance, 2, t)
-        R = _get_params(params.emission_covariance, 2, t)
-        u = inputs[t]
-        y = emissions[t]
 
         # Prediction step
-        m_pred, S_pred = _predict(filtered_mean, filtered_cov, Q)
+        m_pred = filtered_mean
+        S_pred = Q + filtered_cov
         G = psd_solve(S_pred, filtered_cov).T
 
-        # Compute smoothed mean and covariance
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
 
-        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov)
+        # Compute the smoothed expectation of z_t z_{t+1}^T
+        smoothed_cross_cov = G @ smoothed_cov_next
+        smoothed_cross_outer = jnp.outer(smoothed_mean, smoothed_mean_next)
+
+        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross_cov, smoothed_cross_outer)
 
     # Run the unscented Kalman smoother
-    _, (smoothed_means, smoothed_covs) = lax.scan(
+    _, (smoothed_means, smoothed_covs, smoothed_cross_cov, smoothed_cross_outer) = lax.scan(
         _step,
         (filtered_means[-1], filtered_covs[-1]),
         (jnp.arange(num_timesteps - 1), filtered_means[:-1], filtered_covs[:-1]),
@@ -281,13 +267,16 @@ def unscented_kalman_smoother(
     # Concatenate the arrays and return
     smoothed_means = jnp.vstack((smoothed_means, filtered_means[-1][None, ...]))
     smoothed_covs = jnp.vstack((smoothed_covs, filtered_covs[-1][None, ...]))
-
+    smoothed_cross_cov = smoothed_cross_cov[::-1]
+    smoothed_cross_outer = smoothed_cross_outer[::-1]
+    smoothed_cross = smoothed_cross_cov + smoothed_cross_outer
     return PosteriorGSSMSmoothed(
         marginal_loglik=ll,
         filtered_means=filtered_means,
         filtered_covariances=filtered_covs,
         smoothed_means=smoothed_means,
         smoothed_covariances=smoothed_covs,
+        smoothed_cross_covariances=smoothed_cross,
     )
 
 def unscented_kalman_posterior_sample(
