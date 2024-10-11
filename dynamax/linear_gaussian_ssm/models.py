@@ -1555,7 +1555,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         elif filtering_method == 'ukf_em':
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
             smoother = unscented_kalman_smoother(NLGSSM_params, emissions,
-                                                 conditions=conditions,
                                                  hyperparams=ukf_hyperparams)
 
         return smoother

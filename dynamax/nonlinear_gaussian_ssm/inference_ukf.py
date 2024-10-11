@@ -208,8 +208,6 @@ def unscented_kalman_smoother(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
     hyperparams: UKFHyperParams,
-    masks,
-    conditions,
     inputs: Optional[Float[Array, "ntime input_dim"]]=None
 ) -> PosteriorGSSMSmoothed:
     """Run a unscented Kalman (RTS) smoother.
