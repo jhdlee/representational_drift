@@ -1964,10 +1964,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 S, m = _params.initial.cov, _params.initial.mean
             else:
                 init_stats_1, init_stats_2 = init_stats
-                VxS = init_stats_2 + jnp.einsum('b,cij->bcij', jnp.ones(num_trials), _params.initial.cov)
-                VxSinv = jnp.einsum('bc,bcij->bcij', conditions_one_hot, jnp.linalg.inv(VxS))
-                initial_mean_stats_1 = VxSinv.sum(0)
-                initial_mean_stats_2 = jnp.einsum('bcij,bcj->ci', VxSinv, init_stats_1)
+                Sinv = jnp.linalg.inv(_params.initial.cov)
+                cSinv = jnp.einsum('bc,cij->bcij', conditions_one_hot, Sinv)
+                initial_mean_stats_1 = cSinv.sum(0)
+                initial_mean_stats_2 = jnp.einsum('bci,bcij->cj', init_stats_1, cSinv)
                 initial_mean_stats = (initial_mean_stats_1, initial_mean_stats_2)
                 initial_mean_posterior = mvn_posterior_update(self.initial_prior, initial_mean_stats)
                 m = initial_mean_posterior.mode()
@@ -1990,7 +1990,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
                     S_c = vmap(_update_initial_cov)(initial_cov_stats_c_2)
                     return jnp.diag(S_c)
-
                 S = vmap(update_initial_cov)(initial_cov_stats_1, initial_cov_stats_2)
 
             # Update the dynamics params
@@ -2072,11 +2071,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 Ev = velocity_smoother.smoothed_means
                 H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, Ev)
 
-                VvS = velocity_smoother.smoothed_covariances[0] + _params.initial_velocity.cov
+                # VvS = velocity_smoother.smoothed_covariances[0] + _params.initial_velocity.cov
+                VvS = _params.initial_velocity.cov
                 VvSinv = jnp.linalg.inv(VvS)
                 Ev0 = velocity_smoother.smoothed_means[0]
                 initial_velocity_mean_stats_1 = VvSinv
-                initial_velocity_mean_stats_2 = jnp.einsum('ij,j->i', VvSinv, Ev0)
+                initial_velocity_mean_stats_2 = jnp.einsum('i,ij->j', Ev0, VvSinv)
                 initial_velocity_mean_stats = (initial_velocity_mean_stats_1, initial_velocity_mean_stats_2)
                 initial_velocity_mean_posterior = mvn_posterior_update(self.initial_velocity_prior, initial_velocity_mean_stats)
                 initial_velocity_mean = initial_velocity_mean_posterior.mode()
