@@ -2075,6 +2075,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                            filtering_method=filtering_method)
                 marginal_ll = velocity_smoother.marginal_loglik
                 Ev = velocity_smoother.smoothed_means
+                Ev0 = velocity_smoother.smoothed_means[0]
                 H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, Ev)
 
                 if self.fix_initial_velocity:
@@ -2083,7 +2084,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     # VvS = velocity_smoother.smoothed_covariances[0] + _params.initial_velocity.cov
                     VvS = _params.initial_velocity.cov
                     VvSinv = jnp.linalg.inv(VvS)
-                    Ev0 = velocity_smoother.smoothed_means[0]
                     initial_velocity_mean_stats_1 = VvSinv
                     initial_velocity_mean_stats_2 = jnp.einsum('i,ij->j', Ev0, VvSinv)
                     initial_velocity_mean_stats = (initial_velocity_mean_stats_1, initial_velocity_mean_stats_2)
