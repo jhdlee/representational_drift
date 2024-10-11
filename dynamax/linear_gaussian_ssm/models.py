@@ -2094,12 +2094,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
                     tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + Vv[:-1].sum(0)
                     tau_stats_2 = jnp.diag(tau_stats_2) / 2
-                    tau_stats = (tau_stats_1, tau_stats_2)
                     def update_tau(s1, s2):
                         tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
                         tau_mode = tau_posterior.mode()
                         return tau_mode
-                    tau = vmap(update_tau)(tau_stats)
+                    tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
 
             if self.fix_emissions_cov:
                 R = _params.emissions.cov
