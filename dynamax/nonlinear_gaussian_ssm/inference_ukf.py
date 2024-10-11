@@ -179,7 +179,7 @@ def unscented_kalman_filter(
         ll += log_likelihood
 
         # Predict the next state
-        pred_mean, pred_cov, _ = _predict(filtered_mean, filtered_cov, f, Q, lamb, w_mean, w_cov, u)
+        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov,  Q)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
