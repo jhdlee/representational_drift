@@ -2024,7 +2024,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 if self.has_dynamics_bias:
                     ones = jnp.ones(Exp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                     Exp = jnp.concatenate([Exp, ones], axis=-1)
-                    Expxn = jnp.concatenate([Expxn, jnp.einsum('bti,btj->ij', ones, Exn)], axis=0)
+                    Expxn = jnp.concatenate([jnp.einsum('btij->ij', Expxn),
+                                             jnp.einsum('bti,btj->ij', ones, Exn)], axis=0)
 
                 FbExpxn = jnp.einsum('ij,btjk->ik', Fb, Expxn)
                 ExpxpT = jnp.einsum('bti,btl->il', Exp, Exp)
