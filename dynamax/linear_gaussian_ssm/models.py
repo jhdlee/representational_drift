@@ -1775,9 +1775,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                         S_ci = initial_posterior.sample(seed=rngs_ci)
                         return S_ci
 
-                    S_c = vmap(_update_initial_cov)(initial_cov_stats_c_2, jnp.split(rngs_c, self.state_dim))
+                    S_c = vmap(_update_initial_cov)(initial_cov_stats_c_2, jr.split(rngs_c, self.state_dim))
                     return jnp.diag(S_c)
-                S = vmap(update_initial_cov)(initial_cov_stats_1, initial_cov_stats_2, jr.split(next(rngs), self.num_conditions))
+                S = vmap(update_initial_cov)(initial_cov_stats_1, initial_cov_stats_2,
+                                             jr.split(next(rngs), self.num_conditions))
 
             # Sample the dynamics params
             if self.fix_dynamics:
