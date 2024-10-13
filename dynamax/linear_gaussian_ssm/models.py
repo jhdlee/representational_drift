@@ -1705,7 +1705,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             y = emissions
 
             init_stats_1 = jnp.einsum('bc,bi->bci',  conditions_one_hot, x[:, 0])
-            init_stats = (init_stats_1)
+            init_stats = (init_stats_1, )
 
             Qinv = jnp.linalg.inv(_params.dynamics.cov)
             reshape_dim = self.state_dim * (self.state_dim + self.has_dynamics_bias)
@@ -1753,7 +1753,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_initial:
                 S, m = _params.initial.cov, _params.initial.mean
             else:
-                init_stats_1, init_stats_2 = init_stats
+                init_stats_1 = init_stats[0]
                 Sinv = jnp.linalg.inv(_params.initial.cov)
                 cSinv = jnp.einsum('bc,cij->bcij', conditions_one_hot, Sinv)
                 initial_mean_stats_1 = cSinv.sum(0)
