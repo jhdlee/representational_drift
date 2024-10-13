@@ -1366,7 +1366,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         # initial state
         # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
-        lp = self.initial_mean_prior.log_prob(params.initial.mean).sum()
+        lp = self.initial_prior.log_prob(params.initial.mean).sum()
         flattened_cov = vmap(jnp.diag)(params.initial.cov)
         lp += self.initial_covariance_prior.log_prob(flattened_cov.flatten()).sum()
         # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean)).sum()
@@ -1715,9 +1715,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             dynamics_stats_1 = jnp.einsum('bti,btl->il', xp, xp)
             dynamics_stats_1 = jnp.einsum('il,jk->jikl', dynamics_stats_1, Qinv).reshape(reshape_dim, reshape_dim)
             dynamics_stats_2 = jnp.einsum('bti,btl->il', xp, xn)
-            if self.has_dynamics_bias:
-                dynamics_stats_2 = jnp.concatenate([dynamics_stats_2,
-                                                    jnp.einsum('bti,btj->ij', ones, xn)], axis=0)
             dynamics_stats_2 = jnp.einsum('il,lk->ki', dynamics_stats_2, Qinv).reshape(-1)
             dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
 
@@ -1741,7 +1738,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emissions_stats_2 = jnp.einsum('bij,bj->bi', emissions_stats_1, emissions_stats_2)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
 
-            return (init_stats, dynamics_stats, emission_stats), marginal_ll, x
+            return (init_stats, dynamics_stats, emission_stats), marginal_ll.sum(), x
 
         def lgssm_params_sample(rng, _params, stats, x):
             """Sample parameters of the model given sufficient statistics from observed states and emissions."""
@@ -1804,12 +1801,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 dynamics_cov_stats_1 = (jnp.sum(masks) - num_trials) / 2
                 xp = x[:, :-1] * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                 xn = x[:, 1:] * masks_a[:, 1:]
-                xpxn = jnp.einsum('bti,btl->il', xp, xn)
                 if self.has_dynamics_bias:
                     ones = jnp.ones(xp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                     xp = jnp.concatenate([xp, ones], axis=-1)
-                    xpxn = jnp.concatenate([xpxn,
-                                            jnp.einsum('bti,btj->btij', ones, xn)], axis=-2)
+                xpxn = jnp.einsum('bti,btl->btil', xp, xn)
 
                 FbExpxn = jnp.einsum('ij,btjk->ik', Fb, xpxn)
                 ExpxpT = jnp.einsum('bti,btl->il', xp, xp)
