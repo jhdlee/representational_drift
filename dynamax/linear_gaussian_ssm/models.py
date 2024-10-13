@@ -1563,7 +1563,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         elif velocity_sampler == 'ekf_v2':
             h = self.get_h_v3(base_subspace)
 
-        if filtering_method in ['ekf', 'ukf']:
+        if velocity_sampler in ['ekf', 'ukf']:
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=params.initial_velocity.mean,
                 initial_covariance=params.initial_velocity.cov,
@@ -1572,7 +1572,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_function=h,
                 emission_covariance=covs
             )
-        elif filtering_method in ['ekf_v2']:
+        elif velocity_sampler in ['ekf_v2']:
             NLGSSM_params = ParamsNLGSSM(
                 initial_mean=params.initial_velocity.mean,
                 initial_covariance=params.initial_velocity.cov,
