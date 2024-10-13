@@ -1852,7 +1852,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                           velocity_sampler=velocity_sampler)
 
                 Ev0 = v[0]
-                H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, Ev)
+                H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, v)
 
                 if self.fix_initial_velocity:
                     initial_velocity_mean = _params.initial_velocity.mean
