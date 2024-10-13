@@ -128,6 +128,132 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, u, y):
     P_cond = P - K @ pred_cov @ K.T
     return ll, m_cond, P_cond
 
+def _condition_on_v2(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r, mask):
+    """Condition a Gaussian potential on a new observation
+
+    Args:
+        m (D_hid,): prior mean.
+        P (D_hid,D_hid): prior covariance.
+        h (Callable): emission function.
+        R (D_obs,D_obs): emssion covariance matrix
+        lamb (float): lamb = alpha**2 *(n + kappa) - n.
+        w_mean (2*D_hid+1,): 2n+1 weights to compute predicted mean.
+        w_cov (2*D_hid+1,): 2n+1 weights to compute predicted covariance.
+        u (D_in,): inputs.
+        y (D_obs,): observation.black
+
+    Returns:
+        ll (float): log-likelihood of observation
+        m_cond (D_hid,): filtered mean.
+        P_cond (D_hid,D_hid): filtered covariance.
+
+    """
+    # Form sigma points and propagate
+
+    n_prime = n + n_r
+    m_tilde = jnp.concatenate([m, jnp.zeros(n_r)])
+    P_tilde = jscipy.linalg.block_diag(P, jnp.eye(n_r))
+
+    sigmas_cond = _compute_sigmas(m_tilde, P_tilde, n_prime, lamb)
+    sigmas_cond_m, sigmas_cond_r = jnp.hsplit(sigmas_cond, [n])
+    sigmas_cond_prop = vmap(h, (0, 0, None, None, None), 0)(sigmas_cond_m, sigmas_cond_r, y, t, condition)
+    sigmas_cond_prop = sigmas_cond_prop * mask
+
+    # Compute parameters needed to filter
+    pred_mean = jnp.tensordot(w_mean, sigmas_cond_prop, axes=1)
+    pred_cov = jnp.tensordot(w_cov, _outer(sigmas_cond_prop - pred_mean, sigmas_cond_prop - pred_mean), axes=1)
+    pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond_m - m, sigmas_cond_prop - pred_mean), axes=1)
+
+    # Compute log-likelihood of observation
+    ll = MVN(pred_mean, pred_cov).log_prob(y.flatten())
+
+    # Compute filtered mean and covariace
+    K = psd_solve(pred_cov, pred_cross.T).T  # Filter gain
+    m_cond = m + K @ (y.flatten() - pred_mean)
+    P_cond = P - K @ pred_cov @ K.T
+    return ll, m_cond, P_cond
+
+def unscented_kalman_filter_v2(
+        params: ParamsNLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        masks,
+        conditions,
+        hyperparams: UKFHyperParams,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
+                                              "predicted_covariances"],
+) -> PosteriorGSSMFiltered:
+    """Run a unscented Kalman filter to produce the marginal likelihood and
+    filtered state estimates.
+
+    Args:
+        params: model parameters.
+        emissions: array of observations.
+        hyperparams: hyper-parameters.
+        inputs: optional array of inputs.
+
+    Returns:
+        filtered_posterior: posterior object.
+
+    """
+    num_trials, num_timesteps, emissions_dim = emissions.shape
+    n = state_dim = params.dynamics_covariance.shape[0]
+    n_r = cov_dim = num_timesteps * emissions_dim  # replace with mask sum
+    n_prime = state_dim + cov_dim
+
+    # Compute lambda and weights from from hyperparameters
+    alpha, beta, kappa = hyperparams.alpha, hyperparams.beta, hyperparams.kappa
+    lamb = _compute_lambda(alpha, kappa, n_prime)
+    w_mean, w_cov = _compute_weights(n_prime, alpha, beta, lamb)
+
+    # Dynamics and emission functions
+    f, h = params.dynamics_function, params.emission_function
+    # f, h = (_process_fn(fn, inputs) for fn in (f, h))
+    inputs = _process_input(inputs, num_trials)
+
+    def _step(carry, t):
+        ll, pred_mean, pred_cov = carry
+
+        # Get parameters and inputs for time t
+        Q = _get_params(params.dynamics_covariance, 2, t)
+        R = None  # _get_params(params.emission_covariance, 2, t)
+        u = inputs[t]
+        y = emissions[t]
+        condition = conditions[t]
+        mask = jnp.repeat(masks[t], emissions_dim)[None, :, None]
+
+        # Condition on this emission
+        log_likelihood, filtered_mean, filtered_cov = _condition_on_v2(
+            pred_mean, pred_cov, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r, mask
+        )
+
+        # Update the log likelihood
+        ll += log_likelihood
+
+        # Predict the next state
+        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
+
+        # Build carry and output states
+        carry = (ll, pred_mean, pred_cov)
+        outputs = {
+            "filtered_means": filtered_mean,
+            "filtered_covariances": filtered_cov,
+            "predicted_means": pred_mean,
+            "predicted_covariances": pred_cov,
+            "marginal_loglik": ll,
+        }
+        outputs = {key: val for key, val in outputs.items() if key in output_fields}
+        return carry, outputs
+
+    # Run the Unscented Kalman Filter
+    carry = (0.0, params.initial_mean, params.initial_covariance)
+    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_trials))
+    outputs = {"marginal_loglik": ll, **outputs}
+    posterior_filtered = PosteriorGSSMFiltered(
+        **outputs,
+    )
+    return posterior_filtered
+
 def unscented_kalman_filter(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],

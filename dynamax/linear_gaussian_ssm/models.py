@@ -25,7 +25,7 @@ from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitia
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 
 from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, UKFHyperParams
-from dynamax.nonlinear_gaussian_ssm import unscented_kalman_posterior_sample, unscented_kalman_smoother
+from dynamax.nonlinear_gaussian_ssm import unscented_kalman_posterior_sample, unscented_kalman_smoother, unscented_kalman_filter_v2
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_smoother, iterated_extended_kalman_posterior_sample
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_filter, iterated_extended_kalman_filter, \
     extended_kalman_posterior_sample, extended_kalman_filter_v1
@@ -1130,6 +1130,40 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         return filtered_posterior.marginal_loglik
 
+    def ukf_marginal_log_prob(
+            self,
+            base_subspace,
+            params: ParamsLGSSM,
+            emissions: Float[Array, "ntime emission_dim"],
+            inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+            masks: jnp.array = None,
+            conditions: jnp.array = None,
+    ) -> Scalar:
+
+        num_trials = emissions.shape[0]
+        if masks is None:
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
+
+        f = self.get_f()
+        h = self.get_h_v1(base_subspace, params, masks)
+
+        NLGSSM_params = ParamsNLGSSM(
+            initial_mean=params.initial_velocity.mean,
+            initial_covariance=params.initial_velocity.cov,
+            dynamics_function=f,
+            dynamics_covariance=jnp.diag(params.emissions.tau),
+            emission_function=h,
+            emission_covariance=None
+        )
+
+        filtered_posterior = extended_kalman_filter_v1(NLGSSM_params, emissions,
+                                                       masks=masks, conditions=conditions,
+                                                       inputs=inputs)
+
+        return filtered_posterior.marginal_loglik
+
     def filter(
             self,
             params: ParamsLGSSM,
@@ -1179,6 +1213,39 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         filtered_posterior = extended_kalman_filter_v1(NLGSSM_params, emissions,
                                                        masks=masks, conditions=conditions,
                                                        inputs=inputs)
+
+        return filtered_posterior
+
+    def ukf(
+            self,
+            base_subspace,
+            params: ParamsLGSSM,
+            emissions: Float[Array, "ntime emission_dim"],
+            inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+            masks: jnp.array = None,
+            conditions: jnp.array = None
+    ):
+        num_trials = emissions.shape[0]
+        if masks is None:
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
+
+        f = self.get_f()
+        h = self.get_h_v1(base_subspace, params, masks)
+
+        NLGSSM_params = ParamsNLGSSM(
+            initial_mean=params.initial_velocity.mean,
+            initial_covariance=params.initial_velocity.cov,
+            dynamics_function=f,
+            dynamics_covariance=jnp.diag(params.emissions.tau),
+            emission_function=h,
+            emission_covariance=None
+        )
+
+        filtered_posterior = unscented_kalman_filter_v2(NLGSSM_params, emissions,
+                                                        masks=masks, conditions=conditions,
+                                                        inputs=inputs)
 
         return filtered_posterior
 
@@ -1289,7 +1356,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             states,
             velocity,
             emissions,
-            inputs,
             masks,
             conditions
     ) -> Scalar:
@@ -1300,10 +1366,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         # initial state
         # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
-        # lp = self.initial_mean_prior.log_prob(params.initial.mean).sum()
-        # flattened_cov = vmap(jnp.diag)(params.initial.cov)
-        # lp += self.initial_covariance_prior.log_prob(flattened_cov.flatten()).sum()
-        lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean)).sum()
+        lp = self.initial_mean_prior.log_prob(params.initial.mean).sum()
+        flattened_cov = vmap(jnp.diag)(params.initial.cov)
+        lp += self.initial_covariance_prior.log_prob(flattened_cov.flatten()).sum()
+        # lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean)).sum()
         lp += MVN(params.initial.mean[conditions], params.initial.cov[conditions]).log_prob(states[:, 0]).sum()
 
         # dynamics & states
@@ -1312,8 +1378,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             (params.dynamics.weights,
              params.dynamics.input_weights,
              dynamics_bias))
-        lp += self.dynamics_prior.log_prob((params.dynamics.cov, dynamics_matrix))
-
+        lp += self.dynamics_prior.log_prob(jnp.ravel(dynamics_matrix))
         def _compute_dynamics_lp(prev_lp, current_t):
             current_state_mean = jnp.einsum('ij,rj->ri', params.dynamics.weights, states[:, current_t])
             if self.has_dynamics_bias:
@@ -1322,8 +1387,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masked_new_lp = jnp.nansum(masks[:, current_t + 1] * new_lp)
             current_lp = prev_lp + masked_new_lp
             return current_lp, None
-
         lp, _ = jax.lax.scan(_compute_dynamics_lp, lp, jnp.arange(self.sequence_length - 1))
+        lp += self.dynamics_covariance_prior.log_prob(jnp.diag(params.dynamics.cov)).sum()
 
         # emissions & observations
         def _compute_emissions_lp(prev_lp, current_t):
@@ -1332,7 +1397,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masked_new_lp = jnp.nansum(masks[:, current_t] * new_lp)
             current_lp = prev_lp + masked_new_lp
             return current_lp, None
-
         lp, _ = jax.lax.scan(_compute_emissions_lp, lp, jnp.arange(self.sequence_length))
 
         if self.stationary_emissions:
@@ -1352,14 +1416,17 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 current_lp = prev_lp + MVN(loc=jnp.ravel(current_param),
                                            covariance_matrix=tau_cov).log_prob(jnp.ravel(next_param))
                 return current_lp, None
-
             lp, _ = jax.lax.scan(_compute_trial_velocity_lp, lp, jnp.arange(self.num_trials - 1))
 
             initial_velocity = velocity[0]
             lp += MVN(params.initial_velocity.mean,
                       params.initial_velocity.cov).log_prob(initial_velocity)
-            lp += self.initial_velocity_prior.log_prob((params.initial_velocity.cov,
-                                                        params.initial_velocity.mean))
+
+            # lp += self.initial_velocity_prior.log_prob((params.initial_velocity.cov,
+            #                                             params.initial_velocity.mean))
+            lp += self.initial_velocity_prior.log_prob(params.initial_velocity.mean)
+            flattened_cov = jnp.diag(params.initial_velocity.cov)
+            lp += self.initial_velocity_covariance_prior.log_prob(flattened_cov).sum()
 
             tau_lp = self.tau_prior.log_prob(params.emissions.tau)
             # lp += tau_lp
@@ -1486,31 +1553,46 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         return h
 
-    def velocity_sample(self, base_subspace, _params, _emissions,
-                        masks, conditions, rng, velocity_sampler='ekf'):
+    def velocity_sample(self, base_subspace, params, emissions,
+                        masks, conditions, rng, covs=None, velocity_sampler='ekf'):
         f = self.get_f()
         if velocity_sampler == 'ekf':
-            h = self.get_h_v1(base_subspace, _params, masks)
+            h = self.get_h_v1(base_subspace, params, masks)
         elif velocity_sampler == 'ukf':
-            h = self.get_h_v2(base_subspace, _params, masks)
+            h = self.get_h_v2(base_subspace, params, masks)
+        elif velocity_sampler == 'ekf_v2':
+            h = self.get_h_v3(base_subspace)
 
-        NLGSSM_params = ParamsNLGSSM(
-            initial_mean=_params.initial_velocity.mean,
-            initial_covariance=_params.initial_velocity.cov,
-            dynamics_function=f,
-            dynamics_covariance=jnp.diag(_params.emissions.tau),
-            emission_function=h,
-            emission_covariance=None
-        )
+        if filtering_method in ['ekf', 'ukf']:
+            NLGSSM_params = ParamsNLGSSM(
+                initial_mean=params.initial_velocity.mean,
+                initial_covariance=params.initial_velocity.cov,
+                dynamics_function=f,
+                dynamics_covariance=jnp.diag(params.emissions.tau),
+                emission_function=h,
+                emission_covariance=covs
+            )
+        elif filtering_method in ['ekf_v2']:
+            NLGSSM_params = ParamsNLGSSM(
+                initial_mean=params.initial_velocity.mean,
+                initial_covariance=params.initial_velocity.cov,
+                dynamics_function=f,
+                dynamics_covariance=jnp.diag(params.emissions.tau),
+                emission_function=h,
+                emission_covariance=covs
+            )
 
         if velocity_sampler == 'ekf':
-            velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
+            velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, emissions,
                                                                             masks=masks, conditions=conditions)
         elif velocity_sampler == 'ukf':
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
-            velocity, approx_marginal_ll = unscented_kalman_posterior_sample(rng, NLGSSM_params, _emissions,
+            velocity, approx_marginal_ll = unscented_kalman_posterior_sample(rng, NLGSSM_params, emissions,
                                                                              conditions=conditions,
                                                                              hyperparams=ukf_hyperparams)
+        elif velocity_sampler == 'ekf_v2':
+            velocity, approx_marginal_ll = extended_kalman_posterior_sample(rng, NLGSSM_params, emissions,
+                                                                            masks=masks, conditions=conditions)
 
         return velocity, approx_marginal_ll
 
@@ -1575,7 +1657,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masks: jnp.array = None,
             conditions: jnp.array = None,
             fixed_states: jnp.array = None,
-            velocity_sampler='ekf',
+            velocity_sampler='ekf_v2',
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
@@ -1589,70 +1671,79 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         Returns:
             parameter object, where each field has `sample_size` copies as leading batch dimension.
         """
-        num_timesteps = len(emissions)
+        num_trials = len(emissions)
         if inputs is None:
-            inputs = jnp.zeros((num_timesteps, 0))
+            inputs = jnp.zeros((num_trials, 0))
         if masks is None:
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
         if conditions is None:
-            conditions = jnp.zeros(num_timesteps, dtype=int)
+            conditions = jnp.zeros(num_trials, dtype=int)
+        trial_idx = jnp.arange(num_trials, dtype=int)
 
-        def sufficient_stats_from_sample(states, params):
+        masks_a = jnp.expand_dims(masks, -1)
+        # ensure masking is done properly
+        emissions = emissions * masks_a
+
+        conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)  # B x C
+        conditions_count = jnp.sum(conditions_one_hot, axis=0)  # C
+
+        lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample,
+                                           in_axes=(None, None, 0, None, 0, 0, 0))
+
+        if not self.fix_emissions_cov:
+            yyT = jnp.einsum('...tx,...ty->xy', emissions, emissions)
+
+        def sufficient_stats_from_sample(rng, _params):
+            states, marginal_ll = lgssm_posterior_sample_vmap(rng, _params, emissions, inputs,
+                                                              masks, trial_idx, conditions)
+
             """Convert samples of states to sufficient statistics."""
-            inputs_joint = jnp.concatenate((inputs, jnp.ones((num_timesteps, 1))), axis=1)
             # Let xn[t] = x[t+1]          for t = 0...T-2
-            x, xp, xn = states, states[:, :-1], states[:, 1:]
-            u, up = inputs_joint, inputs_joint[:-1]
+            x = states * masks_a
+            xp = states[:, :-1] * jnp.roll(masks_a, -1, axis=1)[:, :-1]
+            xn = states[:, 1:] * masks_a[:, 1:]
             y = emissions
 
-            conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)
-            conditions_count = jnp.sum(conditions_one_hot, axis=0)[:, None]
-            init_stats_1 = jnp.einsum('bc,bi->bci',
-                                      conditions_one_hot,
-                                      x[:, 0])
-            init_stats_1_sum = init_stats_1.sum(0)
-            init_stats_1_avg = jnp.where(conditions_count > 0.0,
-                                         jnp.divide(init_stats_1_sum, conditions_count),
-                                         0.0)  # average (C, D)
-            init_stats_1_avg = jnp.einsum('bc,ci->bci',
-                                          conditions_one_hot,
-                                          init_stats_1_avg)
-            init_stats_2 = init_stats_1 - init_stats_1_avg
-            init_stats_2 = jnp.einsum('bci,bcj->cij', init_stats_2, init_stats_2)
+            init_stats_1 = jnp.einsum('bc,bi->bci',  conditions_one_hot, x[:, 0])
+            init_stats = (init_stats_1)
 
-            init_stats = (init_stats_1_sum, init_stats_2, conditions_count[:, 0])
+            Qinv = jnp.linalg.inv(_params.dynamics.cov)
+            reshape_dim = self.state_dim * (self.state_dim + self.has_dynamics_bias)
+            if self.has_dynamics_bias:
+                ones = jnp.ones(xp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
+                xp = jnp.concatenate([xp, ones], axis=-1)
+            dynamics_stats_1 = jnp.einsum('bti,btl->il', xp, xp)
+            dynamics_stats_1 = jnp.einsum('il,jk->jikl', dynamics_stats_1, Qinv).reshape(reshape_dim, reshape_dim)
+            dynamics_stats_2 = jnp.einsum('bti,btl->il', xp, xn)
+            if self.has_dynamics_bias:
+                dynamics_stats_2 = jnp.concatenate([dynamics_stats_2,
+                                                    jnp.einsum('bti,btj->ij', ones, xn)], axis=0)
+            dynamics_stats_2 = jnp.einsum('il,lk->ki', dynamics_stats_2, Qinv).reshape(-1)
+            dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
 
-            # N, D = y.shape[-1], states.shape[-1]
-            # # Optimized Code
-            # reshape_dim = D * (D + self.has_dynamics_bias)
-            # if self.has_dynamics_bias:
-            #     xp = jnp.pad(xp, ((0, 0), (0, 0), (0, 1)), constant_values=1)
-            # Qinv = jnp.linalg.inv(params.dynamics.cov)# + jnp.eye(params.dynamics.cov.shape[-1]) * self.EPS)
-            # dynamics_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', xp, Qinv, xp, masks[:, 1:]).reshape(reshape_dim, reshape_dim)
-            # dynamics_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', xn, Qinv, xp, masks[:, 1:]).reshape(-1)
-            # dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
-
-            sum_zpzpT = jnp.einsum('bti,btl,bt->il', xp, xp, masks[:, 1:])
-            sum_zpxnT = jnp.einsum('bti,btl,bt->il', xp, xn, masks[:, 1:])
-            sum_xnxnT = jnp.einsum('bti,btl,bt->il', xn, xn, masks[:, 1:])
-            dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, masks.sum() - len(emissions))
-
-            # Quantities for the emissions
+            # sufficient statistics for the emissions
             if self.stationary_emissions:
-                reshape_dim = N * (D + self.has_emissions_bias)
-                if self.has_emissions_bias:
-                    x = jnp.pad(x, ((0, 0), (0, 0), (0, 1)), constant_values=1)
-                Rinv = jnp.linalg.inv(params.emissions.cov)
-                emissions_stats_1 = jnp.einsum('bti,jk,btl,bt->jikl', x, Rinv, x, masks).reshape(reshape_dim,
-                                                                                                 reshape_dim)
-                emissions_stats_2 = jnp.einsum('bti,ik,btl,bt->kl', y, Rinv, x, masks).reshape(-1)
+                Rinv = jnp.linalg.inv(_params.emissions.cov)
+                reshape_dim = self.emission_dim * (self.state_dim + self.has_emissions_bias)
+                emissions_stats_1 = jnp.einsum('bti,btl->il', x, x)
+                emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
+                emissions_stats_2 = jnp.einsum('bti,btl->il', x, y)
+                emissions_stats_2 = jnp.einsum('il,lk->ki', emissions_stats_2, Rinv).reshape(-1)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
-                emission_stats = None
+                Rinv = jnp.linalg.inv(_params.emissions.cov)
+                reshape_dim = self.emission_dim * (self.state_dim + self.has_emissions_bias)
+                emissions_stats_1 = jnp.einsum('bti,btl->bil', x, x)
+                emissions_stats_1 = jnp.einsum('bil,jk->bjikl', emissions_stats_1, Rinv).reshape(num_trials, reshape_dim, reshape_dim)
+                emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
+                emissions_stats_2 = jnp.einsum('bti,btl->bil', x, y)
+                emissions_stats_2 = jnp.einsum('bil,lk->bki', emissions_stats_2, Rinv).reshape(num_trials, -1)
+                emissions_stats_2 = jnp.einsum('bij,bj->bi', emissions_stats_1, emissions_stats_2)
+                emission_stats = (emissions_stats_1, emissions_stats_2)
 
-            return init_stats, dynamics_stats, emission_stats
+            return (init_stats, dynamics_stats, emission_stats), marginal_ll, x
 
-        def lgssm_params_sample(rng, stats, states, params, velocity, _emission_weights):
+        def lgssm_params_sample(rng, _params, stats, x):
             """Sample parameters of the model given sufficient statistics from observed states and emissions."""
             init_stats, dynamics_stats, emission_stats = stats
             n_splits = 10
@@ -1660,94 +1751,173 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             # Sample the initial params
             if self.fix_initial:
-                S, m = params.initial.cov, params.initial.mean
+                S, m = _params.initial.cov, _params.initial.mean
             else:
-                def sample_from_initial_posterior(init_stats_c):
-                    initial_posterior = niw_posterior_update(self.initial_prior, init_stats_c)
-                    S_c, m_c = initial_posterior.sample(seed=next(rngs))
-                    return S_c, m_c
+                init_stats_1, init_stats_2 = init_stats
+                Sinv = jnp.linalg.inv(_params.initial.cov)
+                cSinv = jnp.einsum('bc,cij->bcij', conditions_one_hot, Sinv)
+                initial_mean_stats_1 = cSinv.sum(0)
+                initial_mean_stats_2 = jnp.einsum('bcij,bcj->ci', cSinv, init_stats_1)
+                initial_mean_stats = (initial_mean_stats_1, initial_mean_stats_2)
+                initial_mean_posterior = mvn_posterior_update(self.initial_prior, initial_mean_stats)
+                m = initial_mean_posterior.sample(seed=next(rngs))
 
-                S, m = vmap(sample_from_initial_posterior)(init_stats)
+                initial_cov_stats_1 = conditions_count / 2
+                Exm_diff = jnp.einsum('bc,bi->bci', conditions_one_hot, x[:, 0]) - jnp.einsum('bc,ci->bci',
+                                                                                              conditions_one_hot, m)
+                initial_cov_stats_2 = jnp.einsum('bci,bcj->cij', Exm_diff, Exm_diff)
+                initial_cov_stats_2 = vmap(jnp.diag)(initial_cov_stats_2) / 2
+
+                def update_initial_cov(initial_cov_stats_c_1, initial_cov_stats_c_2, rngs_c):
+                    def _update_initial_cov(initial_cov_stats_ci_2, rngs_ci):
+                        initial_posterior = ig_posterior_update(self.initial_covariance_prior,
+                                                                (initial_cov_stats_c_1, initial_cov_stats_ci_2))
+                        S_ci = initial_posterior.sample(seed=rngs_ci)
+                        return S_ci
+
+                    S_c = vmap(_update_initial_cov)(initial_cov_stats_c_2, jnp.split(rngs_c, self.state_dim))
+                    return jnp.diag(S_c)
+                S = vmap(update_initial_cov)(initial_cov_stats_1, initial_cov_stats_2, jr.split(next(rngs), self.num_conditions))
 
             # Sample the dynamics params
             if self.fix_dynamics:
-                F = params.dynamics.weights
-                b = params.dynamics.bias
-                B = params.dynamics.input_weights
-                Q = params.dynamics.cov
+                F = _params.dynamics.weights
+                b = _params.dynamics.bias
+                B = _params.dynamics.input_weights
+                Q = _params.dynamics.cov
             else:
-                dynamics_posterior = mniw_posterior_update(self.dynamics_prior, dynamics_stats)
-                Q, FB = dynamics_posterior.sample(seed=next(rngs))
-                F = FB[:, :self.state_dim]
-                B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
-                    else (FB[:, self.state_dim:], jnp.zeros(self.state_dim))
+                B = _params.dynamics.input_weights
+
+                dynamics_stats_1, dynamics_stats_2 = dynamics_stats
+                dynamics_weights_posterior = mvn_posterior_update(self.dynamics_prior,
+                                                                  (dynamics_stats_1, dynamics_stats_2))
+                Fb = dynamics_weights_posterior.sample(seed=next(rngs))
+                Fb = Fb.reshape(self.state_dim, self.state_dim + self.has_dynamics_bias)
+                F, b = (Fb[:, :self.state_dim], Fb[:, -1]) if self.has_dynamics_bias else (Fb[:, :self.state_dim], None)
+
+                def update_dynamics_cov(s1, s2, rng_d):
+                    dynamics_cov_posterior = ig_posterior_update(self.dynamics_covariance_prior, (s1, s2))
+                    dynamics_cov = dynamics_cov_posterior.sample(seed=rng_d)
+                    return dynamics_cov
+
+                dynamics_cov_stats_1 = (jnp.sum(masks) - num_trials) / 2
+                xp = x[:, :-1] * jnp.roll(masks_a, -1, axis=1)[:, :-1]
+                xn = x[:, 1:] * masks_a[:, 1:]
+                xpxn = jnp.einsum('bti,btl->il', xp, xn)
+                if self.has_dynamics_bias:
+                    ones = jnp.ones(xp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
+                    xp = jnp.concatenate([xp, ones], axis=-1)
+                    xpxn = jnp.concatenate([xpxn,
+                                            jnp.einsum('bti,btj->btij', ones, xn)], axis=-2)
+
+                FbExpxn = jnp.einsum('ij,btjk->ik', Fb, xpxn)
+                ExpxpT = jnp.einsum('bti,btl->il', xp, xp)
+                dynamics_cov_stats_2 = jnp.einsum('bti,btj->ij', xn, xn)
+                dynamics_cov_stats_2 -= (FbExpxn + FbExpxn.T)
+                dynamics_cov_stats_2 += jnp.einsum('ij,jk,kl->il', Fb, ExpxpT, Fb.T)
+                dynamics_cov_stats_2 = jnp.diag(dynamics_cov_stats_2) / 2
+                Q = jnp.diag(vmap(update_dynamics_cov, in_axes=(None, 0, 0))(dynamics_cov_stats_1, dynamics_cov_stats_2,
+                                                                             jr.split(next(rngs), self.state_dim)))
 
             # Sample the emission params
             if self.fix_emissions:
-                H = params.emissions.weights
-                d = params.emissions.bias
-                D = params.emissions.input_weights
-                R = params.emissions.cov
-                initial_velocity_cov = params.initial_velocity.cov
-                initial_velocity_mean = params.initial_velocity.mean
-                tau = params.emissions.tau
+                v = None
+                ekf_marginal_ll = 0.0
+
+                H = _params.emissions.weights
+                d = _params.emissions.bias
+                D = _params.emissions.input_weights
+                R = _params.emissions.cov
+                initial_velocity_cov = _params.initial_velocity.cov
+                initial_velocity_mean = _params.initial_velocity.mean
+                tau = _params.emissions.tau
+            elif self.stationary_emissions:
+                v = None
+                ekf_marginal_ll = 0.0
+
+                d = _params.emissions.bias
+                D = _params.emissions.input_weights
+                initial_velocity_cov = _params.initial_velocity.cov
+                initial_velocity_mean = _params.initial_velocity.mean
+                tau = _params.emissions.tau
+
+                emission_posterior = mvn_posterior_update(self.emissions_prior, emission_stats)
+                _emissions_weights = emission_posterior.sample(seed=next(rngs))
+                H = _emissions_weights.reshape(self.emission_dim, self.state_dim)
+
             else:
-                y = emissions
-                D = jnp.zeros((self.emission_dim, 0))
+                d = _params.emissions.bias
+                D = _params.emissions.input_weights
 
-                if self.stationary_emissions:
-                    initial_velocity_cov = params.initial_velocity.cov
-                    initial_velocity_mean = params.initial_velocity.mean
-                    tau = params.emissions.tau
+                emission_stats_1, emission_stats2 = emission_stats
+                v, ekf_marginal_ll = self.velocity_sample(base_subspace, _params,
+                                                          emission_stats2, masks, conditions, next(rngs),
+                                                          covs=emission_stats_1,
+                                                          velocity_sampler=velocity_sampler)
 
-                    emission_posterior = mvn_posterior_update(self.emissions_prior, emission_stats)
-                    _emissions_weights = emission_posterior.sample(seed=next(rngs))
-                    _emissions_weights = _emissions_weights.reshape(self.emission_dim,
-                                                                    (self.state_dim + self.has_emissions_bias))
-                    H, d = (_emissions_weights[:, :-1], _emissions_weights[:, -1]) if self.has_emissions_bias \
-                        else (_emissions_weights, None)
+                Ev0 = v[0]
+                H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, Ev)
+
+                if self.fix_initial_velocity:
+                    initial_velocity_mean = _params.initial_velocity.mean
                 else:
-                    H = _emission_weights
-                    d = None
+                    # VvS = velocity_smoother.smoothed_covariances[0] + _params.initial_velocity.cov
+                    VvS = _params.initial_velocity.cov
+                    VvSinv = jnp.linalg.inv(VvS)
+                    initial_velocity_mean_stats_1 = VvSinv
+                    initial_velocity_mean_stats_2 = jnp.einsum('i,ij->j', Ev0, VvSinv)
+                    initial_velocity_mean_stats = (initial_velocity_mean_stats_1, initial_velocity_mean_stats_2)
+                    initial_velocity_mean_posterior = mvn_posterior_update(self.initial_velocity_prior, initial_velocity_mean_stats)
+                    initial_velocity_mean = initial_velocity_mean_posterior.sample(seed=next(rngs))
 
-                    initial_velocity_stats = (velocity[0], 0.0, 1.0)
-                    initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior,
-                                                                      initial_velocity_stats)
-                    initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.sample(seed=next(rngs))
+                initial_velocity_cov_stats_1 = 0.5
+                Evm_diff = Ev0 - initial_velocity_mean
+                Evm_diff_squared = jnp.outer(Evm_diff, Evm_diff)
+                initial_velocity_cov_stats_2 = Evm_diff_squared
+                initial_velocity_cov_stats_2 = jnp.diag(initial_velocity_cov_stats_2) / 2
+                def update_initial_velocity_cov(s1, s2, rng_v):
+                    initial_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior,
+                                                                         (s1, s2))
+                    initial_velocity_cov_i = initial_velocity_cov_posterior.sample(seed=rng_v)
+                    return initial_velocity_cov_i
+                initial_velocity_cov = jnp.diag(
+                    vmap(update_initial_velocity_cov, in_axes=(None, 0, 0))(initial_velocity_cov_stats_1,
+                                                                         initial_velocity_cov_stats_2,
+                                                                            jr.split(next(rngs), self.dof)))
 
-                    if self.fix_tau:  # set to true during test time
-                        tau = params.emissions.tau
-                    else:
-                        tau_stats_1 = jnp.ones((self.dof, 1)) * (self.num_trials - 1) / 2
-                        tau_stats_2 = jnp.diff(velocity, axis=0)
-                        tau_stats_2 = jnp.nansum(jnp.square(tau_stats_2), axis=0) / 2
-                        tau_stats_2 = jnp.expand_dims(tau_stats_2, -1)
-                        tau_stats = (tau_stats_1, tau_stats_2)
-                        tau_posterior = ig_posterior_update(self.tau_prior, tau_stats)
-                        tau = tau_posterior.sample(seed=next(rngs))
-                        tau = jnp.ravel(tau)
-
-                if self.fix_emissions_cov:
-                    R = params.emissions.cov
+                if self.fix_tau:  # set to true during test time
+                    tau = _params.emissions.tau
                 else:
-                    emissions_cov_stats_1 = jnp.ones((self.emission_dim, 1)) * (jnp.sum(masks) / 2)
-                    emissions_mean = jnp.einsum('...tx,...yx->...ty', states, H)
-                    if self.has_emissions_bias:
-                        emissions_mean += d[:, None]
-                    sqr_err_flattened = jnp.square(y - emissions_mean).reshape(-1, self.emission_dim)
-                    masks_flattened = masks.reshape(-1)
-                    sqr_err_flattened = sqr_err_flattened * masks_flattened[:, None]
-                    emissions_cov_stats_2 = jnp.nansum(sqr_err_flattened, axis=0) / 2
+                    tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
 
-                    emissions_cov_stats_2 = jnp.expand_dims(emissions_cov_stats_2, -1)
-                    emissions_cov_stats = (emissions_cov_stats_1, emissions_cov_stats_2)
-                    emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior,
-                                                                  emissions_cov_stats)
-                    emissions_cov = emissions_cov_posterior.sample(seed=next(rngs))
-                    # emissions_cov = jnp.where(jnp.logical_or(jnp.isnan(emissions_cov), emissions_cov < self.EPS),
-                    #                           self.EPS, emissions_cov)
-                    # emissions_cov += self.EPS
-                    R = jnp.diag(jnp.ravel(emissions_cov))
+                    vp, vn = v[:-1], v[1:]
+                    vpvn = jnp.einsum('ti,tl->il', vp, vn)
+                    tau_stats_2 = jnp.einsum('ti,tj->ij', v[1:], v[1:])
+                    tau_stats_2 -= (vpvn + vpvn.T)
+                    tau_stats_2 += jnp.einsum('ti,tj->ij', v[:-1], v[:-1])
+                    tau_stats_2 = jnp.diag(tau_stats_2) / 2
+                    def update_tau(s1, s2, rng_tau):
+                        tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
+                        tau_mode = tau_posterior.sample(seed=rng_tau)
+                        return tau_mode
+                    tau = vmap(update_tau)(tau_stats_1, tau_stats_2, jr.split(next(rngs), self.dof))
+
+            if self.fix_emissions_cov:
+                R = _params.emissions.cov
+            else:
+                emissions_cov_stats_1 = jnp.sum(masks) / 2
+                Ey = jnp.einsum('...tx,...yx->...ty', x, H)
+                emissions_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * masks_a, axis=(0, 1))
+                emissions_cov_stats_2 = emissions_cov_stats_2 / 2
+
+                def update_emissions_cov(s1, s2, rng_R):
+                    emissions_cov_posterior = ig_posterior_update(self.emissions_covariance_prior, (s1, s2))
+                    emissions_cov = emissions_cov_posterior.sample(seed=rng_R)
+                    return emissions_cov
+
+                R = jnp.diag(vmap(update_emissions_cov, in_axes=(None, 0, 0))(emissions_cov_stats_1,
+                                                                              emissions_cov_stats_2,
+                                                                              jr.split(next(rngs), self.emission_dim)))
 
             params = ParamsTVLGSSM(
                 initial=ParamsLGSSMInitial(mean=m, cov=S),
@@ -1757,101 +1927,42 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
                                                     cov=initial_velocity_cov),
             )
-            return params
+            return params, v, ekf_marginal_ll
 
         @jit
-        def one_sample(_params, _emissions, _inputs, rng):
-            rngs = jr.split(rng, 3)
+        def one_sample(_params, rng):
+            rngs = jr.split(rng, 2)
 
-            if self.stationary_emissions:
-                _new_params_emissions_updated = _params
-                velocity = None
-                _updated_emission_weights = None
-            else:
-                velocity, approx_marginal_ll = self.velocity_sample(base_subspace, _params,
-                                                                    _emissions, masks, conditions,
-                                                                    rngs[2], velocity_sampler)
-                _updated_emission_weights = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace,
-                                                                                           self.state_dim,
-                                                                                           velocity)
+            stats, marginal_ll, x = sufficient_stats_from_sample(rngs[0], _params)
+            new_params, v, ekf_marginal_ll = lgssm_params_sample(rngs[1], _params, stats, x)
+            ll = self.log_joint(new_params, x, v, emissions, masks, conditions)
 
-                mu_0 = _params.initial.mean
-                Sigma_0 = _params.initial.cov
-                A = _params.dynamics.weights
-                Q = _params.dynamics.cov
-                R = _params.emissions.cov
-                mu_v_0 = _params.initial_velocity.mean
-                Sigma_v_0 = _params.initial_velocity.cov
-                tau = _params.emissions.tau
-                _new_params_emissions_updated = ParamsTVLGSSM(
-                    initial=ParamsLGSSMInitial(
-                        mean=mu_0,
-                        cov=Sigma_0),
-                    dynamics=ParamsLGSSMDynamics(
-                        weights=A,
-                        bias=None,
-                        input_weights=jnp.zeros((self.state_dim, 0)),
-                        cov=Q),
-                    emissions=ParamsLGSSMEmissions(
-                        weights=_updated_emission_weights,
-                        bias=None,
-                        input_weights=jnp.zeros((self.emission_dim, 0)),
-                        cov=R,
-                        tau=tau),
-                    initial_velocity=ParamsLGSSMInitial(mean=mu_v_0,
-                                                        cov=Sigma_v_0),
-                )
-
-            if fixed_states is not None:
-                _new_states = fixed_states
-            else:
-                _new_states, _approx_marginal_lls = lgssm_posterior_sample_vmap(rngs[0],
-                                                                                _new_params_emissions_updated,
-                                                                                _emissions,
-                                                                                inputs, masks,
-                                                                                jnp.arange(self.num_trials, dtype=int),
-                                                                                conditions)
-                if self.stationary_emissions:
-                    approx_marginal_ll = _approx_marginal_lls.sum()  # This is exact
-
-            # Sample parameters
-            _stats = sufficient_stats_from_sample(_new_states, _new_params_emissions_updated)
-            _new_params = lgssm_params_sample(rngs[1], _stats, _new_states,
-                                              _new_params_emissions_updated, velocity, _updated_emission_weights)
-
-            # compute the log joint
-            # _ll = self.log_joint(_new_params, _states, _emissions, _inputs, masks)
-            _ll = self.log_joint(_new_params, _new_states, velocity,
-                                 _emissions, _inputs, masks, conditions)
-
-            return _new_params, _new_states, velocity, _ll, approx_marginal_ll
+            return new_params, x, v, ll, marginal_ll, ekf_marginal_ll
 
         sample_of_params = []
         sample_of_states = []
         sample_of_velocity = []
         lls = []
         marginal_lls = []
+        ekf_marginal_lls = []
         keys = iter(jr.split(key, sample_size + 1))
         current_params = initial_params
-        lgssm_posterior_sample_vmap = vmap(lgssm_posterior_sample,
-                                           in_axes=(None, None, 0, None, 0, 0, 0))
 
         for sample_itr in progress_bar(range(sample_size)):
-            current_params, current_states, current_velocity, ll, approx_marginal_ll = one_sample(current_params,
-                                                                                                  emissions,
-                                                                                                  inputs,
-                                                                                                  next(keys))
+            current_params, current_states, current_velocity, ll, marginal_ll, ekf_marginal_ll = one_sample(current_params,
+                                                                                                            next(keys))
             if sample_itr >= sample_size - return_n_samples:
                 sample_of_params.append(current_params)
                 sample_of_velocity.append(current_velocity)
             if return_states and (sample_itr >= sample_size - return_n_samples):
                 sample_of_states.append(current_states)
             if print_ll:
-                print(ll, approx_marginal_ll)
+                print(ll, marginal_ll, ekf_marginal_ll)
             lls.append(ll)
-            marginal_lls.append(approx_marginal_ll)
+            marginal_lls.append(marginal_ll)
+            ekf_marginal_lls.append(ekf_marginal_ll)
 
-        return pytree_stack(sample_of_params), sample_of_states, sample_of_velocity, lls, marginal_lls
+        return pytree_stack(sample_of_params), sample_of_states, sample_of_velocity, lls, marginal_lls, ekf_marginal_lls
 
     def fit_em(
             self,
