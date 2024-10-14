@@ -2012,7 +2012,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             # sufficient statistics for the initial distribution
             Ex0 = states_smoother.smoothed_means[:, 0]
             Ex0x0T = states_smoother.smoothed_covariances[:, 0] + vmap(jnp.outer)(Ex0, Ex0)
-            init_stats = (jnp.einsum('bc,bi->bci', conditions_one_hot, Ex),
+            init_stats = (jnp.einsum('bc,bi->bci', conditions_one_hot, Ex0),
                           jnp.einsum('bc,bij->bcij', conditions_one_hot, Ex0x0T),
                           conditions_count)
 
