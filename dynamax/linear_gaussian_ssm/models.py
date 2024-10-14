@@ -1994,6 +1994,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         # if not self.fix_emissions_cov:
         #     yyT = jnp.einsum('...tx,...ty->xy', emissions, emissions)
+        if self.has_dynamics_bias:
+            ones = jnp.ones((emissions.shape[0], emissions.shape[1], 1)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
 
         def e_step(_params):
             states_smoother = lgssm_smoother_vmap(_params, emissions, inputs, masks, trial_idx, conditions)
@@ -2018,19 +2020,15 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             # sufficient statistics for the dynamics
             if self.has_dynamics_bias:
-                ones = jnp.ones(Exp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                 Exp = jnp.concatenate([Exp, ones], axis=-1)
             sum_zpzpT = jnp.einsum('bti,btl->il', Exp, Exp)
             sum_zpzpT = sum_zpzpT.at[:self.state_dim, :self.state_dim].add(jnp.sum(Vxp, axis=(0, 1)))
+            sum_zpxnT = jnp.sum(Expxn, axis=(0, 1))
             if self.has_dynamics_bias:
-                sum_zpxnT = jnp.block([[jnp.sum(Expxn, axis=(0, 1))], [jnp.einsum('bti,btj->ij', ones, Exn)]])
-            else:
-                sum_zpxnT = jnp.sum(Expxn, axis=(0, 1))
+                Exn_ones = jnp.einsum('bti,btj->ij', ones, Exn)
+                sum_zpxnT = jnp.concatenate([sum_zpxnT, Exn_ones], axis=-2)
             sum_xnxnT = jnp.sum(Vxn, axis=(0, 1)) + jnp.einsum('bti,btj->ij', Exn, Exn)
             dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, masks.sum() - num_trials)
-            if not self.has_dynamics_bias:
-                dynamics_stats = (sum_zpzpT[:-1, :-1], sum_zpxnT[:-1, :], sum_xnxnT,
-                                  masks.sum() - num_trials)
 
             # sufficient statistics for the emissions
             if self.stationary_emissions:
