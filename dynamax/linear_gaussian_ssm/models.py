@@ -1992,8 +1992,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         lgssm_smoother_vmap = vmap(lgssm_smoother, in_axes=(None, 0, None, 0, 0, 0))
 
-        if not self.fix_emissions_cov:
-            yyT = jnp.einsum('...tx,...ty->xy', emissions, emissions)
+        # if not self.fix_emissions_cov:
+        #     yyT = jnp.einsum('...tx,...ty->xy', emissions, emissions)
 
         def e_step(_params):
             states_smoother = lgssm_smoother_vmap(_params, emissions, inputs, masks, trial_idx, conditions)
