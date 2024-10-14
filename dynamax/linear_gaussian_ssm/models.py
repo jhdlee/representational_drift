@@ -1971,7 +1971,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             print_ll: bool = False,
             masks: jnp.array = None,
             conditions: jnp.array = None,
-            filtering_method='ekf',
+            filtering_method='ekf_em',
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
@@ -2149,6 +2149,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 Q = jnp.diag(vmap(update_dynamics_cov, in_axes=(None, 0))(dynamics_cov_stats_1, dynamics_cov_stats_2))
 
             if self.fix_emissions:
+                Ev = None
+                marginal_ll = 0.0
+
                 H = _params.emissions.weights
                 d = _params.emissions.bias
                 D = _params.emissions.input_weights
@@ -2156,6 +2159,9 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_velocity_mean = _params.initial_velocity.mean
                 tau = _params.emissions.tau
             elif self.stationary_emissions:
+                Ev = None
+                marginal_ll = 0.0
+
                 d = _params.emissions.bias
                 D = _params.emissions.input_weights
                 initial_velocity_cov = _params.initial_velocity.cov
@@ -2169,10 +2175,59 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 d = _params.emissions.bias
                 D = _params.emissions.input_weights
 
-            H = _params.emissions.weights
-            tau = _params.emissions.tau
-            initial_velocity_mean = _params.initial_velocity.mean
-            initial_velocity_cov = _params.initial_velocity.cov
+                emission_stats_1, emission_stats2 = emission_stats
+                velocity_smoother = self.velocity_smoother(base_subspace, _params,
+                                                           emission_stats2, masks, conditions,
+                                                           covs=emission_stats_1,
+                                                           filtering_method=filtering_method)
+                marginal_ll = velocity_smoother.marginal_loglik
+                Ev = velocity_smoother.smoothed_means
+                Ev0 = velocity_smoother.smoothed_means[0]
+                H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, Ev)
+
+                if self.fix_initial_velocity:
+                    initial_velocity_mean = _params.initial_velocity.mean
+                else:
+                    # VvS = velocity_smoother.smoothed_covariances[0] + _params.initial_velocity.cov
+                    VvS = _params.initial_velocity.cov
+                    VvSinv = jnp.linalg.inv(VvS)
+                    initial_velocity_mean_stats_1 = VvSinv
+                    initial_velocity_mean_stats_2 = jnp.einsum('i,ij->j', Ev0, VvSinv)
+                    initial_velocity_mean_stats = (initial_velocity_mean_stats_1, initial_velocity_mean_stats_2)
+                    initial_velocity_mean_posterior = mvn_posterior_update(self.initial_velocity_prior, initial_velocity_mean_stats)
+                    initial_velocity_mean = initial_velocity_mean_posterior.mode()
+
+                initial_velocity_cov_stats_1 = 0.5
+                Evm_diff = Ev0 - initial_velocity_mean
+                Evm_diff_squared = jnp.outer(Evm_diff, Evm_diff)
+                initial_velocity_cov_stats_2 = Evm_diff_squared + velocity_smoother.smoothed_covariances[0]
+                initial_velocity_cov_stats_2 = jnp.diag(initial_velocity_cov_stats_2) / 2
+                def update_initial_velocity_cov(s1, s2):
+                    initial_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior,
+                                                                         (s1, s2))
+                    initial_velocity_cov_i = initial_velocity_cov_posterior.mode()
+                    return initial_velocity_cov_i
+                initial_velocity_cov = jnp.diag(
+                    vmap(update_initial_velocity_cov, in_axes=(None, 0))(initial_velocity_cov_stats_1,
+                                                                         initial_velocity_cov_stats_2))
+
+                if self.fix_tau:  # set to true during test time
+                    tau = _params.emissions.tau
+                else:
+                    tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+
+                    Vv = velocity_smoother.smoothed_covariances
+                    Vvpvn_sum = velocity_smoother.smoothed_cross_covariances.sum(0)
+                    tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + Vv[1:].sum(0)
+                    tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
+                    tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + Vv[:-1].sum(0)
+                    tau_stats_2 = jnp.diag(tau_stats_2) / 2
+                    def update_tau(s1, s2):
+                        tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
+                        tau_mode = tau_posterior.mode()
+                        return tau_mode
+                    tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
+
             if self.fix_emissions_cov:
                 R = _params.emissions.cov
             else:
@@ -2201,105 +2256,18 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                     cov=initial_velocity_cov),
             )
 
-            return params
-
-        def update_velocity(_params):
-            velocity_smoother = self.velocity_smoother(base_subspace, _params, emissions,
-                                                        masks, conditions, filtering_method='ekf')
-
-            marginal_ll = velocity_smoother.marginal_loglik
-            Ev = velocity_smoother.smoothed_means
-            Ev0 = velocity_smoother.smoothed_means[0]
-            H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, Ev)
-
-            if self.fix_initial_velocity:
-                initial_velocity_mean = _params.initial_velocity.mean
-            else:
-                # VvS = velocity_smoother.smoothed_covariances[0] + _params.initial_velocity.cov
-                VvS = _params.initial_velocity.cov
-                VvSinv = jnp.linalg.inv(VvS)
-                initial_velocity_mean_stats_1 = VvSinv
-                initial_velocity_mean_stats_2 = jnp.einsum('i,ij->j', Ev0, VvSinv)
-                initial_velocity_mean_stats = (initial_velocity_mean_stats_1, initial_velocity_mean_stats_2)
-                initial_velocity_mean_posterior = mvn_posterior_update(self.initial_velocity_prior,
-                                                                       initial_velocity_mean_stats)
-                initial_velocity_mean = initial_velocity_mean_posterior.mode()
-
-            initial_velocity_cov_stats_1 = 0.5
-            Evm_diff = Ev0 - initial_velocity_mean
-            Evm_diff_squared = jnp.outer(Evm_diff, Evm_diff)
-            initial_velocity_cov_stats_2 = Evm_diff_squared + velocity_smoother.smoothed_covariances[0]
-            initial_velocity_cov_stats_2 = jnp.diag(initial_velocity_cov_stats_2) / 2
-
-            def update_initial_velocity_cov(s1, s2):
-                initial_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior,
-                                                                     (s1, s2))
-                initial_velocity_cov_i = initial_velocity_cov_posterior.mode()
-                return initial_velocity_cov_i
-
-            initial_velocity_cov = jnp.diag(
-                vmap(update_initial_velocity_cov, in_axes=(None, 0))(initial_velocity_cov_stats_1,
-                                                                     initial_velocity_cov_stats_2))
-
-            if self.fix_tau:  # set to true during test time
-                tau = _params.emissions.tau
-            else:
-                tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
-
-                Vv = velocity_smoother.smoothed_covariances
-                Vvpvn_sum = velocity_smoother.smoothed_cross_covariances.sum(0)
-                tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + Vv[1:].sum(0)
-                tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
-                tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + Vv[:-1].sum(0)
-                tau_stats_2 = jnp.diag(tau_stats_2) / 2
-
-                def update_tau(s1, s2):
-                    tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
-                    tau_mode = tau_posterior.mode()
-                    return tau_mode
-
-                tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
-
-            mu_0 = _params.initial.mean
-            Sigma_0 = _params.initial.cov
-            A = _params.dynamics.weights
-            b = _params.dynamics.bias
-            Q = _params.dynamics.cov
-            R = _params.emissions.cov
-            updated_params = ParamsTVLGSSM(
-                initial=ParamsLGSSMInitial(
-                    mean=mu_0,
-                    cov=Sigma_0),
-                dynamics=ParamsLGSSMDynamics(
-                    weights=A,
-                    bias=b,
-                    input_weights=jnp.zeros((self.state_dim, 0)),
-                    cov=Q),
-                emissions=ParamsLGSSMEmissions(
-                    weights=H,
-                    bias=None,
-                    input_weights=jnp.zeros((self.emission_dim, 0)),
-                    cov=R,
-                    tau=tau),
-                initial_velocity=ParamsLGSSMInitial(mean=initial_velocity_mean,
-                                                    cov=initial_velocity_cov),
-            )
-
-            return updated_params, Ev, marginal_ll
+            return params, Ev, marginal_ll
 
         @jit
         def em(params):
             if self.stationary_emissions:
-                ekf_marginal_ll = 0.0
-                Ev = None
                 stats, marginal_ll, states_smoother = e_step(params)
                 Ex = states_smoother.smoothed_means * masks_a
-                new_params = m_step(params, stats, states_smoother)
+                new_params, Ev, ekf_marginal_ll = m_step(params, stats, states_smoother)
             else:
-                params, Ev, ekf_marginal_ll = update_velocity(params)
                 stats, marginal_ll, states_smoother = e_step(params)
                 Ex = states_smoother.smoothed_means * masks_a
-                new_params = m_step(params, stats, states_smoother)
+                new_params, Ev, ekf_marginal_ll = m_step(params, stats, states_smoother)
 
             return new_params, Ex, Ev, marginal_ll, ekf_marginal_ll
 

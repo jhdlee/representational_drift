@@ -326,7 +326,7 @@ def extended_kalman_smoother(
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter_v1(params, emissions, masks, conditions, inputs=inputs)
+        filtered_posterior = extended_kalman_filter(params, emissions, masks, conditions, inputs=inputs)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
