@@ -2030,7 +2030,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 sum_zpxnT = jnp.block([[jnp.sum(Expxn, axis=(0, 1))], [jnp.einsum('bti,btj->ij', ones, Exn)]])
             else:
                 sum_zpxnT = jnp.sum(Expxn, axis=(0, 1))
-            sum_xnxnT = Vxn.sum(0) + Exn.T @ Exn
+            sum_xnxnT = jnp.sum(Vxn, axis=(0, 1)) + jnp.einsum('bti,btj->ij', Exn, Exn)
             dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, masks.sum() - num_trials)
             if not self.has_dynamics_bias:
                 dynamics_stats = (sum_zpzpT[:-1, :-1], sum_zpxnT[:-1, :], sum_xnxnT,
