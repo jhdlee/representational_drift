@@ -1971,7 +1971,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             print_ll: bool = False,
             masks: jnp.array = None,
             conditions: jnp.array = None,
-            filtering_method='ekf_em',
+            filtering_method='ekf',
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
 
