@@ -2017,10 +2017,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                           conditions_count)
 
             # sufficient statistics for the dynamics
-
-            # expected sufficient statistics for the dynamics tfd.Distribution
-            # let zp[t] = [x[t], u[t]] for t = 0...T-2
-            # let xn[t] = x[t+1]          for t = 0...T-2
             if self.has_dynamics_bias:
                 ones = jnp.ones(Exp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                 Exp = jnp.concatenate([Exp, ones], axis=-1)
@@ -2035,21 +2031,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if not self.has_dynamics_bias:
                 dynamics_stats = (sum_zpzpT[:-1, :-1], sum_zpxnT[:-1, :], sum_xnxnT,
                                   masks.sum() - num_trials)
-
-            # Qinv = jnp.linalg.inv(_params.dynamics.cov)
-            # reshape_dim = self.state_dim * (self.state_dim + self.has_dynamics_bias)
-            # if self.has_dynamics_bias:
-            #     ones = jnp.ones(Exp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
-            #     Exp = jnp.concatenate([Exp, ones], axis=-1)
-            # dynamics_stats_1 = jnp.einsum('bti,btl->il', Exp, Exp)
-            # dynamics_stats_1 = dynamics_stats_1.at[:self.state_dim, :self.state_dim].add(jnp.einsum('btij->ij', Vxp))
-            # dynamics_stats_1 = jnp.einsum('il,jk->jikl', dynamics_stats_1, Qinv).reshape(reshape_dim, reshape_dim)
-            # dynamics_stats_2 = jnp.einsum('btij->ij', Expxn)
-            # if self.has_dynamics_bias:
-            #     dynamics_stats_2 = jnp.concatenate([dynamics_stats_2,
-            #                                         jnp.einsum('bti,btj->ij', ones, Exn)], axis=0)
-            # dynamics_stats_2 = jnp.einsum('il,lk->ki', dynamics_stats_2, Qinv).reshape(-1)
-            # dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
 
             # sufficient statistics for the emissions
             if self.stationary_emissions:
@@ -2209,7 +2190,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             return new_params, Ex, Ev, marginal_ll, ekf_marginal_ll
 
-        sample_of_params = []
+        # sample_of_params = []
         sample_of_states = []
         sample_of_velocity = []
         marginal_lls = []
@@ -2218,7 +2199,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         for _ in progress_bar(range(num_iters)):
             current_params, current_states, current_velocity, marginal_ll, ekf_marginal_ll = em(current_params)
-            sample_of_params.append(current_params)
+            # sample_of_params.append(current_params)
             sample_of_velocity.append(current_velocity)
             if return_states:
                 sample_of_states.append(current_states)
@@ -2227,4 +2208,4 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             marginal_lls.append(marginal_ll)
             ekf_marginal_lls.append(ekf_marginal_ll)
 
-        return pytree_stack(sample_of_params), sample_of_states, sample_of_velocity, marginal_lls, ekf_marginal_lls
+        return current_params, sample_of_states, sample_of_velocity, marginal_lls, ekf_marginal_lls
