@@ -1995,7 +1995,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         # if not self.fix_emissions_cov:
         #     yyT = jnp.einsum('...tx,...ty->xy', emissions, emissions)
         if self.has_dynamics_bias:
-            ones = jnp.ones((emissions.shape[0], emissions.shape[1], 1)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
+            ones = jnp.ones((emissions.shape[0], emissions.shape[1]-1, 1)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
 
         def e_step(_params):
             states_smoother = lgssm_smoother_vmap(_params, emissions, inputs, masks, trial_idx, conditions)
