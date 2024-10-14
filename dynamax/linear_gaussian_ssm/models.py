@@ -2012,8 +2012,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             # sufficient statistics for the initial distribution
             Ex0 = states_smoother.smoothed_means[:, 0]
             Ex0x0T = states_smoother.smoothed_covariances[:, 0] + vmap(jnp.outer)(Ex0, Ex0)
-            init_stats = (jnp.einsum('bc,bi->bci', conditions_one_hot, Ex0),
-                          jnp.einsum('bc,bij->bcij', conditions_one_hot, Ex0x0T),
+            init_stats = (jnp.einsum('bc,bi->ci', conditions_one_hot, Ex0),
+                          jnp.einsum('bc,bij->cij', conditions_one_hot, Ex0x0T),
                           conditions_count)
 
             # sufficient statistics for the dynamics
@@ -2086,8 +2086,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 S, m = _params.initial.cov, _params.initial.mean
             else:
                 # Perform MAP estimation jointly
-                initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
-                S, m = initial_posterior.mode()
+                def update_initial(s1, s2, s3):
+                    initial_posterior = niw_posterior_update(self.initial_prior, (s1, s2, s3))
+                    Sc, mc = initial_posterior.mode()
+                    return Sc, mc
+                S, m = vmap(update_initial)(*init_stats)
 
             # Update the dynamics params
             if self.fix_dynamics:
