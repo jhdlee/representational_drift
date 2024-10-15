@@ -25,7 +25,7 @@ from dynamax.linear_gaussian_ssm.inference import ParamsLGSSM, ParamsLGSSMInitia
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 
 from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM, UKFHyperParams
-from dynamax.nonlinear_gaussian_ssm import unscented_kalman_posterior_sample, unscented_kalman_smoother
+from dynamax.nonlinear_gaussian_ssm import unscented_kalman_posterior_sample, unscented_kalman_smoother, unscented_kalman_filter_v2
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_smoother, iterated_extended_kalman_posterior_sample
 from dynamax.nonlinear_gaussian_ssm import extended_kalman_filter, iterated_extended_kalman_filter, \
     extended_kalman_posterior_sample, extended_kalman_filter_v1
@@ -1150,7 +1150,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_covariance=None
         )
 
-        filtered_posterior = extended_kalman_filter_v2(NLGSSM_params, emissions,
+        filtered_posterior = unscented_kalman_filter_v2(NLGSSM_params, emissions,
                                                        masks=masks, conditions=conditions,
                                                        inputs=inputs)
 
