@@ -2054,8 +2054,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emissions_stats_1 = jnp.einsum('bti,btl->bil', Ex, Ex)
                 emissions_stats_1 += jnp.einsum('btij->bij', Vx)
                 emissions_stats_1 = jnp.einsum('bil,jk->bjikl', emissions_stats_1, Rinv).reshape(num_trials, reshape_dim, reshape_dim)
-                emissions_stats_1 += jnp.eye(emissions_stats_1.shape[-1]) * 1e-4
-                emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
+                # emissions_stats_1 += jnp.eye(emissions_stats_1.shape[-1]) * 1e-4
+                # emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
+                emissions_stats_1 = vmap(psd_solve, in_axes=(0, None))(emissions_stats_1,
+                                                                       jnp.eye(emissions_stats_1.shape[-1]))
                 emissions_stats_2 = jnp.einsum('bti,btl->bil', Ex, y)
                 emissions_stats_2 = jnp.einsum('bil,lk->bki', emissions_stats_2, Rinv).reshape(num_trials, -1)
                 emissions_stats_2 = jnp.einsum('bij,bj->bi', emissions_stats_1, emissions_stats_2)
