@@ -1150,7 +1150,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_covariance=None
         )
 
-        filtered_posterior = extended_kalman_filter_v1(NLGSSM_params, emissions,
+        filtered_posterior = extended_kalman_filter_v2(NLGSSM_params, emissions,
                                                        masks=masks, conditions=conditions,
                                                        inputs=inputs)
 
@@ -1224,7 +1224,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             conditions = jnp.zeros(num_trials, dtype=int)
 
         f = self.get_f()
-        h = self.get_h_v1(base_subspace, params, masks)
+        h = self.get_h_v2(base_subspace, params, masks)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.initial_velocity.mean,
