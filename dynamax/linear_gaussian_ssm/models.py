@@ -1150,7 +1150,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_covariance=None
         )
 
-        filtered_posterior = unscented_kalman_filter_v2(NLGSSM_params, emissions,
+        ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
+        filtered_posterior = unscented_kalman_filter_v2(NLGSSM_params, emissions, hyperparams=ukf_hyperparams,
                                                        masks=masks, conditions=conditions,
                                                        inputs=inputs)
 
@@ -1235,7 +1236,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_covariance=None
         )
 
-        filtered_posterior = unscented_kalman_filter_v2(NLGSSM_params, emissions,
+        ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
+        filtered_posterior = unscented_kalman_filter_v2(NLGSSM_params, emissions, hyperparams=ukf_hyperparams,
                                                         masks=masks, conditions=conditions,
                                                         inputs=inputs)
 
