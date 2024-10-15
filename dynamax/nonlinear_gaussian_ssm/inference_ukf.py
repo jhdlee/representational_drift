@@ -162,7 +162,7 @@ def _condition_on_v2(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r
     def compute_sigmas_cond_prop(carry, xs):
         sigmas_cond_prop_i = h(xs[0], xs[1], y, t, condition)
         return None, sigmas_cond_prop_i
-    _, sigmas_cond_prop = lax.scan(compute_sigmas_cond_prop)(None, (sigmas_cond_m, sigmas_cond_r))
+    _, sigmas_cond_prop = lax.scan(compute_sigmas_cond_prop, init=None, xs=(sigmas_cond_m, sigmas_cond_r))
     sigmas_cond_prop = sigmas_cond_prop * mask
 
     # Compute parameters needed to filter
