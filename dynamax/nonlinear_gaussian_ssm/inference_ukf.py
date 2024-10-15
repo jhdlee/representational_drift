@@ -158,7 +158,7 @@ def _condition_on_v2(m, P, h, R, lamb, w_mean, w_cov, u, y, t, condition, n, n_r
     sigmas_cond = _compute_sigmas(m_tilde, P_tilde, n_prime, lamb)
     sigmas_cond_m, sigmas_cond_r = jnp.hsplit(sigmas_cond, [n])
     #sigmas_cond_prop = vmap(h, (0, 0, None, None, None), 0)(sigmas_cond_m, sigmas_cond_r, y, t, condition)
-    @scan_tqdm(len(sigmas_cond_m))
+    @scan_tqdm(n_prime)
     def compute_sigmas_cond_prop(carry, xs):
         sigmas_cond_prop_i = h(xs[0], xs[1], y, t, condition)
         return None, sigmas_cond_prop_i
