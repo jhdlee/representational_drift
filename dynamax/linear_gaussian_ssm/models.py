@@ -2244,7 +2244,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if return_states:
                 sample_of_states.append(current_states)
             if print_ll:
-                print(marginal_ll, ekf_marginal_ll)
+                print(marginal_ll)#, ekf_marginal_ll)
             marginal_lls.append(marginal_ll)
             ekf_marginal_lls.append(ekf_marginal_ll)
 
