@@ -17,8 +17,8 @@ from typing import NamedTuple, Optional, Union, Tuple, Any
 from dynamax.utils.utils import psd_solve, symmetrize
 from dynamax.parameters import ParameterProperties
 from dynamax.types import PRNGKey, Scalar
-
-import smc
+#
+# import smc
 
 class ParamsLGSSMInitial(NamedTuple):
     r"""Parameters of the initial distribution
