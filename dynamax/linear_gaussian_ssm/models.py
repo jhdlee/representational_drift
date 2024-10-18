@@ -880,6 +880,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             _initial_velocity_mean = jnp.zeros(self.dof)
             _initial_velocity_cov = jnp.eye(self.dof)
             _velocity = None
+            _emission_weights = None
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
