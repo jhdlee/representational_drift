@@ -1096,6 +1096,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
             conditions: jnp.array = None,
+            tau_idx: jnp.array=None,
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
@@ -1111,7 +1112,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_mean=params.initial_velocity.mean,
             initial_covariance=params.initial_velocity.cov,
             dynamics_function=f,
-            dynamics_covariance=vmap(jnp.diag)(params.emissions.tau),
+            dynamics_covariance=vmap(jnp.diag)(jnp.einsum('bk,ki->bi', tau_idx, params.emissions.tau)),
             emission_function=h,
             emission_covariance=None
         )
@@ -1183,7 +1184,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emissions: Float[Array, "ntime emission_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
-            conditions: jnp.array = None
+            conditions: jnp.array = None,
+            tau_idx: jnp.array = None,
     ):
         num_trials = emissions.shape[0]
         if masks is None:
@@ -1198,7 +1200,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_mean=params.initial_velocity.mean,
             initial_covariance=params.initial_velocity.cov,
             dynamics_function=f,
-            dynamics_covariance=vmap(jnp.diag)(params.emissions.tau),
+            dynamics_covariance=vmap(jnp.diag)(jnp.einsum('bk,ki->bi', tau_idx, params.emissions.tau)),
             emission_function=h,
             emission_covariance=None
         )
@@ -1591,7 +1593,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         return velocity, approx_marginal_ll
 
     def velocity_smoother(self, base_subspace, params, emissions,
-                          masks, conditions, covs=None, filtering_method='ekf_em'):
+                          masks, conditions, tau_idx=None, covs=None, filtering_method='ekf_em'):
         f = self.get_f()
         if filtering_method == 'ekf':
             h = self.get_h_v1(base_subspace, params, masks)
@@ -1614,7 +1616,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_mean=params.initial_velocity.mean,
                 initial_covariance=params.initial_velocity.cov,
                 dynamics_function=f,
-                dynamics_covariance=vmap(jnp.diag)(params.emissions.tau),
+                dynamics_covariance=vmap(jnp.diag)(jnp.einsum('bk,ki->bi', tau_idx, params.emissions.tau)),
                 emission_function=h,
                 emission_covariance=covs
             )
@@ -2192,7 +2194,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                         tau_mode = vmap(_update_tau)(s2)
                         return tau_mode
                     tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
-                    tau = jnp.einsum('bk,ki->bi', tau_idx, tau)
 
             if self.fix_emissions_cov:
                 R = _params.emissions.cov
