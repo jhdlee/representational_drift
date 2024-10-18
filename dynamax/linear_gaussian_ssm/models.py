@@ -848,7 +848,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
-        else:
+        elif emission_weights is None:
             _initial_velocity_mean = jnp.zeros(self.dof)
             _initial_velocity_cov = jnp.eye(self.dof)
 
@@ -876,6 +876,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             _rotation = jscipy.linalg.expm(_rotation)
             _subspace = jnp.einsum('ij,rjk->rik', base_subspace, _rotation)
             _emission_weights = _subspace[:, :, :self.state_dim]
+        else:
+            _initial_velocity_mean = jnp.zeros(self.dof)
+            _initial_velocity_cov = jnp.eye(self.dof)
+            _velocity = None
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
