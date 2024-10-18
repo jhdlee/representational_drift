@@ -1111,7 +1111,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_mean=params.initial_velocity.mean,
             initial_covariance=params.initial_velocity.cov,
             dynamics_function=f,
-            dynamics_covariance=jnp.diag(params.emissions.tau),
+            dynamics_covariance=vmap(jnp.diag)(params.emissions.tau),
             emission_function=h,
             emission_covariance=None
         )
@@ -1198,7 +1198,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_mean=params.initial_velocity.mean,
             initial_covariance=params.initial_velocity.cov,
             dynamics_function=f,
-            dynamics_covariance=jnp.diag(params.emissions.tau),
+            dynamics_covariance=vmap(jnp.diag)(params.emissions.tau),
             emission_function=h,
             emission_covariance=None
         )
@@ -1614,7 +1614,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_mean=params.initial_velocity.mean,
                 initial_covariance=params.initial_velocity.cov,
                 dynamics_function=f,
-                dynamics_covariance=jnp.diag(params.emissions.tau),
+                dynamics_covariance=vmap(jnp.diag)(params.emissions.tau),
                 emission_function=h,
                 emission_covariance=covs
             )
@@ -1965,6 +1965,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             print_ll: bool = False,
             masks: jnp.array = None,
             conditions: jnp.array = None,
+            tau_idx: jnp.array = None,
             filtering_method='ekf_em',
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
@@ -1986,6 +1987,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
         if conditions is None:
             conditions = jnp.zeros(num_trials, dtype=int)
+        if tau_idx is None:
+            tau_idx = jnp.ones(num_trials, dtype=bool)
         trial_idx = jnp.arange(num_trials, dtype=int)
 
         masks_a = jnp.expand_dims(masks, -1)
@@ -2173,19 +2176,23 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 if self.fix_tau:  # set to true during test time
                     tau = _params.emissions.tau
                 else:
-                    tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+                    tau_stats_1 = tau_idx.sum(0) / 2 #jnp.ones(self.dof) * (self.num_trials - 1) / 2
 
                     Vv = velocity_smoother.smoothed_covariances
-                    Vvpvn_sum = velocity_smoother.smoothed_cross_covariances.sum(0)
-                    tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + Vv[1:].sum(0)
+                    Vvpvn_sum = jnp.einsum('bk,bij->kij', tau_idx, velocity_smoother.smoothed_cross_covariances)
+                    tau_stats_2 = jnp.einsum('bk,bi,bj->kij', tau_idx[1:], Ev[1:], Ev[1:]) + jnp.einsum('bk,bij->kij', tau_idx[1:], Vv[1:])
                     tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
-                    tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + Vv[:-1].sum(0)
-                    tau_stats_2 = jnp.diag(tau_stats_2) / 2
+                    tau_stats_2 += jnp.einsum('bk,bi,bj->kij', tau_idx[:-1], Ev[:-1], Ev[:-1]) + jnp.einsum('bk,bij->kij', tau_idx[:-1], Vv[:-1])
+                    tau_stats_2 = vmap(jnp.diag)(tau_stats_2) / 2
                     def update_tau(s1, s2):
-                        tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
-                        tau_mode = tau_posterior.mode()
+                        def _update_tau(s2i):
+                            tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2i))
+                            tau_mode_i = tau_posterior.mode()
+                            return tau_mode_i
+                        tau_mode = vmap(_update_tau)(s2)
                         return tau_mode
                     tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
+                    tau = jnp.einsum('bk,ki->bi', tau_idx, tau)
 
             if self.fix_emissions_cov:
                 R = _params.emissions.cov
