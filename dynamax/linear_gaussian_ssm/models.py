@@ -848,7 +848,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
             key1, key = jr.split(key, 2)
             _emission_weights = jr.normal(key1, shape=(self.emission_dim, self.state_dim))
-        else:
+        elif emission_weights is None:
             _initial_velocity_mean = jnp.zeros(self.dof)
             _initial_velocity_cov = jnp.eye(self.dof)
 
@@ -876,6 +876,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             _rotation = jscipy.linalg.expm(_rotation)
             _subspace = jnp.einsum('ij,rjk->rik', base_subspace, _rotation)
             _emission_weights = _subspace[:, :, :self.state_dim]
+        else:
+            _initial_velocity_mean = jnp.zeros(self.dof)
+            _initial_velocity_cov = jnp.eye(self.dof)
+            _velocity = None
+            _emission_weights = None
 
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
@@ -1096,6 +1101,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
             conditions: jnp.array = None,
+            tau_idx: jnp.array=None,
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
@@ -1111,7 +1117,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_mean=params.initial_velocity.mean,
             initial_covariance=params.initial_velocity.cov,
             dynamics_function=f,
-            dynamics_covariance=jnp.diag(params.emissions.tau),
+            dynamics_covariance=vmap(jnp.diag)(jnp.einsum('kb,ki->bi', tau_idx, params.emissions.tau)),
             emission_function=h,
             emission_covariance=None
         )
@@ -1183,7 +1189,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emissions: Float[Array, "ntime emission_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
-            conditions: jnp.array = None
+            conditions: jnp.array = None,
+            tau_idx: jnp.array = None,
     ):
         num_trials = emissions.shape[0]
         if masks is None:
@@ -1198,7 +1205,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_mean=params.initial_velocity.mean,
             initial_covariance=params.initial_velocity.cov,
             dynamics_function=f,
-            dynamics_covariance=jnp.diag(params.emissions.tau),
+            dynamics_covariance=vmap(jnp.diag)(jnp.einsum('kb,ki->bi', tau_idx, params.emissions.tau)),
             emission_function=h,
             emission_covariance=None
         )
@@ -1591,7 +1598,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         return velocity, approx_marginal_ll
 
     def velocity_smoother(self, base_subspace, params, emissions,
-                          masks, conditions, covs=None, filtering_method='ekf_em'):
+                          masks, conditions, tau_idx=None, covs=None, filtering_method='ekf_em'):
         f = self.get_f()
         if filtering_method == 'ekf':
             h = self.get_h_v1(base_subspace, params, masks)
@@ -1614,7 +1621,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_mean=params.initial_velocity.mean,
                 initial_covariance=params.initial_velocity.cov,
                 dynamics_function=f,
-                dynamics_covariance=jnp.diag(params.emissions.tau),
+                dynamics_covariance=vmap(jnp.diag)(jnp.einsum('kb,ki->bi', tau_idx, params.emissions.tau)),
                 emission_function=h,
                 emission_covariance=covs
             )
@@ -1965,6 +1972,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             print_ll: bool = False,
             masks: jnp.array = None,
             conditions: jnp.array = None,
+            tau_idx: jnp.array = None,
             filtering_method='ekf_em',
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
@@ -1986,6 +1994,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
         if conditions is None:
             conditions = jnp.zeros(num_trials, dtype=int)
+        if tau_idx is None:
+            tau_idx = jnp.ones(num_trials, dtype=bool)
         trial_idx = jnp.arange(num_trials, dtype=int)
 
         masks_a = jnp.expand_dims(masks, -1)
@@ -2156,6 +2166,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_stats_1, emission_stats2 = emission_stats
                 velocity_smoother = self.velocity_smoother(base_subspace, _params,
                                                            emission_stats2, masks, conditions,
+                                                           tau_idx=tau_idx,
                                                            covs=emission_stats_1,
                                                            filtering_method=filtering_method)
                 marginal_ll = velocity_smoother.marginal_loglik
@@ -2173,17 +2184,20 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 if self.fix_tau:  # set to true during test time
                     tau = _params.emissions.tau
                 else:
-                    tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+                    tau_stats_1 = tau_idx.sum(-1) / 2 #jnp.ones(self.dof) * (self.num_trials - 1) / 2
 
                     Vv = velocity_smoother.smoothed_covariances
-                    Vvpvn_sum = velocity_smoother.smoothed_cross_covariances.sum(0)
-                    tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + Vv[1:].sum(0)
-                    tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
-                    tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + Vv[:-1].sum(0)
-                    tau_stats_2 = jnp.diag(tau_stats_2) / 2
+                    Vvpvn_sum = jnp.einsum('kb,bij->kij', tau_idx, velocity_smoother.smoothed_cross_covariances)
+                    tau_stats_2 = jnp.einsum('kb,bi,bj->kij', tau_idx, Ev[1:], Ev[1:]) + jnp.einsum('kb,bij->kij', tau_idx, Vv[1:])
+                    tau_stats_2 -= (Vvpvn_sum + jnp.swapaxes(Vvpvn_sum, -2, -1))
+                    tau_stats_2 += jnp.einsum('kb,bi,bj->kij', tau_idx, Ev[:-1], Ev[:-1]) + jnp.einsum('kb,bij->kij', tau_idx, Vv[:-1])
+                    tau_stats_2 = vmap(jnp.diag)(tau_stats_2) / 2
                     def update_tau(s1, s2):
-                        tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
-                        tau_mode = tau_posterior.mode()
+                        def _update_tau(s2i):
+                            tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2i))
+                            tau_mode_i = tau_posterior.mode()
+                            return tau_mode_i
+                        tau_mode = vmap(_update_tau)(s2)
                         return tau_mode
                     tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
 
