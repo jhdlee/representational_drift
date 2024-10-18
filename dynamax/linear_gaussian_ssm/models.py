@@ -2161,6 +2161,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_stats_1, emission_stats2 = emission_stats
                 velocity_smoother = self.velocity_smoother(base_subspace, _params,
                                                            emission_stats2, masks, conditions,
+                                                           tau_idx=tau_idx,
                                                            covs=emission_stats_1,
                                                            filtering_method=filtering_method)
                 marginal_ll = velocity_smoother.marginal_loglik
