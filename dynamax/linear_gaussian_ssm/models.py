@@ -1117,7 +1117,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_mean=params.initial_velocity.mean,
             initial_covariance=params.initial_velocity.cov,
             dynamics_function=f,
-            dynamics_covariance=vmap(jnp.diag)(jnp.einsum('bk,ki->bi', tau_idx, params.emissions.tau)),
+            dynamics_covariance=vmap(jnp.diag)(jnp.einsum('kb,ki->bi', tau_idx, params.emissions.tau)),
             emission_function=h,
             emission_covariance=None
         )
@@ -1205,7 +1205,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             initial_mean=params.initial_velocity.mean,
             initial_covariance=params.initial_velocity.cov,
             dynamics_function=f,
-            dynamics_covariance=vmap(jnp.diag)(jnp.einsum('bk,ki->bi', tau_idx, params.emissions.tau)),
+            dynamics_covariance=vmap(jnp.diag)(jnp.einsum('kb,ki->bi', tau_idx, params.emissions.tau)),
             emission_function=h,
             emission_covariance=None
         )
@@ -1621,7 +1621,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 initial_mean=params.initial_velocity.mean,
                 initial_covariance=params.initial_velocity.cov,
                 dynamics_function=f,
-                dynamics_covariance=vmap(jnp.diag)(jnp.einsum('bk,ki->bi', tau_idx, params.emissions.tau)),
+                dynamics_covariance=vmap(jnp.diag)(jnp.einsum('kb,ki->bi', tau_idx, params.emissions.tau)),
                 emission_function=h,
                 emission_covariance=covs
             )
