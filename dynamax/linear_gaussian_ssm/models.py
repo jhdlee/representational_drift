@@ -2001,6 +2001,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         trial_idx = jnp.arange(num_trials, dtype=int)
 
         trial_masks_a = jnp.expand_dims(trial_masks, -1)
+        trial_masks_aa = jnp.expand_dims(trial_masks_a, -1)
         masks_a = jnp.expand_dims(masks, -1)
         masks_aa = jnp.expand_dims(masks_a, -1)
         # ensure masking is done properly
@@ -2208,7 +2209,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 Ex = states_smoother.smoothed_means * masks_a
                 Vx = states_smoother.smoothed_covariances * masks_aa
                 Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
-                emissions_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * masks_a * trial_masks_a, axis=(0, 1))
+                emissions_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * masks_a * trial_masks_aa, axis=(0, 1))
                 emissions_cov_stats_2 += jnp.diag(jnp.einsum('...,...ix,...txz,...jz->ij', trial_masks, H, Vx, H))
                 emissions_cov_stats_2 = emissions_cov_stats_2 / 2
 
