@@ -94,7 +94,7 @@ def compute_extended_kalman_filter_v1_marginal_ll(h, pred_mean, pred_cov, y, mas
     H = jacfwd(h, argnums=0, has_aux=True)
 
     y_flattened = y.flatten()
-    mask = jnp.repeat(mask, emissions_dim)[:, None]
+    mask = jnp.repeat(mask, y.shape[-1])[:, None]
     square_mask = mask @ mask.T
 
     # Update the log likelihood
