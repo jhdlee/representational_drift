@@ -2118,7 +2118,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     dynamics_cov = dynamics_cov_posterior.mode()
                     return dynamics_cov
 
-                dynamics_cov_stats_1 = (jnp.sum(masks) - num_trials) / 2
+                dynamics_cov_stats_1 = (jnp.sum(masks * trial_masks_a) - num_trials) / 2
                 Exp = states_smoother.smoothed_means[:, :-1] * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                 Exn = states_smoother.smoothed_means[:, 1:] * masks_a[:, 1:]
                 Vxp = states_smoother.smoothed_covariances[:, :-1] * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
@@ -2188,10 +2188,11 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 if self.fix_tau:  # set to true during test time
                     tau = _params.emissions.tau
                 else:
-                    tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+                    # tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+                    tau_stats_1 = jnp.ones(self.dof) * (trial_masks.sum() - 1) / 2
 
                     Vv = velocity_smoother.smoothed_covariances
-                    Vvpvn_sum = velocity_smoother.smoothed_cross_covariances.sum(0)
+                    Vvpvn_sum = jnp.einsum('t,tij->ij', trial_masks[1:], velocity_smoother.smoothed_cross_covariances)
                     tau_stats_2 = jnp.einsum('t,ti,tj->ij', trial_masks[1:], Ev[1:], Ev[1:]) + jnp.einsum('t,tij->ij', trial_masks[1:], Vv[1:]) #Vv[1:].sum(0)
                     tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
                     tau_stats_2 += jnp.einsum('t,ti,tj->ij', trial_masks[:-1], Ev[:-1], Ev[:-1]) + jnp.einsum('t,tij->ij', trial_masks[:-1], Vv[:-1]) #Vv[:-1].sum(0)
@@ -2205,7 +2206,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_emissions_cov:
                 R = _params.emissions.cov
             else:
-                emissions_cov_stats_1 = jnp.sum(masks) / 2
+                emissions_cov_stats_1 = jnp.sum(masks * trial_masks_a) / 2
                 Ex = states_smoother.smoothed_means * masks_a
                 Vx = states_smoother.smoothed_covariances * masks_aa
                 Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
