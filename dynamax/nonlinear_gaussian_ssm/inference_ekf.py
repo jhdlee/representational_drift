@@ -90,6 +90,36 @@ def _condition_on(m, P, h, H, R, u, y, eps, t, num_iter):
     (mu_cond, Sigma_cond), _ = lax.scan(_step, carry, jnp.arange(num_iter))
     return mu_cond, symmetrize(Sigma_cond)
 
+def compute_extended_kalman_filter_v1_marginal_ll(h, pred_mean, pred_cov, y, mask, condition, t):
+    H = jacfwd(h, argnums=0, has_aux=True)
+
+    y_flattened = y.flatten()
+    mask = jnp.repeat(mask, emissions_dim)[:, None]
+    square_mask = mask @ mask.T
+
+    # Update the log likelihood
+    H_x, pred_obs_covs = H(pred_mean, y, t, condition)  # (TN x V), (TN x T x N)
+    # H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
+    H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
+
+    # H_eps, H_x masking
+    H_x = H_x * mask
+    # H_eps = H_eps * square_mask
+
+    y_pred, _ = h(pred_mean, y, t, condition)  # TN
+    s_k = H_x @ pred_cov @ H_x.T + H_eps
+
+    y_pred = y_pred * mask.squeeze()
+    y_flattened = y_flattened * mask.squeeze()
+    s_k = s_k * square_mask
+    s_k_diag = jnp.where(mask.squeeze(), 0.0, 1 / (2 * jnp.pi))
+    s_k += jnp.diag(s_k_diag)
+
+    ll = MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
+
+    return ll
+
+
 def extended_kalman_filter_v1(
         params: ParamsNLGSSM,
         emissions: Float[Array, "ntime emission_dim"],

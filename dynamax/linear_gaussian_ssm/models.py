@@ -1126,6 +1126,41 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         return filtered_posterior.marginal_loglik
 
+    def ekf_compute_test_ll(
+            self,
+            base_subspace,
+            params: ParamsLGSSM,
+            emissions: Float[Array, "ntime emission_dim"],
+            inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+            masks: jnp.array = None,
+            conditions: jnp.array = None,
+            trial_masks: jnp.array = None,
+    ) -> Scalar:
+
+        num_trials = emissions.shape[0]
+        if masks is None:
+            masks = jnp.ones(emissions.shape[:2], dtype=bool)
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
+        if trial_masks is None:
+            trial_masks = jnp.ones(num_trials, dtype=bool)
+
+        filtered_posterior = self.ekf(base_subspace, params, emissions,
+                                      masks=masks, conditions=conditions, trial_masks=trial_masks)
+
+        h = self.get_h_v1(base_subspace, params, masks)
+
+        func = vmap(compute_extended_kalman_filter_v1_marginal_ll, in_axes=(None, 0, 0, 0, 0, 0, 0))
+        lls = func(h,
+                 filtered_posterior.filtered_means[~trial_masks],
+                 filtered_posterior.filtered_covariances[~trial_masks],
+                 emissions[~trial_masks],
+                 masks[~trial_masks],
+                 conditions[~trial_masks],
+                 jnp.arange(num_trials)[~trial_masks])
+
+        return lls.sum()
+
     def ukf_marginal_log_prob(
             self,
             base_subspace,
@@ -1459,6 +1494,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             mu_0 = _params.initial.mean
             Sigma_0 = _params.initial.cov
             A = _params.dynamics.weights
+            b = _params.dynamics.bias
             Q = _params.dynamics.cov
             R = _params.emissions.cov
             mu_v_0 = _params.initial_velocity.mean
@@ -1470,7 +1506,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     cov=Sigma_0),
                 dynamics=ParamsLGSSMDynamics(
                     weights=A,
-                    bias=None,
+                    bias=b,
                     input_weights=jnp.zeros((self.state_dim, 0)),
                     cov=Q),
                 emissions=ParamsLGSSMEmissions(
