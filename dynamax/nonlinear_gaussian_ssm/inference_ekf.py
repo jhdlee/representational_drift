@@ -366,7 +366,7 @@ def extended_kalman_smoother(
     def _step(carry, args):
         # Unpack the inputs
         smoothed_mean_next, smoothed_cov_next = carry
-        t, filtered_mean, filtered_cov, trial_mask = args
+        t, filtered_mean, filtered_cov = args
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
@@ -388,7 +388,7 @@ def extended_kalman_smoother(
     _, (smoothed_means, smoothed_covs, smoothed_cross_cov, smoothed_cross_outer) = lax.scan(
         _step,
         (filtered_means[-1], filtered_covs[-1]),
-        (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1], trial_masks[1:]*trial_masks[:-1]),
+        (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1]),
         reverse=True,
     )
 
