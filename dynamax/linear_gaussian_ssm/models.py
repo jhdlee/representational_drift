@@ -1134,7 +1134,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             base_subspace,
             params: ParamsLGSSM,
             emissions: Float[Array, "ntime emission_dim"],
-            inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
             conditions: jnp.array = None,
             trial_masks: jnp.array = None,
