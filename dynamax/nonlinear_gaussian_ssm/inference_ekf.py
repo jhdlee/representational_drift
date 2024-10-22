@@ -227,7 +227,7 @@ def extended_kalman_filter(
     # eps = jnp.zeros((num_timesteps, emissions_dim))
 
     def _step(carry, t):
-        ll, pred_mean, pred_cov = carry
+        ll, _pred_mean, _pred_cov = carry
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
@@ -237,20 +237,20 @@ def extended_kalman_filter(
 
         # Update the log likelihood
         # HH_x = HH(pred_mean) # (ND x V x V)
-        H_x = H(pred_mean)  # (ND x V)
+        H_x = H(_pred_mean)  # (ND x V)
 
-        y_pred = h(pred_mean)  # ND
+        y_pred = h(_pred_mean)  # ND
         # y_pred += 0.5*jnp.einsum('nji,ji->n', HH_x, pred_cov)
 
-        s_k = H_x @ pred_cov @ H_x.T + R
+        s_k = H_x @ _pred_cov @ H_x.T + R
         # HHPHHP = jnp.einsum('nij,jk,mkl,lx->nmix', HH_x, pred_cov, HH_x, pred_cov)
         # s_k += 0.5*jnp.trace(HHPHHP, axis1=-2, axis2=-1)
 
         ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
-        K = psd_solve(s_k, H_x @ pred_cov).T
-        filtered_cov = pred_cov - K @ s_k @ K.T
-        filtered_mean = pred_mean + K @ (y - y_pred)
+        K = psd_solve(s_k, H_x @ _pred_cov).T
+        filtered_cov = _pred_cov - K @ s_k @ K.T
+        filtered_mean = _pred_mean + K @ (y - y_pred)
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
@@ -261,8 +261,8 @@ def extended_kalman_filter(
         outputs = {
             "filtered_means": filtered_mean,
             "filtered_covariances": filtered_cov,
-            "predicted_means": pred_mean,
-            "predicted_covariances": pred_cov,
+            "predicted_means": _pred_mean,
+            "predicted_covariances": _pred_cov,
             "marginal_loglik": ll,
         }
         outputs = {key: val for key, val in outputs.items() if key in output_fields}
