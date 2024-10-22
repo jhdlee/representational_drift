@@ -1451,6 +1451,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             mu_0 = _params.initial.mean
             Sigma_0 = _params.initial.cov
             A = _params.dynamics.weights
+            b = _params.dynamics.bias
             Q = _params.dynamics.cov
             R = _params.emissions.cov
             mu_v_0 = _params.initial_velocity.mean
@@ -1462,7 +1463,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     cov=Sigma_0),
                 dynamics=ParamsLGSSMDynamics(
                     weights=A,
-                    bias=None,
+                    bias=b,
                     input_weights=jnp.zeros((self.state_dim, 0)),
                     cov=Q),
                 emissions=ParamsLGSSMEmissions(
