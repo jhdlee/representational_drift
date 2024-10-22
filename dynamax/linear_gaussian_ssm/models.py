@@ -1138,6 +1138,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masks: jnp.array = None,
             conditions: jnp.array = None,
             trial_masks: jnp.array = None,
+            eval_trial: int = None,
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
@@ -1163,19 +1164,27 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                       trial_masks, filtered_posterior=filtered_posterior)
 
         h = self.get_h_v1(base_subspace, params, masks)
-        def _compute_extended_kalman_filter_v1_marginal_ll(xs):
-            mean, cov, y, mask, cond, t = xs
-            return compute_extended_kalman_filter_v1_marginal_ll(h, mean, cov, y, mask, cond, t)
+        # def _compute_extended_kalman_filter_v1_marginal_ll(xs):
+        #     mean, cov, y, mask, cond, t = xs
+        #     return compute_extended_kalman_filter_v1_marginal_ll(h, mean, cov, y, mask, cond, t)
+        #
+        # args = (smoothed_posterior.smoothed_means[~trial_masks],
+        #          smoothed_posterior.smoothed_covariances[~trial_masks],
+        #          emissions[~trial_masks],
+        #          masks[~trial_masks],
+        #          conditions[~trial_masks],
+        #          jnp.arange(num_trials)[~trial_masks])
+        # lls = lax.map(_compute_extended_kalman_filter_v1_marginal_ll, args)
+        ll = compute_extended_kalman_filter_v1_marginal_ll(h,
+                                                           smoothed_posterior.smoothed_means[eval_trial],
+                                                           smoothed_posterior.smoothed_covariances[eval_trial],
+                                                           emissions[eval_trial],
+                                                           masks[eval_trial],
+                                                           conditions[eval_trial],
+                                                           eval_trial)
+                                                           )
 
-        args = (smoothed_posterior.smoothed_means[~trial_masks],
-                 smoothed_posterior.smoothed_covariances[~trial_masks],
-                 emissions[~trial_masks],
-                 masks[~trial_masks],
-                 conditions[~trial_masks],
-                 jnp.arange(num_trials)[~trial_masks])
-        lls = lax.map(_compute_extended_kalman_filter_v1_marginal_ll, args)
-
-        return lls.sum()
+        return ll
 
     def ukf_marginal_log_prob(
             self,
