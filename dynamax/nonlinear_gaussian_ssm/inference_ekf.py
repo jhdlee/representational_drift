@@ -276,7 +276,7 @@ def extended_kalman_filter(
 
         ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
-        K = psd_solve(s_k, H_x @ pred_cov).T
+        K = psd_solve(s_k, H_x @ pred_cov, diagonal_boost=0.0).T
         filtered_cov = pred_cov - trial_mask * (K @ s_k @ K.T)
         filtered_mean = pred_mean + trial_mask * (K @ (y - y_pred))
         filtered_cov = symmetrize(filtered_cov)
@@ -373,7 +373,7 @@ def extended_kalman_smoother(
 
         m_pred = filtered_mean
         S_pred = Q + filtered_cov
-        G = psd_solve(S_pred, filtered_cov).T
+        G = psd_solve(S_pred, filtered_cov, diagonal_boost=0.0).T
 
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
