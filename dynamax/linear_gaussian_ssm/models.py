@@ -1151,14 +1151,24 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         filtered_posterior = self.ekf(base_subspace, params, emissions,
                                       masks=masks, conditions=conditions, trial_masks=trial_masks)
 
-        h = self.get_h_v1(base_subspace, params, masks)
+        NLGSSM_params = ParamsNLGSSM(
+            initial_mean=params.initial_velocity.mean,
+            initial_covariance=params.initial_velocity.cov,
+            dynamics_function=None,
+            dynamics_covariance=jnp.diag(params.emissions.tau),
+            emission_function=None,
+            emission_covariance=None
+        )
+        smoothed_posterior = extended_kalman_smoother(NLGSSM_params, emissions, masks, conditions,
+                                                      trial_masks, filtered_posterior=filtered_posterior)
 
+        h = self.get_h_v1(base_subspace, params, masks)
         def _compute_extended_kalman_filter_v1_marginal_ll(xs):
             mean, cov, y, mask, cond, t = xs
             return compute_extended_kalman_filter_v1_marginal_ll(h, mean, cov, y, mask, cond, t)
 
-        args = (filtered_posterior.filtered_means[~trial_masks],
-                 filtered_posterior.filtered_covariances[~trial_masks],
+        args = (smoothed_posterior.smoothed_means[~trial_masks],
+                 smoothed_posterior.smoothed_covariances[~trial_masks],
                  emissions[~trial_masks],
                  masks[~trial_masks],
                  conditions[~trial_masks],
@@ -2059,6 +2069,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         #     yyT = jnp.einsum('...tx,...ty->xy', emissions, emissions)
         if self.has_dynamics_bias:
             ones = jnp.ones((emissions.shape[0], emissions.shape[1]-1, 1)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
+            ones = ones * trial_masks_aa
 
         def e_step(_params):
             states_smoother = lgssm_smoother_vmap(_params, emissions, inputs, masks, trial_idx, conditions)
