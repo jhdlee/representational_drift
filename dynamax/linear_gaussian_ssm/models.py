@@ -2119,7 +2119,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_stats = (emissions_stats_1, emissions_stats_2)
 
             # marginal likelihood
-            marginal_ll = states_smoother.marginal_loglik.sum()
+            marginal_ll = (states_smoother.marginal_loglik * trial_masks).sum()
 
             return (init_stats, dynamics_stats, emission_stats), marginal_ll, states_smoother  # also returning Ex for R
 
