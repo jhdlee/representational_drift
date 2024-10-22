@@ -1156,13 +1156,13 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         def _compute_extended_kalman_filter_v1_marginal_ll(m, c, e, mask, cond, t):
             return compute_extended_kalman_filter_v1_marginal_ll(h, m, c, e, mask, cond, t)
 
-        func = lax.map(compute_extended_kalman_filter_v1_marginal_ll)
-        lls = func(filtered_posterior.filtered_means[~trial_masks],
+        args = (filtered_posterior.filtered_means[~trial_masks],
                  filtered_posterior.filtered_covariances[~trial_masks],
                  emissions[~trial_masks],
                  masks[~trial_masks],
                  conditions[~trial_masks],
                  jnp.arange(num_trials)[~trial_masks])
+        lls = lax.map(compute_extended_kalman_filter_v1_marginal_ll, args)
 
         return lls.sum()
 
