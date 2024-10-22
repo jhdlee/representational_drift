@@ -1070,6 +1070,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             masks: jnp.array = None,
             conditions: jnp.array = None,
+            trial_masks: jnp.array = None,
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
@@ -1077,13 +1078,15 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masks = jnp.ones(emissions.shape[:2], dtype=bool)
         if conditions is None:
             conditions = jnp.zeros(num_trials, dtype=int)
+        if trial_masks is None:
+            trial_masks = jnp.ones(num_trials, dtype=bool)
         trials = jnp.arange(num_trials, dtype=int)
 
-        def _get_marginal_ll(emission, input, mask, trial_r, condition):
-            return lgssm_filter(params, emission, input, mask, trial_r, condition).marginal_loglik
+        def _get_marginal_ll(emission, input, mask, trial_r, condition, trial_mask):
+            return trial_mask * lgssm_filter(params, emission, input, mask, trial_r, condition).marginal_loglik
 
-        _get_marginal_ll_vmap = vmap(_get_marginal_ll, in_axes=(0, 0, 0, 0, 0))
-        marginal_lls = _get_marginal_ll_vmap(emissions, inputs, masks, trials, conditions)
+        _get_marginal_ll_vmap = vmap(_get_marginal_ll, in_axes=(0, 0, 0, 0, 0, 0))
+        marginal_lls = _get_marginal_ll_vmap(emissions, inputs, masks, trials, conditions, trial_masks)
         marginal_ll = marginal_lls.sum()
 
         return marginal_ll
