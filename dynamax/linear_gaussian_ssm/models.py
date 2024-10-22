@@ -1154,8 +1154,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         h = self.get_h_v1(base_subspace, params, masks)
 
         def _compute_extended_kalman_filter_v1_marginal_ll(xs):
-            m, c, e, mask, cond, t = xs
-            return compute_extended_kalman_filter_v1_marginal_ll(h, m, c, e, mask, cond, t)
+            mean, cov, y, mask, cond, t = xs
+            return compute_extended_kalman_filter_v1_marginal_ll(h, mean, cov, y, mask, cond, t)
 
         args = (filtered_posterior.filtered_means[~trial_masks],
                  filtered_posterior.filtered_covariances[~trial_masks],
