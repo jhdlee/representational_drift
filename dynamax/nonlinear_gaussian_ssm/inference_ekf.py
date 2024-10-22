@@ -270,15 +270,9 @@ def extended_kalman_filter(
         trial_mask = trial_masks[t]
 
         # Update the log likelihood
-        # HH_x = HH(pred_mean) # (ND x V x V)
         H_x = H(pred_mean)  # (ND x V)
-
         y_pred = h(pred_mean)  # ND
-        # y_pred += 0.5*jnp.einsum('nji,ji->n', HH_x, pred_cov)
-
         s_k = H_x @ pred_cov @ H_x.T + R
-        # HHPHHP = jnp.einsum('nij,jk,mkl,lx->nmix', HH_x, pred_cov, HH_x, pred_cov)
-        # s_k += 0.5*jnp.trace(HHPHHP, axis1=-2, axis2=-1)
 
         ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
