@@ -90,42 +90,11 @@ def _condition_on(m, P, h, H, R, u, y, eps, t, num_iter):
     (mu_cond, Sigma_cond), _ = lax.scan(_step, carry, jnp.arange(num_iter))
     return mu_cond, symmetrize(Sigma_cond)
 
-def compute_extended_kalman_filter_v1_marginal_ll(h, pred_mean, pred_cov, y, mask, condition, t):
-    H = jacfwd(h, argnums=0, has_aux=True)
-
-    y_flattened = y.flatten()
-    mask = jnp.repeat(mask, y.shape[-1])[:, None]
-    square_mask = mask @ mask.T
-
-    # Update the log likelihood
-    H_x, pred_obs_covs = H(pred_mean, y, t, condition)  # (TN x V), (TN x T x N)
-    # H_eps = H_eps.reshape(H_eps.shape[0], -1) # (TN x TN)
-    H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
-
-    # H_eps, H_x masking
-    H_x = H_x * mask
-    # H_eps = H_eps * square_mask
-
-    y_pred, _ = h(pred_mean, y, t, condition)  # TN
-    s_k = H_x @ pred_cov @ H_x.T + H_eps
-
-    y_pred = y_pred * mask.squeeze()
-    y_flattened = y_flattened * mask.squeeze()
-    s_k = s_k * square_mask
-    s_k_diag = jnp.where(mask.squeeze(), 0.0, 1 / (2 * jnp.pi))
-    s_k += jnp.diag(s_k_diag)
-
-    ll = MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
-
-    return ll
-
-
 def extended_kalman_filter_v1(
         params: ParamsNLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
         masks,
         conditions,
-        trial_masks,
         num_iter: int = 1,
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
@@ -169,7 +138,6 @@ def extended_kalman_filter_v1(
         mask = jnp.repeat(masks[t], emissions_dim)[:, None]
         square_mask = mask @ mask.T
         condition = conditions[t]
-        trial_mask = trial_masks[t]
 
         # Update the log likelihood
         H_x, pred_obs_covs = H(pred_mean, y, t, condition)  # (TN x V), (TN x T x N)
@@ -189,11 +157,11 @@ def extended_kalman_filter_v1(
         s_k_diag = jnp.where(mask.squeeze(), 0.0, 1 / (2 * jnp.pi))
         s_k += jnp.diag(s_k_diag)
 
-        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
+        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
 
         K = psd_solve(s_k, H_x @ pred_cov).T
-        filtered_cov = pred_cov - trial_mask * (K @ s_k @ K.T)
-        filtered_mean = pred_mean + trial_mask * (K @ (y_flattened - y_pred))
+        filtered_cov = pred_cov - K @ s_k @ K.T
+        filtered_mean = pred_mean + K @ (y_flattened - y_pred)
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
@@ -226,7 +194,6 @@ def extended_kalman_filter(
         emissions: Float[Array, "ntime emission_dim"],
         masks,
         conditions,
-        trial_masks,
         num_iter: int = 1,
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
@@ -267,18 +234,23 @@ def extended_kalman_filter(
         R = _get_params(params.emission_covariance, 2, t)
         u = inputs[t]
         y = emissions[t]
-        trial_mask = trial_masks[t]
 
         # Update the log likelihood
+        # HH_x = HH(pred_mean) # (ND x V x V)
         H_x = H(pred_mean)  # (ND x V)
-        y_pred = h(pred_mean)  # ND
-        s_k = H_x @ pred_cov @ H_x.T + R
 
-        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
+        y_pred = h(pred_mean)  # ND
+        # y_pred += 0.5*jnp.einsum('nji,ji->n', HH_x, pred_cov)
+
+        s_k = H_x @ pred_cov @ H_x.T + R
+        # HHPHHP = jnp.einsum('nij,jk,mkl,lx->nmix', HH_x, pred_cov, HH_x, pred_cov)
+        # s_k += 0.5*jnp.trace(HHPHHP, axis1=-2, axis2=-1)
+
+        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
         K = psd_solve(s_k, H_x @ pred_cov).T
-        filtered_cov = pred_cov - trial_mask * (K @ s_k @ K.T)
-        filtered_mean = pred_mean + trial_mask * (K @ (y - y_pred))
+        filtered_cov = pred_cov - K @ s_k @ K.T
+        filtered_mean = pred_mean + K @ (y - y_pred)
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
@@ -335,7 +307,6 @@ def extended_kalman_smoother(
         emissions: Float[Array, "ntime emission_dim"],
         masks,
         conditions,
-        trial_masks,
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
 ) -> PosteriorGSSMSmoothed:
@@ -355,7 +326,7 @@ def extended_kalman_smoother(
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, masks, conditions, trial_masks, inputs=inputs)
+        filtered_posterior = extended_kalman_filter(params, emissions, masks, conditions, inputs=inputs)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
@@ -373,7 +344,7 @@ def extended_kalman_smoother(
 
         m_pred = filtered_mean
         S_pred = Q + filtered_cov
-        G = psd_solve(S_pred, filtered_cov, diagonal_boost=1e-12).T
+        G = psd_solve(S_pred, filtered_cov).T
 
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
