@@ -1182,7 +1182,6 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                            masks[eval_trial],
                                                            conditions[eval_trial],
                                                            eval_trial)
-                                                           )
 
         return ll
 
