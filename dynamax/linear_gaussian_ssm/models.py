@@ -2038,6 +2038,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         trial_masks_a = jnp.expand_dims(trial_masks, -1)
         trial_masks_aa = jnp.expand_dims(trial_masks_a, -1)
+        cross_trial_masks = trial_masks[1:] * trial_masks[:-1]
         masks_a = jnp.expand_dims(masks, -1)
         masks_aa = jnp.expand_dims(masks_a, -1)
         # ensure masking is done properly
@@ -2154,7 +2155,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     dynamics_cov = dynamics_cov_posterior.mode()
                     return dynamics_cov
 
-                dynamics_cov_stats_1 = (jnp.sum(masks * trial_masks_a) - num_trials) / 2
+                dynamics_cov_stats_1 = (jnp.sum(masks * trial_masks_a) - trial_masks_a.sum()) / 2
                 Exp = states_smoother.smoothed_means[:, :-1] * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                 Exn = states_smoother.smoothed_means[:, 1:] * masks_a[:, 1:]
                 Vxp = states_smoother.smoothed_covariances[:, :-1] * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
@@ -2228,10 +2229,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     tau_stats_1 = jnp.ones(self.dof) * (trial_masks.sum() - 1) / 2
 
                     Vv = velocity_smoother.smoothed_covariances
-                    Vvpvn_sum = jnp.einsum('t,tij->ij', trial_masks[1:], velocity_smoother.smoothed_cross_covariances)
-                    tau_stats_2 = jnp.einsum('t,ti,tj->ij', trial_masks[1:], Ev[1:], Ev[1:]) + jnp.einsum('t,tij->ij', trial_masks[1:], Vv[1:]) #Vv[1:].sum(0)
+                    Vvpvn_sum = jnp.einsum('t,tij->ij', cross_trial_masks, velocity_smoother.smoothed_cross_covariances)
+                    tau_stats_2 = jnp.einsum('t,ti,tj->ij', cross_trial_masks, Ev[1:], Ev[1:]) + jnp.einsum('t,tij->ij', cross_trial_masks, Vv[1:]) #Vv[1:].sum(0)
                     tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
-                    tau_stats_2 += jnp.einsum('t,ti,tj->ij', trial_masks[:-1], Ev[:-1], Ev[:-1]) + jnp.einsum('t,tij->ij', trial_masks[:-1], Vv[:-1]) #Vv[:-1].sum(0)
+                    tau_stats_2 += jnp.einsum('t,ti,tj->ij', cross_trial_masks, Ev[:-1], Ev[:-1]) + jnp.einsum('t,tij->ij', cross_trial_masks, Vv[:-1]) #Vv[:-1].sum(0)
                     tau_stats_2 = jnp.diag(tau_stats_2) / 2
                     def update_tau(s1, s2):
                         tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
