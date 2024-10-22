@@ -1162,7 +1162,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                  masks[~trial_masks],
                  conditions[~trial_masks],
                  jnp.arange(num_trials)[~trial_masks])
-        lls = lax.map(compute_extended_kalman_filter_v1_marginal_ll, args)
+        lls = lax.map(_compute_extended_kalman_filter_v1_marginal_ll, args)
 
         return lls.sum()
 
