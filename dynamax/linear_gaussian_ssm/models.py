@@ -704,6 +704,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             emission_dim: int,
             input_dim: int = 0,
             num_trials: int = 1,  # number of trials
+            num_sessions: int = 1,
             sequence_length: int = 1,  # number of timesteps per trial
             num_conditions: int = 1,
             has_dynamics_bias: bool = False,
@@ -725,6 +726,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         self.dof = self.state_dim * (self.emission_dim - self.state_dim)
         self.dof_shape = (self.state_dim, (self.emission_dim - self.state_dim))
 
+        self.num_sessions = num_sessions
         self.num_trials = num_trials
         self.sequence_length = sequence_length
         self.num_conditions = num_conditions
@@ -1998,7 +2000,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         # ensure masking is done properly
         emissions = emissions * masks_a
 
-        num_sessions = session_idx.max()+1 #len(jnp.unique(session_idx))
+        num_sessions = self.num_sessions
         if session_bool is None:
             session_bool = jnp.ones(num_sessions, dtype=bool)
         session_one_hot = jnn.one_hot(session_idx, num_sessions) # B x S
