@@ -2059,16 +2059,16 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 Rinv = jnp.linalg.inv(_params.emissions.cov)
                 reshape_dim = self.emission_dim * (self.state_dim + self.has_emissions_bias)
                 emissions_stats_1 = jnp.einsum('bs,bti,btl->sil', session_one_hot, Ex, Ex)
-                emissions_stats_1 += jnp.einsum('bs,btij->sij', Vx)
-                emissions_stats_1 = jnp.einsum('bs,bil,jk->sjikl', emissions_stats_1, Rinv).reshape(num_sessions, reshape_dim, reshape_dim)
+                emissions_stats_1 += jnp.einsum('bs,btij->sij', session_one_hot, Vx)
+                emissions_stats_1 = jnp.einsum('sil,jk->sjikl', emissions_stats_1, Rinv).reshape(num_sessions, reshape_dim, reshape_dim)
                 # emissions_stats_1 += jnp.eye(emissions_stats_1.shape[-1]) * 1e-4
                 # emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
                 def psd_solve_map(a):
                     return psd_solve(a, jnp.eye(a.shape[-1]))
                 emissions_stats_1 = lax.map(psd_solve_map, emissions_stats_1)
-                emissions_stats_2 = jnp.einsum('bs,bti,btl->sil', Ex, y)
-                emissions_stats_2 = jnp.einsum('bs,bil,lk->ski', emissions_stats_2, Rinv).reshape(num_sessions, -1)
-                emissions_stats_2 = jnp.einsum('bs,bij,bj->si', emissions_stats_1, emissions_stats_2)
+                emissions_stats_2 = jnp.einsum('bs,bti,btl->sil', session_one_hot, Ex, y)
+                emissions_stats_2 = jnp.einsum('sil,lk->ski', emissions_stats_2, Rinv).reshape(num_sessions, -1)
+                emissions_stats_2 = jnp.einsum('sij,sj->si', emissions_stats_1, emissions_stats_2)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
 
             # marginal likelihood
