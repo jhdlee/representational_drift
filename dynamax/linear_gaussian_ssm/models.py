@@ -1592,7 +1592,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         return velocity, approx_marginal_ll
 
     def velocity_smoother(self, base_subspace, params, emissions,
-                          masks, conditions, covs=None, filtering_method='ekf_em'):
+                          masks, conditions, session_bool=None, covs=None, filtering_method='ekf_em'):
         f = self.get_f()
         if filtering_method == 'ekf':
             h = self.get_h_v1(base_subspace, params, masks)
@@ -1629,7 +1629,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                  conditions=conditions,
                                                  hyperparams=ukf_hyperparams)
         elif filtering_method == 'ekf_em':
-            smoother = extended_kalman_smoother(NLGSSM_params, emissions,
+            smoother = extended_kalman_smoother(NLGSSM_params, emissions, session_bool=session_bool,
                                                 masks=masks, conditions=conditions)
         elif filtering_method == 'ukf_em':
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
@@ -1967,6 +1967,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             masks: jnp.array = None,
             conditions: jnp.array = None,
             session_idx: jnp.array = None,
+            session_bool: jnp.array = None,
             filtering_method='ekf_em',
     ):
         r"""Estimate parameter posterior using block-Gibbs sampler.
@@ -1997,11 +1998,16 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         # ensure masking is done properly
         emissions = emissions * masks_a
 
-        conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)  # B x C
-        conditions_count = jnp.sum(conditions_one_hot, axis=0)  # C
-
         num_sessions = len(jnp.unique(session_idx))
+        if session_bool is None:
+            session_bool = jnp.ones(num_sessions, dtype=bool)
         session_one_hot = jnn.one_hot(session_idx, num_sessions) # B x S
+        session_one_hot2 = jnp.einsum('bs,s->bs', session_one_hot, session_bool)
+        session_bool_2 = session_one_hot2.sum(1) # B
+
+        conditions_one_hot = jnn.one_hot(conditions, self.num_conditions)  # B x C
+        conditions_one_hot = jnp.einsum('bc,b->bc', conditions_one_hot, session_bool_2)
+        conditions_count = jnp.sum(conditions_one_hot, axis=0)  # C
 
         lgssm_smoother_vmap = vmap(lgssm_smoother, in_axes=(None, 0, None, 0, 0, 0))
 
@@ -2027,8 +2033,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             # sufficient statistics for the initial distribution
             Ex0 = states_smoother.smoothed_means[:, 0]
             Ex0x0T = states_smoother.smoothed_covariances[:, 0] + vmap(jnp.outer)(Ex0, Ex0)
-            init_stats = (jnp.einsum('bc,bi->ci', conditions_one_hot, Ex0),
-                          jnp.einsum('bc,bij->cij', conditions_one_hot, Ex0x0T),
+            init_stats = (jnp.einsum('b,bc,bi->ci', session_bool_2, conditions_one_hot, Ex0),
+                          jnp.einsum('b,bc,bij->cij', session_bool_2, conditions_one_hot, Ex0x0T),
                           conditions_count)
 
             # sufficient statistics for the dynamics
@@ -2036,12 +2042,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             reshape_dim = self.state_dim * (self.state_dim + self.has_dynamics_bias)
             if self.has_dynamics_bias:
                 Exp = jnp.concatenate([Exp, ones], axis=-1)
-            dynamics_stats_1 = jnp.einsum('bti,btl->il', Exp, Exp)
-            dynamics_stats_1 = dynamics_stats_1.at[:self.state_dim, :self.state_dim].add(jnp.einsum('btij->ij', Vxp))
+            dynamics_stats_1 = jnp.einsum('b,bti,btl->il', session_bool_2, Exp, Exp)
+            dynamics_stats_1 = dynamics_stats_1.at[:self.state_dim, :self.state_dim].add(jnp.einsum('b,btij->ij', session_bool_2, Vxp))
             dynamics_stats_1 = jnp.einsum('il,jk->jikl', dynamics_stats_1, Qinv).reshape(reshape_dim, reshape_dim)
-            dynamics_stats_2 = jnp.einsum('btij->ij', Expxn)
+            dynamics_stats_2 = jnp.einsum('b,btij->ij', session_bool_2, Expxn)
             if self.has_dynamics_bias:
-                dynamics_stats_2 = jnp.concatenate([dynamics_stats_2, jnp.einsum('bti,btj->ij', ones, Exn)], axis=0)
+                dynamics_stats_2 = jnp.concatenate([dynamics_stats_2, jnp.einsum('b,bti,btj->ij', session_bool_2, ones, Exn)], axis=0)
             dynamics_stats_2 = jnp.einsum('il,lk->ki', dynamics_stats_2, Qinv).reshape(-1)
             dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
 
@@ -2049,10 +2055,10 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.stationary_emissions:
                 Rinv = jnp.linalg.inv(_params.emissions.cov)
                 reshape_dim = self.emission_dim * (self.state_dim + self.has_emissions_bias)
-                emissions_stats_1 = jnp.einsum('bti,btl->il', Ex, Ex)
-                emissions_stats_1 += jnp.einsum('btij->ij', Vx)
+                emissions_stats_1 = jnp.einsum('b,bti,btl->il', session_bool_2, Ex, Ex)
+                emissions_stats_1 += jnp.einsum('b,btij->ij', session_bool_2, Vx)
                 emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
-                emissions_stats_2 = jnp.einsum('bti,btl->il', Ex, y)
+                emissions_stats_2 = jnp.einsum('b,bti,btl->il', session_bool_2, Ex, y)
                 emissions_stats_2 = jnp.einsum('il,lk->ki', emissions_stats_2, Rinv).reshape(-1)
                 emission_stats = (emissions_stats_1, emissions_stats_2)
             else:
@@ -2064,7 +2070,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 # emissions_stats_1 += jnp.eye(emissions_stats_1.shape[-1]) * 1e-4
                 # emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
                 def psd_solve_map(a):
-                    return psd_solve(a, jnp.eye(a.shape[-1]))
+                    return psd_solve(a, jnp.eye(a.shape[-1]), diagonal_boost=1e-4)
                 emissions_stats_1 = lax.map(psd_solve_map, emissions_stats_1)
                 emissions_stats_2 = jnp.einsum('bs,bti,btl->sil', session_one_hot, Ex, y)
                 emissions_stats_2 = jnp.einsum('sil,lk->ski', emissions_stats_2, Rinv).reshape(num_sessions, -1)
@@ -2072,7 +2078,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_stats = (emissions_stats_1, emissions_stats_2)
 
             # marginal likelihood
-            marginal_ll = states_smoother.marginal_loglik.sum()
+            marginal_ll = (states_smoother.marginal_loglik * session_bool_2).sum()
 
             return (init_stats, dynamics_stats, emission_stats), marginal_ll, states_smoother  # also returning Ex for R
 
@@ -2123,12 +2129,12 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     ones = jnp.ones(Exp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                     Exp = jnp.concatenate([Exp, ones], axis=-1)
                     Expxn = jnp.concatenate([Expxn,
-                                             jnp.einsum('bti,btj->btij', ones, Exn)], axis=-2)
+                                             jnp.einsum('b,bti,btj->btij', session_bool_2, ones, Exn)], axis=-2)
 
-                FbExpxn = jnp.einsum('ij,btjk->ik', Fb, Expxn)
-                ExpxpT = jnp.einsum('bti,btl->il', Exp, Exp)
-                ExpxpT = ExpxpT.at[:self.state_dim, :self.state_dim].add(jnp.einsum('btij->ij', Vxp))
-                dynamics_cov_stats_2 = jnp.einsum('bti,btj->ij', Exn, Exn) + jnp.sum(Vxn, axis=(0, 1))
+                FbExpxn = jnp.einsum('b,ij,btjk->ik', session_bool_2, Fb, Expxn)
+                ExpxpT = jnp.einsum('b,bti,btl->il', session_bool_2, Exp, Exp)
+                ExpxpT = ExpxpT.at[:self.state_dim, :self.state_dim].add(jnp.einsum('b,btij->ij', session_bool_2, Vxp))
+                dynamics_cov_stats_2 = jnp.einsum('b,bti,btj->ij', session_bool_2, Exn, Exn) + jnp.einsum('b,btij->ij', session_bool_2, Vxn) #jnp.sum(Vxn, axis=(0, 1))
                 dynamics_cov_stats_2 -= (FbExpxn + FbExpxn.T)
                 dynamics_cov_stats_2 += jnp.einsum('ij,jk,kl->il', Fb, ExpxpT, Fb.T)
                 dynamics_cov_stats_2 = jnp.diag(dynamics_cov_stats_2) / 2
@@ -2164,6 +2170,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 emission_stats_1, emission_stats2 = emission_stats
                 velocity_smoother = self.velocity_smoother(base_subspace, _params,
                                                            emission_stats2, masks, conditions,
+                                                           session_bool=session_bool,
                                                            covs=emission_stats_1,
                                                            filtering_method=filtering_method)
                 marginal_ll = velocity_smoother.marginal_loglik
