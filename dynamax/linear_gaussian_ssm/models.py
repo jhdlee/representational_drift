@@ -2120,7 +2120,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                     dynamics_cov = dynamics_cov_posterior.mode()
                     return dynamics_cov
 
-                dynamics_cov_stats_1 = (jnp.sum(masks) - num_trials) / 2
+                dynamics_cov_stats_1 = (jnp.sum(masks * session_bool_2[:, None]) - session_bool_2.sum()) / 2
                 Exp = states_smoother.smoothed_means[:, :-1] * jnp.roll(masks_a, -1, axis=1)[:, :-1]
                 Exn = states_smoother.smoothed_means[:, 1:] * masks_a[:, 1:]
                 Vxp = states_smoother.smoothed_covariances[:, :-1] * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
