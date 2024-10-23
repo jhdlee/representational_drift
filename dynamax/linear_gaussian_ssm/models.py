@@ -2182,7 +2182,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 if self.fix_tau:  # set to true during test time
                     tau = _params.emissions.tau
                 else:
-                    tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+                    # tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+                    tau_stats_1 = jnp.ones(self.dof) * (num_sessions - 1) / 2
 
                     Vv = velocity_smoother.smoothed_covariances
                     Vvpvn_sum = velocity_smoother.smoothed_cross_covariances.sum(0)
