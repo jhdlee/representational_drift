@@ -2209,7 +2209,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             if self.fix_emissions_cov:
                 R = _params.emissions.cov
             else:
-                emissions_cov_stats_1 = jnp.sum(masks) / 2
+                emissions_cov_stats_1 = jnp.sum(masks * session_bool_2[:, None]) / 2
                 Ex = states_smoother.smoothed_means * masks_a
                 Vx = states_smoother.smoothed_covariances * masks_aa
                 Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
