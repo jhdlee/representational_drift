@@ -2078,6 +2078,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
 
         def m_step(_params, _stats, states_smoother):
             init_stats, dynamics_stats, emission_stats = _stats
+            velocity_smoother = None
 
             # Update the initial params
             if self.fix_initial:
@@ -2223,20 +2224,20 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                                                     cov=initial_velocity_cov),
             )
 
-            return params, Ev, marginal_ll
+            return params, Ev, marginal_ll, velocity_smoother
 
         @jit
         def em(params):
             if self.stationary_emissions:
                 stats, marginal_ll, states_smoother = e_step(params)
                 Ex = states_smoother.smoothed_means * masks_a
-                new_params, Ev, ekf_marginal_ll = m_step(params, stats, states_smoother)
+                new_params, Ev, ekf_marginal_ll, velocity_smoother = m_step(params, stats, states_smoother)
             else:
                 stats, marginal_ll, states_smoother = e_step(params)
                 Ex = states_smoother.smoothed_means * masks_a
-                new_params, Ev, ekf_marginal_ll = m_step(params, stats, states_smoother)
+                new_params, Ev, ekf_marginal_ll, velocity_smoother = m_step(params, stats, states_smoother)
 
-            return new_params, Ex, Ev, marginal_ll, ekf_marginal_ll
+            return new_params, Ex, Ev, marginal_ll, ekf_marginal_ll, velocity_smoother
 
         # sample_of_params = []
         sample_of_states = []
@@ -2246,7 +2247,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         current_params = initial_params
 
         for _ in progress_bar(range(num_iters)):
-            current_params, current_states, current_velocity, marginal_ll, ekf_marginal_ll = em(current_params)
+            current_params, current_states, current_velocity, marginal_ll, ekf_marginal_ll, velocity_smoother = em(current_params)
             # sample_of_params.append(current_params)
             sample_of_velocity.append(current_velocity)
             if return_states:
@@ -2256,4 +2257,4 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
             marginal_lls.append(marginal_ll)
             ekf_marginal_lls.append(ekf_marginal_ll)
 
-        return current_params, sample_of_states, sample_of_velocity, marginal_lls, ekf_marginal_lls
+        return current_params, sample_of_states, sample_of_velocity, marginal_lls, ekf_marginal_lls, velocity_smoother
