@@ -2213,7 +2213,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 Ex = states_smoother.smoothed_means * masks_a
                 Vx = states_smoother.smoothed_covariances * masks_aa
                 Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
-                emissions_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * masks_a * session_bool_2, axis=(0, 1))
+                emissions_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * masks_a * session_bool_2[:, None, None], axis=(0, 1))
                 emissions_cov_stats_2 += jnp.diag(jnp.einsum('...,...ix,...txz,...jz->ij', session_bool_2, H, Vx, H))
                 emissions_cov_stats_2 = emissions_cov_stats_2 / 2
 
