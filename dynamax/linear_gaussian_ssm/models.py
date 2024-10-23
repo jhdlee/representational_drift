@@ -1998,7 +1998,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         # ensure masking is done properly
         emissions = emissions * masks_a
 
-        num_sessions = session_idx.max() #len(jnp.unique(session_idx))
+        num_sessions = session_idx.max()+1 #len(jnp.unique(session_idx))
         if session_bool is None:
             session_bool = jnp.ones(num_sessions, dtype=bool)
         session_one_hot = jnn.one_hot(session_idx, num_sessions) # B x S
