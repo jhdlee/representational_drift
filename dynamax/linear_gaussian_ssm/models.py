@@ -1998,7 +1998,7 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
         # ensure masking is done properly
         emissions = emissions * masks_a
 
-        num_sessions = len(jnp.unique(session_idx))
+        num_sessions = session_idx.max() #len(jnp.unique(session_idx))
         if session_bool is None:
             session_bool = jnp.ones(num_sessions, dtype=bool)
         session_one_hot = jnn.one_hot(session_idx, num_sessions) # B x S
@@ -2211,8 +2211,8 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 Ex = states_smoother.smoothed_means * masks_a
                 Vx = states_smoother.smoothed_covariances * masks_aa
                 Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
-                emissions_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * masks_a, axis=(0, 1))
-                emissions_cov_stats_2 += jnp.diag(jnp.einsum('...ix,...txz,...jz->ij', H, Vx, H))
+                emissions_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * masks_a * session_bool_2, axis=(0, 1))
+                emissions_cov_stats_2 += jnp.diag(jnp.einsum('...,...ix,...txz,...jz->ij', session_bool_2, H, Vx, H))
                 emissions_cov_stats_2 = emissions_cov_stats_2 / 2
 
                 def update_emissions_cov(s1, s2):
