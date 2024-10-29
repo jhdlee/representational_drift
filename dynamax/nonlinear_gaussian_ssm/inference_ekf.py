@@ -192,7 +192,6 @@ def extended_kalman_filter_v1(
 def extended_kalman_filter(
         params: ParamsNLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        session_bool,
         masks,
         conditions,
         num_iter: int = 1,
@@ -235,7 +234,6 @@ def extended_kalman_filter(
         R = _get_params(params.emission_covariance, 2, t)
         u = inputs[t]
         y = emissions[t]
-        session_mask = session_bool[t]
 
         # Update the log likelihood
         # HH_x = HH(pred_mean) # (ND x V x V)
@@ -248,11 +246,11 @@ def extended_kalman_filter(
         # HHPHHP = jnp.einsum('nij,jk,mkl,lx->nmix', HH_x, pred_cov, HH_x, pred_cov)
         # s_k += 0.5*jnp.trace(HHPHHP, axis1=-2, axis2=-1)
 
-        ll += session_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
+        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
         K = psd_solve(s_k, H_x @ _pred_cov).T
-        filtered_cov = _pred_cov - session_mask * K @ s_k @ K.T
-        filtered_mean = _pred_mean + session_mask * K @ (y - y_pred)
+        filtered_cov = _pred_cov - K @ s_k @ K.T
+        filtered_mean = _pred_mean + K @ (y - y_pred)
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
@@ -307,7 +305,6 @@ def iterated_extended_kalman_filter(
 def extended_kalman_smoother(
         params: ParamsNLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        session_bool,
         masks,
         conditions,
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
@@ -329,7 +326,7 @@ def extended_kalman_smoother(
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, session_bool, masks, conditions, inputs=inputs)
+        filtered_posterior = extended_kalman_filter(params, emissions, masks, conditions, inputs=inputs)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
