@@ -747,16 +747,22 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 df=self.state_dim + 0.1,
                 scale=jnp.eye(self.state_dim)))
 
+        # self.dynamics_prior = default_prior(
+        #     'dynamics_prior',
+        #     MVN(loc=jnp.zeros(self.state_dim * (self.state_dim + self.has_dynamics_bias)),
+        #         covariance_matrix=jnp.eye(self.state_dim * (self.state_dim + self.has_dynamics_bias)))
+        # )
+        #
+        # self.dynamics_covariance_prior = default_prior(
+        #     'dynamics_covariance_prior',
+        #     IG(concentration=1.0, scale=1.0)
+        # )
         self.dynamics_prior = default_prior(
             'dynamics_prior',
-            MVN(loc=jnp.zeros(self.state_dim * (self.state_dim + self.has_dynamics_bias)),
-                covariance_matrix=jnp.eye(self.state_dim * (self.state_dim + self.has_dynamics_bias)))
-        )
-
-        self.dynamics_covariance_prior = default_prior(
-            'dynamics_covariance_prior',
-            IG(concentration=1.0, scale=1.0)
-        )
+            MNIW(loc=jnp.zeros((self.state_dim, self.state_dim + self.input_dim + self.has_dynamics_bias)),
+                 col_precision=jnp.eye(self.state_dim + self.input_dim + self.has_dynamics_bias),
+                 df=self.state_dim + 0.1,
+                 scale=jnp.eye(self.state_dim)))
 
         # prior on emissions parameters
         if self.stationary_emissions:
@@ -2026,18 +2032,27 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                           conditions_count)
 
             # sufficient statistics for the dynamics
-            Qinv = jnp.linalg.inv(_params.dynamics.cov)
-            reshape_dim = self.state_dim * (self.state_dim + self.has_dynamics_bias)
+            # Qinv = jnp.linalg.inv(_params.dynamics.cov)
+            # reshape_dim = self.state_dim * (self.state_dim + self.has_dynamics_bias)
+            # if self.has_dynamics_bias:
+            #     Exp = jnp.concatenate([Exp, ones], axis=-1)
+            # dynamics_stats_1 = jnp.einsum('bti,btl->il', Exp, Exp)
+            # dynamics_stats_1 = dynamics_stats_1.at[:self.state_dim, :self.state_dim].add(jnp.einsum('btij->ij', Vxp))
+            # dynamics_stats_1 = jnp.einsum('il,jk->jikl', dynamics_stats_1, Qinv).reshape(reshape_dim, reshape_dim)
+            # dynamics_stats_2 = jnp.einsum('btij->ij', Expxn)
+            # if self.has_dynamics_bias:
+            #     dynamics_stats_2 = jnp.concatenate([dynamics_stats_2, jnp.einsum('bti,btj->ij', ones, Exn)], axis=0)
+            # dynamics_stats_2 = jnp.einsum('il,lk->ki', dynamics_stats_2, Qinv).reshape(-1)
+            # dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
             if self.has_dynamics_bias:
                 Exp = jnp.concatenate([Exp, ones], axis=-1)
-            dynamics_stats_1 = jnp.einsum('bti,btl->il', Exp, Exp)
-            dynamics_stats_1 = dynamics_stats_1.at[:self.state_dim, :self.state_dim].add(jnp.einsum('btij->ij', Vxp))
-            dynamics_stats_1 = jnp.einsum('il,jk->jikl', dynamics_stats_1, Qinv).reshape(reshape_dim, reshape_dim)
-            dynamics_stats_2 = jnp.einsum('btij->ij', Expxn)
+            sum_zpzpT = jnp.einsum('bti,btl->il', Exp, Exp)
+            sum_zpzpT = sum_zpzpT.at[:self.state_dim, :self.state_dim].add(jnp.einsum('btij->ij', Vxp))
+            sum_zpxnT = jnp.einsum('btij->ij', Expxn)
             if self.has_dynamics_bias:
-                dynamics_stats_2 = jnp.concatenate([dynamics_stats_2, jnp.einsum('bti,btj->ij', ones, Exn)], axis=0)
-            dynamics_stats_2 = jnp.einsum('il,lk->ki', dynamics_stats_2, Qinv).reshape(-1)
-            dynamics_stats = (dynamics_stats_1, dynamics_stats_2)
+                sum_zpxnT = jnp.concatenate([sum_zpxnT, jnp.einsum('bti,btj->ij', ones, Exn)], axis=0)
+            sum_xnxnT = jnp.einsum('btij->ij', Vxn) + jnp.einsum('bti,btj->ij', Exn, Exn)
+            dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, masks.sum() - num_trials)
 
             # sufficient statistics for the emissions
             if self.stationary_emissions:
@@ -2091,41 +2106,47 @@ class GrassmannianGaussianConjugateSSM(LinearGaussianSSM):
                 B = _params.dynamics.input_weights
                 Q = _params.dynamics.cov
             else:
-                B = _params.dynamics.input_weights
+                # B = _params.dynamics.input_weights
+                #
+                # dynamics_stats_1, dynamics_stats_2 = dynamics_stats
+                # dynamics_weights_posterior = mvn_posterior_update(self.dynamics_prior,
+                #                                                   (dynamics_stats_1, dynamics_stats_2))
+                # Fb = dynamics_weights_posterior.mode()
+                # Fb = Fb.reshape(self.state_dim, self.state_dim + self.has_dynamics_bias)
+                # F, b = (Fb[:, :self.state_dim], Fb[:, -1]) if self.has_dynamics_bias else (Fb[:, :self.state_dim], None)
+                #
+                # def update_dynamics_cov(s1, s2):
+                #     dynamics_cov_posterior = ig_posterior_update(self.dynamics_covariance_prior, (s1, s2))
+                #     dynamics_cov = dynamics_cov_posterior.mode()
+                #     return dynamics_cov
+                #
+                # dynamics_cov_stats_1 = (jnp.sum(masks) - num_trials) / 2
+                # Exp = states_smoother.smoothed_means[:, :-1] * jnp.roll(masks_a, -1, axis=1)[:, :-1]
+                # Exn = states_smoother.smoothed_means[:, 1:] * masks_a[:, 1:]
+                # Vxp = states_smoother.smoothed_covariances[:, :-1] * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
+                # Vxn = states_smoother.smoothed_covariances[:, 1:] * masks_aa[:, 1:]
+                # Expxn = states_smoother.smoothed_cross_covariances * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
+                #
+                # if self.has_dynamics_bias:
+                #     ones = jnp.ones(Exp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
+                #     Exp = jnp.concatenate([Exp, ones], axis=-1)
+                #     Expxn = jnp.concatenate([Expxn,
+                #                              jnp.einsum('bti,btj->btij', ones, Exn)], axis=-2)
+                #
+                # FbExpxn = jnp.einsum('ij,btjk->ik', Fb, Expxn)
+                # ExpxpT = jnp.einsum('bti,btl->il', Exp, Exp)
+                # ExpxpT = ExpxpT.at[:self.state_dim, :self.state_dim].add(jnp.einsum('btij->ij', Vxp))
+                # dynamics_cov_stats_2 = jnp.einsum('bti,btj->ij', Exn, Exn) + jnp.sum(Vxn, axis=(0, 1))
+                # dynamics_cov_stats_2 -= (FbExpxn + FbExpxn.T)
+                # dynamics_cov_stats_2 += jnp.einsum('ij,jk,kl->il', Fb, ExpxpT, Fb.T)
+                # dynamics_cov_stats_2 = jnp.diag(dynamics_cov_stats_2) / 2
+                # Q = jnp.diag(vmap(update_dynamics_cov, in_axes=(None, 0))(dynamics_cov_stats_1, dynamics_cov_stats_2))
 
-                dynamics_stats_1, dynamics_stats_2 = dynamics_stats
-                dynamics_weights_posterior = mvn_posterior_update(self.dynamics_prior,
-                                                                  (dynamics_stats_1, dynamics_stats_2))
-                Fb = dynamics_weights_posterior.mode()
-                Fb = Fb.reshape(self.state_dim, self.state_dim + self.has_dynamics_bias)
-                F, b = (Fb[:, :self.state_dim], Fb[:, -1]) if self.has_dynamics_bias else (Fb[:, :self.state_dim], None)
-
-                def update_dynamics_cov(s1, s2):
-                    dynamics_cov_posterior = ig_posterior_update(self.dynamics_covariance_prior, (s1, s2))
-                    dynamics_cov = dynamics_cov_posterior.mode()
-                    return dynamics_cov
-
-                dynamics_cov_stats_1 = (jnp.sum(masks) - num_trials) / 2
-                Exp = states_smoother.smoothed_means[:, :-1] * jnp.roll(masks_a, -1, axis=1)[:, :-1]
-                Exn = states_smoother.smoothed_means[:, 1:] * masks_a[:, 1:]
-                Vxp = states_smoother.smoothed_covariances[:, :-1] * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
-                Vxn = states_smoother.smoothed_covariances[:, 1:] * masks_aa[:, 1:]
-                Expxn = states_smoother.smoothed_cross_covariances * jnp.roll(masks_aa, -1, axis=1)[:, :-1]
-
-                if self.has_dynamics_bias:
-                    ones = jnp.ones(Exp.shape[:2] + (1,)) * jnp.roll(masks_a, -1, axis=1)[:, :-1]
-                    Exp = jnp.concatenate([Exp, ones], axis=-1)
-                    Expxn = jnp.concatenate([Expxn,
-                                             jnp.einsum('bti,btj->btij', ones, Exn)], axis=-2)
-
-                FbExpxn = jnp.einsum('ij,btjk->ik', Fb, Expxn)
-                ExpxpT = jnp.einsum('bti,btl->il', Exp, Exp)
-                ExpxpT = ExpxpT.at[:self.state_dim, :self.state_dim].add(jnp.einsum('btij->ij', Vxp))
-                dynamics_cov_stats_2 = jnp.einsum('bti,btj->ij', Exn, Exn) + jnp.sum(Vxn, axis=(0, 1))
-                dynamics_cov_stats_2 -= (FbExpxn + FbExpxn.T)
-                dynamics_cov_stats_2 += jnp.einsum('ij,jk,kl->il', Fb, ExpxpT, Fb.T)
-                dynamics_cov_stats_2 = jnp.diag(dynamics_cov_stats_2) / 2
-                Q = jnp.diag(vmap(update_dynamics_cov, in_axes=(None, 0))(dynamics_cov_stats_1, dynamics_cov_stats_2))
+                dynamics_posterior = mniw_posterior_update(self.dynamics_prior, dynamics_stats)
+                Q, FB = dynamics_posterior.mode()
+                F = FB[:, :self.state_dim]
+                B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
+                    else (FB[:, self.state_dim:], jnp.zeros(self.state_dim))
 
             if self.fix_emissions:
                 Ev = None

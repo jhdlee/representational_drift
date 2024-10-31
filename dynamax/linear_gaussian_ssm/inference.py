@@ -272,7 +272,7 @@ def _predict(m, S, F, B, b, Q, u, mask):
     mu_pred = mask * mu_pred + (1 - mask) * m
     Sigma_pred = mask * Sigma_pred + (1 - mask) * S
 
-    return mu_pred, Sigma_pred
+    return mu_pred, symmetrize(Sigma_pred)
 
 
 def _condition_on(m, P, H, D, d, R, u, y, mask):
@@ -605,6 +605,7 @@ def lgssm_smoother(
         # Compute the smoothed mean and covariance
         smoothed_mean = filtered_mean + mask * G @ (smoothed_mean_next - F @ filtered_mean - B @ u - b)
         smoothed_cov = filtered_cov + mask * G @ (smoothed_cov_next - F @ filtered_cov @ F.T - Q) @ G.T
+        smoothed_cov = symmetrize(smoothed_cov)
 
         # Compute the smoothed expectation of z_t z_{t+1}^T
         smoothed_cross_cov = G @ smoothed_cov_next

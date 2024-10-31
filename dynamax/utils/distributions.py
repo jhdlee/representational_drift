@@ -8,7 +8,7 @@ from tensorflow_probability.substrates.jax.distributions import InverseGamma as 
 tfd = tfp.distributions
 tfb = tfp.bijectors
 
-from dynamax.utils.utils import psd_solve
+from dynamax.utils.utils import psd_solve, symmetrize
 
 
 class InverseWishart(tfd.TransformedDistribution):
@@ -337,6 +337,7 @@ def niw_posterior_update(niw_prior, sufficient_stats):
     df_pos = df_pri + N
     scale_pos = scale_pri + SxxT \
         + precision_pri*jnp.outer(loc_pri, loc_pri) - precision_pos*jnp.outer(loc_pos, loc_pos)
+    scale_pos = symmetrize(scale_pos) + jnp.eye(scale_pos.shape[-1]) * 1e-4
 
     return NormalInverseWishart(loc=loc_pos, mean_concentration=precision_pos, df=df_pos, scale=scale_pos)
 
@@ -361,6 +362,7 @@ def mniw_posterior_update(mniw_prior, sufficient_stats):
     V_pos = Sxx
     nu_pos = nu_pri + N
     Psi_pos = Psi_pri + Syy - M_pos @ Sxy
+    Psi_pos = symmetrize(Psi_pos) + jnp.eye(Psi_pos.shape[-1]) * 1e-4
     return MatrixNormalInverseWishart(loc=M_pos, col_precision=V_pos, df=nu_pos, scale=Psi_pos)
 
 
