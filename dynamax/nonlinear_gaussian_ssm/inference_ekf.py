@@ -150,6 +150,7 @@ def extended_kalman_filter_v1(
 
         y_pred, _ = h(pred_mean, y, t, condition)  # TN
         s_k = H_x @ pred_cov @ H_x.T + H_eps
+        s_k = symmetrize(s_k)
 
         y_pred = y_pred * mask.squeeze()
         y_flattened = y_flattened * mask.squeeze()
@@ -243,6 +244,7 @@ def extended_kalman_filter(
         # y_pred += 0.5*jnp.einsum('nji,ji->n', HH_x, pred_cov)
 
         s_k = H_x @ _pred_cov @ H_x.T + R
+        s_k = symmetrize(s_k)
         # HHPHHP = jnp.einsum('nij,jk,mkl,lx->nmix', HH_x, pred_cov, HH_x, pred_cov)
         # s_k += 0.5*jnp.trace(HHPHHP, axis1=-2, axis2=-1)
 
@@ -348,6 +350,7 @@ def extended_kalman_smoother(
 
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
+        smoothed_cov = symmetrize(smoothed_cov)
 
         # Compute the smoothed expectation of z_t z_{t+1}^T
         smoothed_cross_cov = G @ smoothed_cov_next
