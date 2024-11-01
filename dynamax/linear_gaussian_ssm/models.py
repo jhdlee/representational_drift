@@ -1,12 +1,14 @@
 from fastprogress.fastprogress import progress_bar
 from functools import partial
-from jax import jit
+from jax import jit, vmap
 import jax.numpy as jnp
 import jax.random as jr
+import jax.nn as jnn
 from jax.tree_util import tree_map
 from jaxtyping import Array, Float, PyTree
 import tensorflow_probability.substrates.jax.distributions as tfd
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
+from tensorflow_probability.substrates.jax.distributions import InverseGamma as IG
 from typing import Any, Optional, Tuple, Union
 from typing_extensions import Protocol
 
@@ -19,8 +21,9 @@ from dynamax.types import PRNGKey, Scalar
 from dynamax.utils.bijectors import RealToPSDBijector
 from dynamax.utils.distributions import MatrixNormalInverseWishart as MNIW
 from dynamax.utils.distributions import NormalInverseWishart as NIW
-from dynamax.utils.distributions import mniw_posterior_update, niw_posterior_update
-from dynamax.utils.utils import pytree_stack, psd_solve
+from dynamax.utils.distributions import (mniw_posterior_update, niw_posterior_update,
+                                         mvn_posterior_update, ig_posterior_update)
+from dynamax.utils.utils import pytree_stack, psd_solve, symmetrize
 
 class SuffStatsLGSSM(Protocol):
     """A :class:`NamedTuple` with sufficient statistics for LGSSM parameter estimation."""
@@ -68,12 +71,14 @@ class LinearGaussianSSM(SSM):
         state_dim: int,
         emission_dim: int,
         input_dim: int=0,
+        num_conditions: int = 1,
         has_dynamics_bias: bool=True,
-        has_emissions_bias: bool=True
+        has_emissions_bias: bool=False
     ):
         self.state_dim = state_dim
         self.emission_dim = emission_dim
         self.input_dim = input_dim
+        self.num_conditions = num_conditions
         self.has_dynamics_bias = has_dynamics_bias
         self.has_emissions_bias = has_emissions_bias
 
@@ -119,8 +124,8 @@ class LinearGaussianSSM(SSM):
         """
 
         # Arbitrary default values, for demo purposes.
-        _initial_mean = jnp.zeros(self.state_dim)
-        _initial_covariance = jnp.eye(self.state_dim)
+        _initial_mean = jnp.zeros((self.num_conditions, self.state_dim))
+        _initial_covariance = jnp.repeat(jnp.eye(self.state_dim)[jnp.newaxis], self.num_conditions, axis=0)
         _dynamics_weights = 0.99 * jnp.eye(self.state_dim)
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
@@ -171,9 +176,10 @@ class LinearGaussianSSM(SSM):
     def initial_distribution(
         self,
         params: ParamsLGSSM,
-        inputs: Optional[Float[Array, "ntime input_dim"]]=None
+        inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+        condition: int=0,
     ) -> tfd.Distribution:
-        return MVN(params.initial.mean, params.initial.cov)
+        return MVN(params.initial.mean[condition], params.initial.cov[condition])
 
     def transition_distribution(
         self,
@@ -278,13 +284,14 @@ class LinearGaussianSSM(SSM):
                          Float[Array, "num_batches num_timesteps emission_dim"]],
         inputs: Optional[Union[Float[Array, "num_timesteps input_dim"],
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
+        condition: int=0,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
         if inputs is None:
             inputs = jnp.zeros((num_timesteps, 0))
 
         # Run the smoother to get posterior expectations
-        posterior = lgssm_smoother(params, emissions, inputs)
+        posterior = lgssm_smoother(params, emissions, inputs, condition)
 
         # shorthand
         Ex = posterior.smoothed_means
@@ -320,15 +327,16 @@ class LinearGaussianSSM(SSM):
 
         # more expected sufficient statistics for the emissions
         # let z[t] = [x[t], u[t]] for t = 0...T-1
-        sum_zzT = jnp.block([[Ex.T @ Ex, Ex.T @ u], [u.T @ Ex, u.T @ u]])
-        sum_zzT = sum_zzT.at[:self.state_dim, :self.state_dim].add(Vx.sum(0))
-        sum_zyT = jnp.block([[Ex.T @ y], [u.T @ y]])
-        sum_yyT = emissions.T @ emissions
-        emission_stats = (sum_zzT, sum_zyT, sum_yyT, num_timesteps)
-        if not self.has_emissions_bias:
-            emission_stats = (sum_zzT[:-1, :-1], sum_zyT[:-1, :], sum_yyT, num_timesteps)
+        Rinv = jnp.linalg.inv(params.emissions.cov)
+        reshape_dim = self.emission_dim * (self.state_dim + self.has_emissions_bias)
+        emissions_stats_1 = jnp.einsum('ti,tl->il', Ex, Ex)
+        emissions_stats_1 += jnp.einsum('tij->ij', Vx)
+        emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
+        emissions_stats_2 = jnp.einsum('ti,tl->il', Ex, y)
+        emissions_stats_2 = jnp.einsum('il,lk->ki', emissions_stats_2, Rinv).reshape(-1)
+        emission_stats = (emissions_stats_1, emissions_stats_2)
 
-        return (init_stats, dynamics_stats, emission_stats), posterior.marginal_loglik
+        return (init_stats, dynamics_stats, emission_stats), posterior.marginal_loglik, posterior
 
     def initialize_m_step_state(
             self,
@@ -399,11 +407,13 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
                  state_dim,
                  emission_dim,
                  input_dim=0,
+                 num_conditions: int = 1,
                  has_dynamics_bias=True,
-                 has_emissions_bias=True,
+                 has_emissions_bias=False,
                  **kw_priors):
-        super().__init__(state_dim=state_dim, emission_dim=emission_dim, input_dim=input_dim,
-             has_dynamics_bias=has_dynamics_bias, has_emissions_bias=has_emissions_bias)
+        super().__init__(state_dim=state_dim, emission_dim=emission_dim,
+                         input_dim=input_dim, num_conditions=num_conditions,
+                         has_dynamics_bias=has_dynamics_bias, has_emissions_bias=has_emissions_bias)
 
         # Initialize prior distributions
         def default_prior(arg, default):
@@ -424,11 +434,16 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
                  scale=jnp.eye(self.state_dim)))
 
         self.emission_prior = default_prior(
-            'emission_prior',
-            MNIW(loc=jnp.zeros((self.emission_dim, self.state_dim + self.input_dim + self.has_emissions_bias)),
-                 col_precision=jnp.eye(self.state_dim + self.input_dim + self.has_emissions_bias),
-                 df=self.emission_dim + 0.1,
-                 scale=jnp.eye(self.emission_dim)))
+                'emission_prior',
+                MVN(loc=jnp.zeros(self.emission_dim * (self.state_dim + self.has_emissions_bias)),
+                    covariance_matrix=jnp.eye(self.emission_dim * (self.state_dim + self.has_emissions_bias)))
+            )
+
+        self.emission_covariance_prior = default_prior(
+            'emission_covariance_prior',
+            IG(concentration=1.0, scale=1.0)
+        )
+
 
     @property
     def emission_shape(self):
@@ -442,7 +457,7 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         self,
         params: ParamsLGSSM
     ) -> Scalar:
-        lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean))
+        lp = self.initial_prior.log_prob((params.initial.cov, params.initial.mean)).sum()
 
         # dynamics
         dynamics_bias = params.dynamics.bias if self.has_dynamics_bias else jnp.zeros((self.state_dim, 0))
@@ -455,7 +470,9 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         emission_matrix = jnp.column_stack((params.emissions.weights,
                                             params.emissions.input_weights,
                                             emission_bias))
-        lp += self.emission_prior.log_prob((params.emissions.cov, emission_matrix))
+        lp += self.emission_prior.log_prob(emission_matrix.flatten())
+        lp += self.emission_covariance_prior.log_prob(jnp.diag(params.emissions.cov)).sum()
+
         return lp
 
     def initialize_m_step_state(
@@ -470,7 +487,9 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         params: ParamsLGSSM,
         props: ParamsLGSSM,
         batch_stats: SuffStatsLGSSM,
-        m_step_state: Any):
+        m_step_state: Any,
+        posteriors,
+        emissions):
         # Sum the statistics across all batches
         stats = tree_map(partial(jnp.sum, axis=0), batch_stats)
         init_stats, dynamics_stats, emission_stats = stats
@@ -485,11 +504,26 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         B, b = (FB[:, self.state_dim:-1], FB[:, -1]) if self.has_dynamics_bias \
             else (FB[:, self.state_dim:], jnp.zeros(self.state_dim))
 
-        emission_posterior = mniw_posterior_update(self.emission_prior, emission_stats)
-        R, HD = emission_posterior.mode()
-        H = HD[:, :self.state_dim]
-        D, d = (HD[:, self.state_dim:-1], HD[:, -1]) if self.has_emissions_bias \
-            else (HD[:, self.state_dim:], jnp.zeros(self.emission_dim))
+        emission_posterior = mvn_posterior_update(self.emission_prior, emission_stats)
+        emission_weights = emission_posterior.mode()
+        H = emission_weights.reshape(self.emission_dim, self.state_dim)
+
+        Ex, Vx = posterior.smoothed_means, posterior.smoothed_covariances
+        emission_cov_stats_1 = (Ex.shape[0] * Ex.shape[1]) / 2
+        Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
+        emission_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey), axis=(0, 1))
+        emission_cov_stats_2 += jnp.diag(jnp.einsum('...ix,...txz,...jz->ij', H, Vx, H))
+        emission_cov_stats_2 = emission_cov_stats_2 / 2
+
+        def update_emissions_cov(s2):
+            emissions_cov_posterior = ig_posterior_update(self.emission_covariance_prior,
+                                                          (emission_cov_stats_1, s2))
+            emissions_cov = emissions_cov_posterior.mode()
+            return emissions_cov
+
+        R = jnp.diag(vmap(update_emissions_cov)(emission_cov_stats_2))
+        D = params.emissions.input_weights
+        d = params.emissions.bias
 
         params = ParamsLGSSM(
             initial=ParamsLGSSMInitial(mean=m, cov=S),

@@ -353,11 +353,12 @@ def preprocess_args(f):
         params = bound_args.arguments['params']
         emissions = bound_args.arguments['emissions']
         inputs = bound_args.arguments['inputs']
+        condition = bound_args.arguments['condition']
 
         num_timesteps = len(emissions)
         full_params, inputs = preprocess_params_and_inputs(params, num_timesteps, inputs)
 
-        return f(full_params, emissions, inputs=inputs)
+        return f(full_params, emissions, inputs=inputs, condition=condition)
     return wrapper
 
 
@@ -365,7 +366,8 @@ def lgssm_joint_sample(
     params: ParamsLGSSM,
     key: PRNGKey,
     num_timesteps: int,
-    inputs: Optional[Float[Array, "num_timesteps input_dim"]]=None
+    inputs: Optional[Float[Array, "num_timesteps input_dim"]]=None,
+    condition: int=0,
 )-> Tuple[Float[Array, "num_timesteps state_dim"],
           Float[Array, "num_timesteps emission_dim"]]:
     r"""Sample from the joint distribution to produce state and emission trajectories.
@@ -392,7 +394,7 @@ def lgssm_joint_sample(
     def _sample_initial(key, params, inputs):
         key1, key2 = jr.split(key)
 
-        initial_state = MVN(params.initial.mean, params.initial.cov).sample(seed=key1)
+        initial_state = MVN(params.initial.mean[condition], params.initial.cov[condition]).sample(seed=key1)
 
         H0, D0, d0, R0 = _get_params(params, num_timesteps, 0)[4:]
         u0 = tree_map(lambda x: x[0], inputs)
@@ -436,7 +438,8 @@ def lgssm_joint_sample(
 def lgssm_filter(
     params: ParamsLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
-    inputs: Optional[Float[Array, "ntime input_dim"]]=None
+    inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+    condition: int=0,
 ) -> PosteriorGSSMFiltered:
     r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
 
@@ -482,7 +485,7 @@ def lgssm_filter(
         return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
 
     # Run the Kalman filter
-    carry = (0.0, params.initial.mean, params.initial.cov)
+    carry = (0.0, params.initial.mean[condition], params.initial.cov[condition])
     (ll, _, _), (filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
     return PosteriorGSSMFiltered(marginal_loglik=ll, filtered_means=filtered_means, filtered_covariances=filtered_covs)
 
@@ -491,7 +494,8 @@ def lgssm_filter(
 def lgssm_smoother(
     params: ParamsLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
-    inputs: Optional[Float[Array, "ntime input_dim"]]=None
+    inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+    condition: int=0,
 ) -> PosteriorGSSMSmoothed:
     r"""Run forward-filtering, backward-smoother to compute expectations
     under the posterior distribution on latent states. Technically, this
@@ -510,7 +514,7 @@ def lgssm_smoother(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs)
+    filtered_posterior = lgssm_filter(params, emissions, inputs, condition)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Run the smoother backward in time
