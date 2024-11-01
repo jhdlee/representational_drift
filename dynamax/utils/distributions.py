@@ -10,6 +10,7 @@ tfb = tfp.bijectors
 
 from dynamax.utils.utils import psd_solve, symmetrize
 
+
 class InverseWishart(tfd.TransformedDistribution):
 
     def __new__(cls, *args, **kwargs):
@@ -96,8 +97,8 @@ class InverseWishart(tfd.TransformedDistribution):
             diag = jnp.diag(scale)
             rows = jnp.arange(dim)[:, None].repeat(3, axis=1)
             cols = jnp.arange(dim)[None, :].repeat(3, axis=0)
-            numer = (df - dim + 1) * scale**2 + (df - dim - 1) * diag[rows] * diag[cols]
-            denom = (df - dim) * (df - dim - 1)**2 * (df - dim - 3)
+            numer = (df - dim + 1) * scale ** 2 + (df - dim - 1) * diag[rows] * diag[cols]
+            denom = (df - dim) * (df - dim - 1) ** 2 * (df - dim - 3)
             return numer / denom
 
         dfs, scales = jnp.broadcast_arrays(jnp.array(self.df)[..., None, None], self.scale)
@@ -282,7 +283,6 @@ class MatrixNormalInverseWishart(tfd.JointDistributionSequential):
 ###############################################################################
 
 def mvn_posterior_update(mvn_prior, sufficient_stats):
-
     loc_pri, cov_pri = mvn_prior.mean(), mvn_prior.covariance()
     A, B = sufficient_stats
 
@@ -293,8 +293,8 @@ def mvn_posterior_update(mvn_prior, sufficient_stats):
 
     return MVN(loc=loc_pos, covariance_matrix=cov_pos)
 
-def ig_posterior_update(ig_prior, sufficient_stats):
 
+def ig_posterior_update(ig_prior, sufficient_stats):
     alpha_pri = ig_prior.parameters['concentration']
     beta_pri = ig_prior.parameters['scale']
 
@@ -304,6 +304,7 @@ def ig_posterior_update(ig_prior, sufficient_stats):
     beta_pos = beta_pri + x2
 
     return IG(alpha_pos, beta_pos)
+
 
 def niw_posterior_update(niw_prior, sufficient_stats):
     r"""Update the NormalInverseWishart (NIW) distribution using sufficient statistics
@@ -322,8 +323,8 @@ def niw_posterior_update(niw_prior, sufficient_stats):
     precision_pos = precision_pri + N
     df_pos = df_pri + N
     scale_pos = scale_pri + SxxT \
-        + precision_pri*jnp.outer(loc_pri, loc_pri) - precision_pos*jnp.outer(loc_pos, loc_pos)
-    scale_pos = symmetrize(scale_pos) + jnp.eye(scale_pos.shape[-1]) * 1e-4
+                + precision_pri * jnp.outer(loc_pri, loc_pri) - precision_pos * jnp.outer(loc_pos, loc_pos)
+    scale_pos = symmetrize(scale_pos)
 
     return NormalInverseWishart(loc=loc_pos, mean_concentration=precision_pos, df=df_pos, scale=scale_pos)
 
@@ -348,7 +349,8 @@ def mniw_posterior_update(mniw_prior, sufficient_stats):
     V_pos = Sxx
     nu_pos = nu_pri + N
     Psi_pos = Psi_pri + Syy - M_pos @ Sxy
-    Psi_pos = symmetrize(Psi_pos) + jnp.eye(Psi_pos.shape[-1]) * 1e-4
+    Psi_pos = symmetrize(Psi_pos)
+
     return MatrixNormalInverseWishart(loc=M_pos, col_precision=V_pos, df=nu_pos, scale=Psi_pos)
 
 
