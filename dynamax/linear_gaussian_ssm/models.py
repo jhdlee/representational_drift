@@ -508,7 +508,7 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         emission_weights = emission_posterior.mode()
         H = emission_weights.reshape(self.emission_dim, self.state_dim)
 
-        Ex, Vx = posterior.smoothed_means, posterior.smoothed_covariances
+        Ex, Vx = posteriors.smoothed_means, posteriors.smoothed_covariances
         emission_cov_stats_1 = (Ex.shape[0] * Ex.shape[1]) / 2
         Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
         emission_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey), axis=(0, 1))
