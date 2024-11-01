@@ -210,35 +210,82 @@ class LinearGaussianSSM(SSM):
         params: ParamsLGSSM,
         key: PRNGKey,
         num_timesteps: int,
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        condition: int = 0,
     ) -> PosteriorGSSMFiltered:
-        return lgssm_joint_sample(params, key, num_timesteps, inputs)
+        return lgssm_joint_sample(params, key, num_timesteps, inputs, condition)
+
+    def batch_sample(
+        self,
+        params: ParamsLGSSM,
+        key: PRNGKey,
+        num_timesteps: int,
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        conditions = None,
+    ) -> PosteriorGSSMFiltered:
+        keys = jr.split(key, len(conditions))
+        sample_vmap = vmap(self.sample, in_axes=(None, 0, None, None, 0))
+        return sample_vmap(params, keys, num_timesteps, inputs, conditions)
 
     def marginal_log_prob(
         self,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        condition: int=0,
     ) -> Scalar:
-        filtered_posterior = lgssm_filter(params, emissions, inputs)
+        filtered_posterior = lgssm_filter(params, emissions, inputs, condition)
         return filtered_posterior.marginal_loglik
+
+    def batch_marginal_log_prob(
+        self,
+        params: ParamsLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        conditions = None,
+    ) -> Scalar:
+        marginal_log_prob_vmap = vmap(self.marginal_log_prob, in_axes=(None, 0, None, 0))
+        return marginal_log_prob_vmap(params, emissions, inputs, conditions).marginal_loglik.sum()
 
     def filter(
         self,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        condition: int=0,
     ) -> PosteriorGSSMFiltered:
-        return lgssm_filter(params, emissions, inputs)
+        return lgssm_filter(params, emissions, inputs, condition)
+
+    def batch_filter(
+        self,
+        params: ParamsLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        conditions = None,
+    ) -> PosteriorGSSMFiltered:
+        lgssm_filter_vmap = vmap(self.filter, in_axes=(None, 0, None, 0))
+        return lgssm_filter_vmap(params, emissions, inputs, conditions)
 
     def smoother(
         self,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]] = None
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        condition: int=0,
     ) -> PosteriorGSSMSmoothed:
-        return lgssm_smoother(params, emissions, inputs)
+        return lgssm_smoother(params, emissions, inputs, condition)
 
+    def batch_smoother(
+        self,
+        params: ParamsLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        inputs: Optional[Float[Array, "ntime input_dim"]] = None,
+        conditions = None,
+    ) -> PosteriorGSSMSmoothed:
+        lgssm_smoother_vmap = vmap(self.smoother, in_axes=(None, 0, None, 0))
+        return lgssm_smoother_vmap(params, emissions, inputs, conditions)
+
+    # need update
     def posterior_sample(
         self,
         key: PRNGKey,
@@ -252,7 +299,8 @@ class LinearGaussianSSM(SSM):
         self,
         params: ParamsLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
-        inputs: Optional[Float[Array, "ntime input_dim"]]=None
+        inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+        condition: int = 0,
     ) -> Tuple[Float[Array, "ntime emission_dim"], Float[Array, "ntime emission_dim"]]:
         r"""Compute marginal posterior predictive smoothing distribution for each observation.
 
@@ -265,7 +313,7 @@ class LinearGaussianSSM(SSM):
             :posterior predictive means $\mathbb{E}[y_{t,d} \mid y_{1:T}]$ and standard deviations $\mathrm{std}[y_{t,d} \mid y_{1:T}]$
 
         """
-        posterior = lgssm_smoother(params, emissions, inputs)
+        posterior = lgssm_smoother(params, emissions, inputs, condition)
         H = params.emissions.weights
         b = params.emissions.bias
         R = params.emissions.cov
@@ -275,6 +323,27 @@ class LinearGaussianSSM(SSM):
         smoothed_emissions_std = jnp.sqrt(
             jnp.array([smoothed_emissions_cov[:, i, i] for i in range(emission_dim)]))
         return smoothed_emissions, smoothed_emissions_std
+
+    def batch_posterior_predictive(
+        self,
+        params: ParamsLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        inputs: Optional[Float[Array, "ntime input_dim"]]=None,
+        conditions = None,
+    ) -> Tuple[Float[Array, "ntime emission_dim"], Float[Array, "ntime emission_dim"]]:
+        r"""Compute marginal posterior predictive smoothing distribution for each observation.
+
+        Args:
+            params: model parameters.
+            emissions: sequence of observations.
+            inputs: optional sequence of inputs.
+
+        Returns:
+            :posterior predictive means $\mathbb{E}[y_{t,d} \mid y_{1:T}]$ and standard deviations $\mathrm{std}[y_{t,d} \mid y_{1:T}]$
+
+        """
+        posterior_predictive_vmap = vmap(posterior_predictive, in_axes=(None, 0, None, 0))
+        return posterior_predictive_vmap(params, emissions, inputs, conditions)
 
     # Expectation-maximization (EM) code
     def e_step(
@@ -347,6 +416,7 @@ class LinearGaussianSSM(SSM):
     ) -> Any:
         return None
 
+    # need update
     def m_step(
         self,
         params: ParamsLGSSM,
@@ -537,6 +607,7 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         )
         return params, m_step_state
 
+    # need update
     def fit_blocked_gibbs(
         self,
         key: PRNGKey,
