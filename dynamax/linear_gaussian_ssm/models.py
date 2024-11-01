@@ -245,7 +245,7 @@ class LinearGaussianSSM(SSM):
         conditions = None,
     ) -> Scalar:
         marginal_log_prob_vmap = vmap(self.marginal_log_prob, in_axes=(None, 0, None, 0))
-        return marginal_log_prob_vmap(params, emissions, inputs, conditions).marginal_loglik.sum()
+        return marginal_log_prob_vmap(params, emissions, inputs, conditions).sum()
 
     def filter(
         self,
