@@ -209,3 +209,15 @@ def psd_solve(A, b, diagonal_boost=1e-9):
 def symmetrize(A):
     """Symmetrize one or more matrices."""
     return 0.5 * (A + jnp.swapaxes(A, -1, -2))
+
+def rotate_subspace(base_subspace, D, v):
+    N = base_subspace.shape[0]
+    dof_shape = (D, (N - D))
+
+    rotation = jnp.zeros((N, N))
+    rotation = rotation.at[:D, D:].set(v.reshape(dof_shape))
+    rotation -= rotation.T
+    rotation = jscipy.linalg.expm(rotation)
+    new_subspace = base_subspace @ rotation
+
+    return new_subspace[:, :D]

@@ -537,12 +537,13 @@ def lgssm_smoother(
         smoothed_cov = symmetrize(smoothed_cov)
 
         # Compute the smoothed expectation of z_t z_{t+1}^T
-        smoothed_cross = G @ smoothed_cov_next + jnp.outer(smoothed_mean, smoothed_mean_next)
+        smoothed_cross = G @ smoothed_cov_next
+        smoothed_outer = jnp.outer(smoothed_mean, smoothed_mean_next)
 
-        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross)
+        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross, smoothed_outer)
 
     # Run the Kalman smoother
-    _, (smoothed_means, smoothed_covs, smoothed_cross) = lax.scan(
+    _, (smoothed_means, smoothed_covs, smoothed_cross, smoothed_outer) = lax.scan(
         _step,
         (filtered_means[-1], filtered_covs[-1]),
         (jnp.arange(num_timesteps - 1), filtered_means[:-1], filtered_covs[:-1]),
@@ -552,6 +553,7 @@ def lgssm_smoother(
     # Concatenate the arrays and return
     smoothed_means = jnp.vstack((smoothed_means, filtered_means[-1][None, ...]))
     smoothed_covs = jnp.vstack((smoothed_covs, filtered_covs[-1][None, ...]))
+    smoothed_cross += smoothed_outer
 
     return PosteriorGSSMSmoothed(
         marginal_loglik=ll,
