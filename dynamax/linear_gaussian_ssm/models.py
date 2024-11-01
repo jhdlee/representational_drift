@@ -309,9 +309,11 @@ class LinearGaussianSSM(SSM):
         y = emissions
 
         # expected sufficient statistics for the initial tfd.Distribution
-        Ex0 = posterior.smoothed_means[0]
-        Ex0x0T = posterior.smoothed_covariances[0] + jnp.outer(Ex0, Ex0)
-        init_stats = (Ex0, Ex0x0T, 1)
+        c = jnn.one_hot(condition, self.num_conditions)
+        Ex0 = jnp.einsum('c,j->cj', c, posterior.smoothed_means[0])
+        Ex0x0T = jnp.einsum('c,jk->cjk', c, posterior.smoothed_covariances[0]
+                            + jnp.outer(posterior.smoothed_means[0], posterior.smoothed_means[0]))
+        init_stats = (Ex0, Ex0x0T, c)
 
         # expected sufficient statistics for the dynamics tfd.Distribution
         # let zp[t] = [x[t], u[t]] for t = 0...T-2
@@ -495,8 +497,11 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         init_stats, dynamics_stats, emission_stats = stats
 
         # Perform MAP estimation jointly
-        initial_posterior = niw_posterior_update(self.initial_prior, init_stats)
-        S, m = initial_posterior.mode()
+        def update_initial(s1, s2, s3):
+            initial_posterior = niw_posterior_update(self.initial_prior, (s1, s2, s3))
+            Sc, mc = initial_posterior.mode()
+            return Sc, mc
+        S, m = vmap(update_initial)(*init_stats)
 
         dynamics_posterior = mniw_posterior_update(self.dynamics_prior, dynamics_stats)
         Q, FB = dynamics_posterior.mode()
