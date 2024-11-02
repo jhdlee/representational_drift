@@ -466,9 +466,9 @@ class StiefelManifoldSSM(SSM):
             initial_state = self.initial_distribution(t, params, initial_input, conditions).sample(seed=key1)
 
             # Sample the remaining emissions and states
-            next_keys = jr.split(key, self.sequence_length - 1)
+            next_keys = jr.split(key, num_timesteps - 1)
             next_inputs = tree_map(lambda x: x[1:], inputs)
-            next_indices = jnp.arange(1, self.sequence_length)
+            next_indices = jnp.arange(1, num_timesteps)
             _, next_states = lax.scan(_dynamics_step, initial_state, (next_keys, next_inputs, next_indices))
 
             # Concatenate the initial state and emission with the following ones
@@ -491,10 +491,10 @@ class StiefelManifoldSSM(SSM):
                 return None, (emission, signal)
 
             # Sample the remaining emissions and states
-            next_keys = jr.split(key, self.sequence_length)
+            next_keys = jr.split(key, num_timesteps)
             next_states = tree_map(lambda x: x, state)
             next_inputs = tree_map(lambda x: x, inputs)
-            next_indices = jnp.arange(self.sequence_length)
+            next_indices = jnp.arange(num_timesteps)
             _, (next_emissions, next_signals) = lax.scan(_emissions_step, None, (next_keys, next_states,
                                                                                  next_inputs, next_indices))
             return None, (next_emissions, next_signals)
