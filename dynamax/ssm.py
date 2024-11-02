@@ -387,13 +387,15 @@ class SSM(ABC):
         batch_inputs = ensure_array_has_batch_dim(inputs, self.inputs_shape)
         conditions = jnp.zeros(len(emissions), dtype=int) if conditions is None else conditions
         trial_masks = jnp.ones(len(emissions), dtype=bool) if trial_masks is None else trial_masks
+        trial_ids = jnp.arange(len(emissions), dtype=int)
 
         @jit
         def em_step(params, m_step_state):
             batch_stats, lls, posteriors = vmap(partial(self.e_step, params))(batch_emissions,
                                                                               batch_inputs,
                                                                               conditions,
-                                                                              trial_masks)
+                                                                              trial_masks,
+                                                                              trial_ids)
             lp = self.log_prior(params) + lls.sum()
             params, m_step_state = self.m_step(params, props, batch_stats,
                                                m_step_state, posteriors,

@@ -354,11 +354,12 @@ def preprocess_args(f):
         emissions = bound_args.arguments['emissions']
         inputs = bound_args.arguments['inputs']
         condition = bound_args.arguments['condition']
+        trial_id = bound_args.arguments['trial_id']
 
         num_timesteps = len(emissions)
         full_params, inputs = preprocess_params_and_inputs(params, num_timesteps, inputs)
 
-        return f(full_params, emissions, inputs=inputs, condition=condition)
+        return f(full_params, emissions, inputs=inputs, condition=condition, trial_id=trial_id)
     return wrapper
 
 
@@ -440,6 +441,7 @@ def lgssm_filter(
     emissions:  Float[Array, "ntime emission_dim"],
     inputs: Optional[Float[Array, "ntime input_dim"]]=None,
     condition: int=0,
+    trial_id: int=0,
 ) -> PosteriorGSSMFiltered:
     r"""Run a Kalman filter to produce the marginal likelihood and filtered state estimates.
 
@@ -455,6 +457,11 @@ def lgssm_filter(
     num_timesteps = len(emissions)
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
+    if params.emissions.weights.ndim == 3:
+        H = params.emissions.weights[trial_id]
+    else:
+        H = params.emissions.weights
+
     def _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y):
         m = H @ pred_mean + D @ u + d
         if R.ndim==2:
@@ -464,12 +471,11 @@ def lgssm_filter(
             L = H @ jnp.linalg.cholesky(pred_cov)
             return MVNLowRank(m, R, L).log_prob(y)
 
-
     def _step(carry, t):
         ll, _pred_mean, _pred_cov = carry
 
         # Shorthand: get parameters and inputs for time index t
-        F, B, b, Q, H, D, d, R = _get_params(params, num_timesteps, t)
+        F, B, b, Q, _, D, d, R = _get_params(params, num_timesteps, t)
         u = inputs[t]
         y = emissions[t]
 
@@ -501,6 +507,7 @@ def lgssm_smoother(
     emissions: Float[Array, "ntime emission_dim"],
     inputs: Optional[Float[Array, "ntime input_dim"]]=None,
     condition: int=0,
+    trial_id: int=0,
 ) -> PosteriorGSSMSmoothed:
     r"""Run forward-filtering, backward-smoother to compute expectations
     under the posterior distribution on latent states. Technically, this
@@ -519,7 +526,7 @@ def lgssm_smoother(
     inputs = jnp.zeros((num_timesteps, 0)) if inputs is None else inputs
 
     # Run the Kalman filter
-    filtered_posterior = lgssm_filter(params, emissions, inputs, condition)
+    filtered_posterior = lgssm_filter(params, emissions, inputs, condition, trial_id)
     ll, filtered_means, filtered_covs, *_ = filtered_posterior
 
     # Run the smoother backward in time

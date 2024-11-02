@@ -723,13 +723,14 @@ class StiefelManifoldSSM(SSM):
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
         condition: int=0,
         trial_mask: bool=True,
+        trial_id: int=0,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
         if inputs is None:
             inputs = jnp.zeros((num_timesteps, 0))
 
         # Run the smoother to get posterior expectations
-        posterior = lgssm_smoother(params, emissions, inputs, condition)
+        posterior = lgssm_smoother(params, emissions, inputs, condition, trial_id)
 
         # shorthand
         Ex = posterior.smoothed_means
