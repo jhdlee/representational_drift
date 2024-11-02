@@ -563,7 +563,7 @@ class StiefelManifoldSSM(SSM):
 
     def ekf_marginal_log_prob(
             self,
-            params: ParamsLGSSM,
+            params: ParamsSMDS,
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
     ) -> Scalar:
@@ -591,7 +591,7 @@ class StiefelManifoldSSM(SSM):
 
     def ekf(
             self,
-            params: ParamsLGSSM,
+            params: ParamsSMDS,
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None
     ):
@@ -617,7 +617,7 @@ class StiefelManifoldSSM(SSM):
 
     def eks(
             self,
-            params: ParamsLGSSM,
+            params: ParamsSMDS,
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None
     ):
