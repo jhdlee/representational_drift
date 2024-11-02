@@ -19,7 +19,7 @@ from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother
 from dynamax.linear_gaussian_ssm.inference import ParamsLGSSMInitial, ParamsLGSSMDynamics
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 
-from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM
+from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.nonlinear_gaussian_ssm import (extended_kalman_smoother, extended_kalman_filter,
                                             extended_kalman_filter_x_marginalized)
 
