@@ -1,4 +1,5 @@
-from dynamax.nonlinear_gaussian_ssm.models import ParamsNLGSSM, NonlinearGaussianSSM, StiefelManifoldSSM
+from dynamax.nonlinear_gaussian_ssm.models import NonlinearGaussianSSM, StiefelManifoldSSM
+from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import extended_kalman_filter
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import extended_kalman_filter_x_marginalized
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import iterated_extended_kalman_filter
