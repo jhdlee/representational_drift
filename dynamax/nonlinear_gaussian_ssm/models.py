@@ -554,8 +554,8 @@ class StiefelManifoldSSM(SSM):
         h = self.get_h_x_marginalized(params)
 
         NLGSSM_params = ParamsNLGSSM(
-            initial_mean=params.initial_velocity.mean,
-            initial_covariance=params.initial_velocity.cov,
+            initial_mean=params.emissions.initial_velocity_mean,
+            initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
             emission_function=h,
@@ -581,8 +581,8 @@ class StiefelManifoldSSM(SSM):
         h = self.get_h_x_marginalized(params)
 
         NLGSSM_params = ParamsNLGSSM(
-            initial_mean=params.initial_velocity.mean,
-            initial_covariance=params.initial_velocity.cov,
+            initial_mean=params.emissions.initial_velocity_mean,
+            initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
             emission_function=h,
@@ -607,8 +607,8 @@ class StiefelManifoldSSM(SSM):
         h = self.get_h_x_marginalized(params)
 
         NLGSSM_params = ParamsNLGSSM(
-            initial_mean=params.initial_velocity.mean,
-            initial_covariance=params.initial_velocity.cov,
+            initial_mean=params.emissions.initial_velocity_mean,
+            initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
             emission_function=h,
