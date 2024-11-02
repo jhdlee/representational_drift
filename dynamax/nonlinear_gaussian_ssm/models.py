@@ -574,11 +574,14 @@ class StiefelManifoldSSM(SSM):
             self,
             params: ParamsSMDS,
             emissions: Float[Array, "ntime emission_dim"],
-            conditions: jnp.array = None
+            conditions: jnp.array = None,
+            trial_masks: jnp.array = None,
     ):
         num_trials = emissions.shape[0]
         if conditions is None:
             conditions = jnp.zeros(num_trials, dtype=int)
+        if trial_masks is None:
+            trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
         h = self.get_h_x_marginalized(params)
@@ -592,7 +595,8 @@ class StiefelManifoldSSM(SSM):
             emission_covariance=None
         )
 
-        filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions, conditions=conditions)
+        filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions,
+                                                                   conditions=conditions, trial_masks=trial_masks)
 
         return filtered_posterior
 
