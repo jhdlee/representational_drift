@@ -686,7 +686,7 @@ class StiefelManifoldSSM(SSM):
 
         return h
 
-    def velocity_smoother(self, params, covs, emissions, conditions):
+    def velocity_smoother(self, params, covs, emissions):
         f = self.get_f()
         h = self.get_h(params.emissions.base_subspace)
 
@@ -699,7 +699,7 @@ class StiefelManifoldSSM(SSM):
             emission_covariance=covs
         )
 
-        smoother = extended_kalman_smoother(NLGSSM_params, emissions, conditions=conditions)
+        smoother = extended_kalman_smoother(NLGSSM_params, emissions)
 
         return smoother
 
@@ -795,8 +795,7 @@ class StiefelManifoldSSM(SSM):
 
         # EKF to infer Vs
         emission_stats_1, emission_stats2 = emission_stats
-        velocity_smoother = self.velocity_smoother(params, emission_stats_1,
-                                                   emission_stats2, conditions)
+        velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2)
         Ev = velocity_smoother.smoothed_means
         Ev0 = velocity_smoother.smoothed_means[0]
         Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)
