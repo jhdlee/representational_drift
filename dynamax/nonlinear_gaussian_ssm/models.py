@@ -790,6 +790,9 @@ class StiefelManifoldSSM(SSM):
         emissions,
         conditions=None,
         trial_masks=None):
+        trial_masks_a = jnp.expand_dims(trial_masks, -1)
+        trial_masks_aa = jnp.expand_dims(trial_masks_a, -1)
+
         # Sum the statistics across all batches
         init_stats_, dynamics_stats_, emission_stats = batch_stats
         stats = tree_map(partial(jnp.sum, axis=0), (init_stats_, dynamics_stats_))
@@ -835,10 +838,10 @@ class StiefelManifoldSSM(SSM):
         tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
 
         Ex, Vx = posteriors.smoothed_means, posteriors.smoothed_covariances
-        emission_cov_stats_1 = (Ex.shape[0] * Ex.shape[1]) / 2
+        emission_cov_stats_1 = (trial_masks.sum() * Ex.shape[1]) / 2
         Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
-        emission_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey), axis=(0, 1))
-        emission_cov_stats_2 += jnp.diag(jnp.einsum('...ix,...txz,...jz->ij', H, Vx, H))
+        emission_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * trial_masks_aa, axis=(0, 1))
+        emission_cov_stats_2 += jnp.diag(jnp.einsum('...,...ix,...txz,...jz->ij', trial_masks, H, Vx, H))
         emission_cov_stats_2 = emission_cov_stats_2 / 2
         def update_emissions_cov(s2):
             emissions_cov_posterior = ig_posterior_update(self.emission_covariance_prior,
