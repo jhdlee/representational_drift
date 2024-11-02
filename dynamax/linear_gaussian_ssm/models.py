@@ -561,7 +561,8 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         batch_stats: SuffStatsLGSSM,
         m_step_state: Any,
         posteriors,
-        emissions):
+        emissions,
+        conditions=None):
         # Sum the statistics across all batches
         stats = tree_map(partial(jnp.sum, axis=0), batch_stats)
         init_stats, dynamics_stats, emission_stats = stats

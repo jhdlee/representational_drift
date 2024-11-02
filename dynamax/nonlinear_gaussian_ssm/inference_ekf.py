@@ -17,7 +17,7 @@ _process_fn = lambda f, u: (lambda x, y: f(x)) if u is None else f
 _process_input = lambda x, y: jnp.zeros((y,1)) if x is None else x
 
 
-def _predict(m, P, f, F, Q, u):
+def _predict(m, P, Q):
     r"""Predict next mean and covariance using first-order additive EKF
 
         p(z_{t+1}) = \int N(z_t | m, S) N(z_{t+1} | f(z_t, u), Q)
@@ -35,10 +35,7 @@ def _predict(m, P, f, F, Q, u):
         mu_pred (D_hid,): predicted mean.
         Sigma_pred (D_hid,D_hid): predicted covariance.
     """
-    F_x = F(m, u)
-    mu_pred = f(m, u)
-    Sigma_pred = F_x @ P @ F_x.T + Q
-    return mu_pred, Sigma_pred
+    return m, P + Q
 
 
 def _condition_on(m, P, h, H, R, u, y, num_iter):
@@ -84,12 +81,87 @@ def _condition_on(m, P, h, H, R, u, y, num_iter):
     (mu_cond, Sigma_cond), _ = lax.scan(_step, carry, jnp.arange(num_iter))
     return mu_cond, symmetrize(Sigma_cond)
 
+def extended_kalman_filter_x_marginalized(
+        params: ParamsNLGSSM,
+        emissions: Float[Array, "ntime emission_dim"],
+        conditions,
+        output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
+                                              "predicted_covariances"],
+) -> PosteriorGSSMFiltered:
+    r"""Run an (iterated) extended Kalman filter to produce the
+    marginal likelihood and filtered state estimates.
+
+    Args:
+        params: model parameters.
+        emissions: observation sequence.
+        num_iter: number of linearizations around posterior for update step (default 1).
+        inputs: optional array of inputs.
+        output_fields: list of fields to return in posterior object.
+            These can take the values "filtered_means", "filtered_covariances",
+            "predicted_means", "predicted_covariances", and "marginal_loglik".
+
+    Returns:
+        post: posterior object.
+
+    """
+    num_trials, num_timesteps, emissions_dim = emissions.shape
+
+    # Dynamics and emission functions and their Jacobians
+    h = params.emission_function
+    H = jacfwd(h, argnums=0, has_aux=True)
+
+    def _step(carry, t):
+        ll, _pred_mean, _pred_cov = carry
+
+        # Get parameters and inputs for time index t
+        Q = _get_params(params.dynamics_covariance, 2, t)
+        y = emissions[t]
+        y_flattened = y.flatten()
+        condition = conditions[t]
+
+        # Update the log likelihood
+        H_x, pred_obs_covs = H(_pred_mean, y, condition)  # (TN x V), (TN x T x N)
+        H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
+
+        y_pred, _ = h(_pred_mean, y, condition)  # TN
+        s_k = H_x @ _pred_cov @ H_x.T + H_eps
+        s_k = symmetrize(s_k)
+
+        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
+
+        K = psd_solve(s_k, H_x @ _pred_cov).T
+        filtered_cov = _pred_cov - K @ s_k @ K.T
+        filtered_mean = _pred_mean + K @ (y_flattened - y_pred)
+        filtered_cov = symmetrize(filtered_cov)
+
+        # Predict the next state
+        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
+
+        # Build carry and output states
+        carry = (ll, pred_mean, pred_cov)
+        outputs = {
+            "filtered_means": filtered_mean,
+            "filtered_covariances": filtered_cov,
+            "predicted_means": _pred_mean,
+            "predicted_covariances": _pred_cov,
+            "marginal_loglik": ll,
+        }
+        outputs = {key: val for key, val in outputs.items() if key in output_fields}
+
+        return carry, outputs
+
+    # Run the extended Kalman filter
+    carry = (0.0, params.initial_mean, params.initial_covariance)
+    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_trials))
+    outputs = {"marginal_loglik": ll, **outputs}
+    posterior_filtered = PosteriorGSSMFiltered(
+        **outputs,
+    )
+    return posterior_filtered
 
 def extended_kalman_filter(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
-    num_iter: int = 1,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None,
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
@@ -108,29 +180,32 @@ def extended_kalman_filter(
         post: posterior object.
 
     """
-    num_timesteps = len(emissions)
+    num_trials = len(emissions)
 
     # Dynamics and emission functions and their Jacobians
-    f, h = params.dynamics_function, params.emission_function
-    F, H = jacfwd(f), jacfwd(h)
-    f, h, F, H = (_process_fn(fn, inputs) for fn in (f, h, F, H))
-    inputs = _process_input(inputs, num_timesteps)
+    h = params.emission_function
+    H = jacfwd(h)
 
     def _step(carry, t):
-        ll, pred_mean, pred_cov = carry
+        ll, _pred_mean, _pred_cov = carry
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
         R = _get_params(params.emission_covariance, 2, t)
-        u = inputs[t]
         y = emissions[t]
 
         # Update the log likelihood
-        H_x = H(pred_mean, u)
-        ll += MVN(h(pred_mean, u), H_x @ pred_cov @ H_x.T + R).log_prob(jnp.atleast_1d(y))
+        H_x = H(_pred_mean)  # (ND x V)
+        y_pred = h(_pred_mean)  # ND
+        s_k = H_x @ _pred_cov @ H_x.T + R
+        s_k = symmetrize(s_k)
+        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
         # Condition on this emission
-        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, h, H, R, u, y, num_iter)
+        K = psd_solve(s_k, H_x @ _pred_cov).T
+        filtered_cov = _pred_cov - K @ s_k @ K.T
+        filtered_mean = _pred_mean + K @ (y - y_pred)
+        filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, f, F, Q, u)
@@ -140,8 +215,8 @@ def extended_kalman_filter(
         outputs = {
             "filtered_means": filtered_mean,
             "filtered_covariances": filtered_cov,
-            "predicted_means": pred_mean,
-            "predicted_covariances": pred_cov,
+            "predicted_means": _pred_mean,
+            "predicted_covariances": _pred_cov,
             "marginal_loglik": ll,
         }
         outputs = {key: val for key, val in outputs.items() if key in output_fields}
@@ -150,7 +225,7 @@ def extended_kalman_filter(
 
     # Run the extended Kalman filter
     carry = (0.0, params.initial_mean, params.initial_covariance)
-    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_timesteps))
+    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_trials))
     outputs = {"marginal_loglik": ll, **outputs}
     posterior_filtered = PosteriorGSSMFiltered(
         **outputs,
@@ -185,7 +260,6 @@ def extended_kalman_smoother(
     params: ParamsNLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
     filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
-    inputs: Optional[Float[Array, "ntime input_dim"]] = None
 ) -> PosteriorGSSMSmoothed:
     r"""Run an extended Kalman (RTS) smoother.
 
@@ -199,20 +273,14 @@ def extended_kalman_smoother(
         post: posterior object.
 
     """
-    num_timesteps = len(emissions)
+    num_trials = len(emissions)
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, inputs=inputs)
+        filtered_posterior = extended_kalman_filter(params, emissions)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
-
-    # Dynamics and emission functions and their Jacobians
-    f = params.dynamics_function
-    F = jacfwd(f)
-    f, F = (_process_fn(fn, inputs) for fn in (f, F))
-    inputs = _process_input(inputs, num_timesteps)
 
     def _step(carry, args):
         # Unpack the inputs
@@ -221,39 +289,42 @@ def extended_kalman_smoother(
 
         # Get parameters and inputs for time index t
         Q = _get_params(params.dynamics_covariance, 2, t)
-        R = _get_params(params.emission_covariance, 2, t)
-        u = inputs[t]
-        F_x = F(filtered_mean, u)
 
         # Prediction step
-        m_pred = f(filtered_mean, u)
-        S_pred = Q + F_x @ filtered_cov @ F_x.T
-        G = psd_solve(S_pred, F_x @ filtered_cov).T
+        m_pred = filtered_mean
+        S_pred = filtered_cov + Q
+        G = psd_solve(S_pred, filtered_cov).T
 
         # Compute smoothed mean and covariance
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
+        smoothed_cov = symmetrize(smoothed_cov)
 
-        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov)
+        # Compute the smoothed expectation of z_t z_{t+1}^T
+        smoothed_cross_cov = G @ smoothed_cov_next
+        smoothed_cross_outer = jnp.outer(smoothed_mean, smoothed_mean_next)
+
+        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross_cov, smoothed_cross_outer)
 
     # Run the extended Kalman smoother
-    _, (smoothed_means, smoothed_covs) = lax.scan(
+    _, (smoothed_means, smoothed_covs, smoothed_cross_cov, smoothed_cross_outer) = lax.scan(
         _step,
         (filtered_means[-1], filtered_covs[-1]),
-        (jnp.arange(num_timesteps - 1), filtered_means[:-1], filtered_covs[:-1]),
+        (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1]),
         reverse=True,
     )
 
     # Concatenate the arrays and return
     smoothed_means = jnp.vstack((smoothed_means, filtered_means[-1][None, ...]))
     smoothed_covs = jnp.vstack((smoothed_covs, filtered_covs[-1][None, ...]))
-
+    smoothed_cross = smoothed_cross_cov + smoothed_cross_outer
     return PosteriorGSSMSmoothed(
         marginal_loglik=ll,
         filtered_means=filtered_means,
         filtered_covariances=filtered_covs,
         smoothed_means=smoothed_means,
         smoothed_covariances=smoothed_covs,
+        smoothed_cross_covariances=smoothed_cross,
     )
 
 
