@@ -529,7 +529,7 @@ class StiefelManifoldSSM(SSM):
     def initial_distribution(
             self,
             timestep: int,
-            params: ParamsLGSSM,
+            params: ParamsSMDS,
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             conditions=None,
     ) -> tfd.Distribution:
