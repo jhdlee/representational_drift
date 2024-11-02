@@ -355,7 +355,8 @@ class SSM(ABC):
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
         conditions: Optional[Float[Array, "num_batches"]] = None,
         num_iters: int=50,
-        verbose: bool=True
+        verbose: bool=True,
+        print_ll: bool=False,
     ) -> Tuple[ParameterSet, Float[Array, "num_iters"]]:
         r"""Compute parameter MLE/ MAP estimate using Expectation-Maximization (EM).
 
@@ -404,6 +405,8 @@ class SSM(ABC):
         for _ in pbar:
             params, m_step_state, marginal_loglik = em_step(params, m_step_state)
             log_probs.append(marginal_loglik)
+            if print_ll:
+                print(marginal_loglik)
         return params, jnp.array(log_probs)
 
     def fit_sgd(
