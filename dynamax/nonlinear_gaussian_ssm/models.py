@@ -1,9 +1,18 @@
-from jaxtyping import Array, Float
+from fastprogress.fastprogress import progress_bar
+from functools import partial
+from jax import jit, vmap
+import jax.numpy as jnp
+import jax.random as jr
+import jax.nn as jnn
+from jax.tree_util import tree_map
+from jaxtyping import Array, Float, PyTree
 from typing import NamedTuple, Optional, Union, Callable
 import tensorflow_probability.substrates.jax as tfp
+import tensorflow_probability.substrates.jax.distributions as tfd
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
 from tensorflow_probability.substrates.jax.distributions import InverseGamma as IG
-import tensorflow_probability.substrates.jax.distributions as tfd
+from typing import Any, Optional, Tuple, Union
+from typing_extensions import Protocol
 
 from dynamax.ssm import SSM
 from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother
