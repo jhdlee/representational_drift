@@ -650,7 +650,7 @@ class StiefelManifoldSSM(SSM):
                     bias=b,
                     input_weights=jnp.zeros((self.state_dim, 0)),
                     cov=Q),
-                emissions=ParamsLGSSMEmissions(
+                emissions=ParamsSMDSEmissions(
                     weights=C,
                     bias=None,
                     input_weights=jnp.zeros((self.emission_dim, 0)),
