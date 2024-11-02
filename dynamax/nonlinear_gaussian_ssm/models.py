@@ -19,7 +19,9 @@ from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother
 from dynamax.linear_gaussian_ssm.inference import ParamsLGSSMInitial, ParamsLGSSMDynamics
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 
-from dynamax.nonlinear_gaussian_ssm import extended_kalman_smoother, extended_kalman_filter, extended_kalman_filter_x_marginalized
+from dynamax.nonlinear_gaussian_ssm import ParamsNLGSSM
+from dynamax.nonlinear_gaussian_ssm import (extended_kalman_smoother, extended_kalman_filter,
+                                            extended_kalman_filter_x_marginalized)
 
 from dynamax.parameters import ParameterProperties, ParameterSet
 from dynamax.types import PRNGKey, Scalar
@@ -93,32 +95,6 @@ class ParamsSMDS(NamedTuple):
     initial: ParamsLGSSMInitial
     dynamics: ParamsLGSSMDynamics
     emissions: ParamsSMDSEmissions
-
-class ParamsNLGSSM(NamedTuple):
-    """Parameters for a NLGSSM model.
-
-    $$p(z_t | z_{t-1}, u_t) = N(z_t | f(z_{t-1}, u_t), Q_t)$$
-    $$p(y_t | z_t) = N(y_t | h(z_t, u_t), R_t)$$
-    $$p(z_1) = N(z_1 | m, S)$$
-
-    If you have no inputs, the dynamics and emission functions do not to take $u_t$ as an argument.
-
-    :param dynamics_function: $f$
-    :param dynamics_covariance: $Q$
-    :param emissions_function: $h$
-    :param emissions_covariance: $R$
-    :param initial_mean: $m$
-    :param initial_covariance: $S$
-
-    """
-
-    initial_mean: Float[Array, "state_dim"]
-    initial_covariance: Float[Array, "state_dim state_dim"]
-    dynamics_function: Union[FnStateToState, FnStateAndInputToState]
-    dynamics_covariance: Float[Array, "state_dim state_dim"]
-    emission_function: Union[FnStateToEmission, FnStateAndInputToEmission]
-    emission_covariance: Float[Array, "emission_dim emission_dim"]
-
 
 class NonlinearGaussianSSM(SSM):
     """

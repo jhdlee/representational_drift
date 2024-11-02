@@ -16,6 +16,30 @@ _get_params = lambda x, dim, t: x[t] if x.ndim == dim + 1 else x
 _process_fn = lambda f, u: (lambda x, y: f(x)) if u is None else f
 _process_input = lambda x, y: jnp.zeros((y,1)) if x is None else x
 
+class ParamsNLGSSM(NamedTuple):
+    """Parameters for a NLGSSM model.
+
+    $$p(z_t | z_{t-1}, u_t) = N(z_t | f(z_{t-1}, u_t), Q_t)$$
+    $$p(y_t | z_t) = N(y_t | h(z_t, u_t), R_t)$$
+    $$p(z_1) = N(z_1 | m, S)$$
+
+    If you have no inputs, the dynamics and emission functions do not to take $u_t$ as an argument.
+
+    :param dynamics_function: $f$
+    :param dynamics_covariance: $Q$
+    :param emissions_function: $h$
+    :param emissions_covariance: $R$
+    :param initial_mean: $m$
+    :param initial_covariance: $S$
+
+    """
+
+    initial_mean: Float[Array, "state_dim"]
+    initial_covariance: Float[Array, "state_dim state_dim"]
+    dynamics_function: Union[FnStateToState, FnStateAndInputToState]
+    dynamics_covariance: Float[Array, "state_dim state_dim"]
+    emission_function: Union[FnStateToEmission, FnStateAndInputToEmission]
+    emission_covariance: Float[Array, "emission_dim emission_dim"]
 
 def _predict(m, P, Q):
     r"""Predict next mean and covariance using first-order additive EKF
