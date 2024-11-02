@@ -1,6 +1,7 @@
 from functools import partial
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy as jscipy
 from jax import jit
 from jax import vmap
 from jax.tree_util import tree_map, tree_leaves, tree_flatten, tree_unflatten
