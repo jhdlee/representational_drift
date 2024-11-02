@@ -1,6 +1,7 @@
 from fastprogress.fastprogress import progress_bar
 from functools import partial
-from jax import jit, vmap
+import jax
+from jax import jit, vmap, lax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.nn as jnn
