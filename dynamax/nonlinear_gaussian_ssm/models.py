@@ -838,10 +838,10 @@ class StiefelManifoldSSM(SSM):
         params = ParamsSMDS(
             initial=ParamsLGSSMInitial(mean=m, cov=S),
             dynamics=ParamsLGSSMDynamics(weights=F, bias=b, input_weights=B, cov=Q),
-            emissions=ParamsLGSSMEmissions(weights=H, bias=d, input_weights=D, cov=R,
-                                           base_subspace=params.emissions.base_subspace,
-                                           tau=tau,
-                                           initial_velocity_mean=initial_velocity_mean,
-                                           initial_velocity_cov=initial_velocity_cov)
+            emissions=ParamsSMDSEmissions(weights=H, bias=d, input_weights=D, cov=R,
+                                          base_subspace=params.emissions.base_subspace,
+                                          tau=tau,
+                                          initial_velocity_mean=initial_velocity_mean,
+                                          initial_velocity_cov=initial_velocity_cov)
         )
         return params, m_step_state
