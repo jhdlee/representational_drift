@@ -7,7 +7,6 @@ from jaxtyping import Array, Float
 from typing import List, Optional
 
 from dynamax.utils.utils import psd_solve, symmetrize
-from dynamax.nonlinear_gaussian_ssm.models import ParamsNLGSSM
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 from dynamax.types import PRNGKey
 
