@@ -350,7 +350,7 @@ class StiefelManifoldSSM(SSM):
             emission_bias=None,
             emission_input_weights=None,
             emission_covariance=None,
-    ) -> Tuple[ParamsTVLGSSM, ParamsTVLGSSM]:
+    ) -> Tuple[ParamsSMDS, ParamsSMDS]:
         r"""Initialize model parameters that are set to None, and their corresponding properties.
 
         Args:
@@ -538,7 +538,7 @@ class StiefelManifoldSSM(SSM):
 
     def transition_distribution(
             self,
-            params: ParamsTVLGSSM,
+            params: ParamsSMDS,
             state: Float[Array, "state_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None
     ) -> tfd.Distribution:
@@ -550,7 +550,7 @@ class StiefelManifoldSSM(SSM):
 
     def emission_distribution(
             self,
-            params: ParamsTVLGSSM,
+            params: ParamsSMDS,
             state: Float[Array, "state_dim"],
             inputs: Optional[Float[Array, "ntime input_dim"]] = None,
             timestep: int=0,
@@ -644,8 +644,8 @@ class StiefelManifoldSSM(SSM):
 
     def initialize_m_step_state(
             self,
-            params: ParamsTVLGSSM,
-            props: ParamsTVLGSSM
+            params: ParamsSMDS,
+            props: ParamsSMDS
     ) -> Any:
         return None
 
@@ -663,7 +663,7 @@ class StiefelManifoldSSM(SSM):
             mu_v_0 = params.emissions.initial_velocity_mean
             Sigma_v_0 = params.emissions.initial_velocity_cov
             tau = params.emissions.tau
-            h_params = ParamsTVLGSSM(
+            h_params = ParamsSMDS(
                 initial=ParamsLGSSMInitial(
                     mean=mu_0,
                     cov=Sigma_0),
