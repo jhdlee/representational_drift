@@ -236,7 +236,7 @@ def extended_kalman_filter(
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
-        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, f, F, Q, u)
+        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
