@@ -4,7 +4,7 @@ from jax import lax
 from jax import jacfwd
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
 from jaxtyping import Array, Float
-from typing import List, Optional
+from typing import List, Optional, NamedTuple, Optional, Union, Callable
 
 from dynamax.utils.utils import psd_solve, symmetrize
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
