@@ -385,9 +385,9 @@ class SSM(ABC):
         # Make sure the emissions and inputs have batch dimensions
         batch_emissions = ensure_array_has_batch_dim(emissions, self.emission_shape)
         batch_inputs = ensure_array_has_batch_dim(inputs, self.inputs_shape)
-        conditions = jnp.zeros(len(emissions), dtype=int) if conditions is None else conditions
-        trial_masks = jnp.ones(len(emissions), dtype=bool) if trial_masks is None else trial_masks
-        trial_ids = jnp.arange(len(emissions), dtype=int)
+        conditions = jnp.zeros(len(batch_emissions), dtype=int) if conditions is None else conditions
+        trial_masks = jnp.ones(len(batch_emissions), dtype=bool) if trial_masks is None else trial_masks
+        trial_ids = jnp.arange(len(batch_emissions), dtype=int)
 
         @jit
         def em_step(params, m_step_state):
