@@ -799,7 +799,8 @@ class StiefelManifoldSSM(SSM):
         Ev = velocity_smoother.smoothed_means
         Ev0 = velocity_smoother.smoothed_means[0]
         Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)
-        H = vmap(rotate_subspace, in_axes=(None, None, 0))(base_subspace, self.state_dim, Ev)
+        H = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace,
+                                                           self.state_dim, Ev)
 
         init_velocity_stats = (Ev0, Ev0v0T, 1)
         initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior, init_velocity_stats)
