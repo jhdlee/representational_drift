@@ -604,11 +604,14 @@ class StiefelManifoldSSM(SSM):
             self,
             params: ParamsSMDS,
             emissions: Float[Array, "ntime emission_dim"],
-            conditions: jnp.array = None
+            conditions: jnp.array = None,
+            trial_masks: jnp.array = None,
     ):
         num_trials = emissions.shape[0]
         if conditions is None:
             conditions = jnp.zeros(num_trials, dtype=int)
+        if trial_masks is None:
+            trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
         h = self.get_h_x_marginalized(params)
@@ -622,7 +625,8 @@ class StiefelManifoldSSM(SSM):
             emission_covariance=None
         )
 
-        filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions, conditions=conditions)
+        filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions,
+                                                                   conditions=conditions, trial_masks=trial_masks)
         smoothed_posterior = extended_kalman_smoother(NLGSSM_params, emissions, filtered_posterior=filtered_posterior)
 
         return smoothed_posterior
@@ -815,11 +819,11 @@ class StiefelManifoldSSM(SSM):
         emission_stats_1, emission_stats2 = emission_stats
         velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, trial_masks)
         Ev = velocity_smoother.smoothed_means
-        Ev0 = velocity_smoother.smoothed_means[0]
-        Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)
         H = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace,
                                                            self.state_dim, Ev)
 
+        Ev0 = velocity_smoother.smoothed_means[0]
+        Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)
         init_velocity_stats = (Ev0, Ev0v0T, 1)
         initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior, init_velocity_stats)
         initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.mode()

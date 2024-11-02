@@ -327,7 +327,7 @@ def extended_kalman_smoother(
         # Prediction step
         m_pred = filtered_mean
         S_pred = filtered_cov + Q
-        G = psd_solve(S_pred, filtered_cov).T
+        G = psd_solve(S_pred, filtered_cov, diagonal_boost=0.0).T
 
         # Compute smoothed mean and covariance
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
