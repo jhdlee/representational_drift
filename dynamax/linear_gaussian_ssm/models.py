@@ -125,7 +125,7 @@ class LinearGaussianSSM(SSM):
 
         # Arbitrary default values, for demo purposes.
         _initial_mean = jnp.zeros((self.num_conditions, self.state_dim))
-        _initial_covariance = jnp.repeat(jnp.eye(self.state_dim)[jnp.newaxis], self.num_conditions, axis=0)
+        _initial_covariance = 0.1 * jnp.repeat(jnp.eye(self.state_dim)[jnp.newaxis], self.num_conditions, axis=0)
         _dynamics_weights = 0.99 * jnp.eye(self.state_dim)
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
