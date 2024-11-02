@@ -544,11 +544,14 @@ class StiefelManifoldSSM(SSM):
             params: ParamsSMDS,
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
+            trial_masks: jnp.array = None,
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
         if conditions is None:
             conditions = jnp.zeros(num_trials, dtype=int)
+        if trial_masks is None:
+            trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
         h = self.get_h_x_marginalized(params)
@@ -563,7 +566,7 @@ class StiefelManifoldSSM(SSM):
         )
 
         filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions,
-                                                                   conditions=conditions)
+                                                                   conditions=conditions, trial_masks=trial_masks)
 
         return filtered_posterior.marginal_loglik
 
@@ -686,7 +689,7 @@ class StiefelManifoldSSM(SSM):
 
         return h
 
-    def velocity_smoother(self, params, covs, emissions):
+    def velocity_smoother(self, params, covs, emissions, trial_masks):
         f = self.get_f()
         h = self.get_h(params.emissions.base_subspace)
 
@@ -699,7 +702,7 @@ class StiefelManifoldSSM(SSM):
             emission_covariance=covs
         )
 
-        smoother = extended_kalman_smoother(NLGSSM_params, emissions)
+        smoother = extended_kalman_smoother(NLGSSM_params, emissions, trial_masks=trial_masks)
 
         return smoother
 
@@ -711,6 +714,7 @@ class StiefelManifoldSSM(SSM):
         inputs: Optional[Union[Float[Array, "num_timesteps input_dim"],
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
         condition: int=0,
+        trial_mask: bool=True,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
         if inputs is None:
@@ -735,7 +739,7 @@ class StiefelManifoldSSM(SSM):
         y = emissions
 
         # expected sufficient statistics for the initial tfd.Distribution
-        c = jnn.one_hot(condition, self.num_conditions)
+        c = trial_mask * jnn.one_hot(condition, self.num_conditions)
         Ex0 = jnp.einsum('c,j->cj', c, posterior.smoothed_means[0])
         Ex0x0T = jnp.einsum('c,jk->cjk', c, posterior.smoothed_covariances[0]
                             + jnp.outer(posterior.smoothed_means[0], posterior.smoothed_means[0]))
@@ -746,12 +750,18 @@ class StiefelManifoldSSM(SSM):
         # let xn[t] = x[t+1]          for t = 0...T-2
         sum_zpzpT = jnp.block([[Exp.T @ Exp, Exp.T @ up], [up.T @ Exp, up.T @ up]])
         sum_zpzpT = sum_zpzpT.at[:self.state_dim, :self.state_dim].add(Vxp.sum(0))
+        sum_zpzpT = trial_mask * sum_zpzpT
+
         sum_zpxnT = jnp.block([[Expxn.sum(0)], [up.T @ Exn]])
+        sum_zpxnT = trial_mask * sum_zpxnT
+
         sum_xnxnT = Vxn.sum(0) + Exn.T @ Exn
-        dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, num_timesteps - 1)
+        sum_xnxnT = trial_mask * sum_xnxnT
+
+        dynamics_counts = trial_mask * (num_timesteps - 1)
+        dynamics_stats = (sum_zpzpT, sum_zpxnT, sum_xnxnT, dynamics_counts)
         if not self.has_dynamics_bias:
-            dynamics_stats = (sum_zpzpT[:-1, :-1], sum_zpxnT[:-1, :], sum_xnxnT,
-                                num_timesteps - 1)
+            dynamics_stats = (sum_zpzpT[:-1, :-1], sum_zpxnT[:-1, :], sum_xnxnT, dynamics_counts)
 
         # more expected sufficient statistics for the emissions
         # let z[t] = [x[t], u[t]] for t = 0...T-1
@@ -764,7 +774,7 @@ class StiefelManifoldSSM(SSM):
         emissions_stats_2 = jnp.einsum('il,lk->ki', emissions_stats_2, Rinv).reshape(-1)
         emission_stats = (emissions_stats_1, emissions_stats_2)
 
-        return (init_stats, dynamics_stats, emission_stats), posterior.marginal_loglik, posterior
+        return (init_stats, dynamics_stats, emission_stats), trial_mask * posterior.marginal_loglik, posterior
 
     def m_step(
         self,
@@ -774,7 +784,8 @@ class StiefelManifoldSSM(SSM):
         m_step_state: Any,
         posteriors,
         emissions,
-        conditions=None):
+        conditions=None,
+        trial_masks=None):
         # Sum the statistics across all batches
         init_stats_, dynamics_stats_, emission_stats = batch_stats
         stats = tree_map(partial(jnp.sum, axis=0), (init_stats_, dynamics_stats_))
@@ -795,7 +806,7 @@ class StiefelManifoldSSM(SSM):
 
         # EKF to infer Vs
         emission_stats_1, emission_stats2 = emission_stats
-        velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2)
+        velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, trial_masks)
         Ev = velocity_smoother.smoothed_means
         Ev0 = velocity_smoother.smoothed_means[0]
         Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)

@@ -354,6 +354,7 @@ class SSM(ABC):
         inputs: Optional[Union[Float[Array, "num_timesteps input_dim"],
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
         conditions: Optional[Float[Array, "num_batches"]] = None,
+        trial_masks: jnp.array = None,
         num_iters: int=50,
         verbose: bool=True,
         print_ll: bool=False,
@@ -385,16 +386,18 @@ class SSM(ABC):
         batch_emissions = ensure_array_has_batch_dim(emissions, self.emission_shape)
         batch_inputs = ensure_array_has_batch_dim(inputs, self.inputs_shape)
         conditions = jnp.zeros(len(emissions), dtype=int) if conditions is None else conditions
+        trial_masks = jnp.ones(len(emissions), dtype=bool) if trial_masks is None else trial_masks
 
         @jit
         def em_step(params, m_step_state):
             batch_stats, lls, posteriors = vmap(partial(self.e_step, params))(batch_emissions,
                                                                               batch_inputs,
-                                                                              conditions)
+                                                                              conditions,
+                                                                              trial_masks)
             lp = self.log_prior(params) + lls.sum()
             params, m_step_state = self.m_step(params, props, batch_stats,
                                                m_step_state, posteriors,
-                                               emissions, conditions)
+                                               emissions, conditions, trial_masks)
             # debug.print('e_step: {x}', x=(batch_stats, lls))
             # debug.print('m_step{y}', y=params)
             return params, m_step_state, lp

@@ -354,6 +354,7 @@ class LinearGaussianSSM(SSM):
         inputs: Optional[Union[Float[Array, "num_timesteps input_dim"],
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
         condition: int=0,
+        trial_mask: bool=True,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
         if inputs is None:
@@ -562,7 +563,8 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         m_step_state: Any,
         posteriors,
         emissions,
-        conditions=None):
+        conditions=None,
+        trial_masks=None):
         # Sum the statistics across all batches
         stats = tree_map(partial(jnp.sum, axis=0), batch_stats)
         init_stats, dynamics_stats, emission_stats = stats

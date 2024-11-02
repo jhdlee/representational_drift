@@ -116,6 +116,7 @@ def extended_kalman_filter_x_marginalized(
         conditions,
         output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
+        trial_masks = None,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -147,6 +148,7 @@ def extended_kalman_filter_x_marginalized(
         y = emissions[t]
         y_flattened = y.flatten()
         condition = conditions[t]
+        trial_mask = trial_masks[t]
 
         # Update the log likelihood
         H_x, pred_obs_covs = H(_pred_mean, y, condition)  # (TN x V), (TN x T x N)
@@ -156,11 +158,11 @@ def extended_kalman_filter_x_marginalized(
         s_k = H_x @ _pred_cov @ H_x.T + H_eps
         s_k = symmetrize(s_k)
 
-        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
+        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
 
         K = psd_solve(s_k, H_x @ _pred_cov).T
-        filtered_cov = _pred_cov - K @ s_k @ K.T
-        filtered_mean = _pred_mean + K @ (y_flattened - y_pred)
+        filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
+        filtered_mean = _pred_mean + trial_mask * (K @ (y_flattened - y_pred))
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
@@ -192,6 +194,7 @@ def extended_kalman_filter(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
+    trial_masks = None,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -222,18 +225,19 @@ def extended_kalman_filter(
         Q = _get_params(params.dynamics_covariance, 2, t)
         R = _get_params(params.emission_covariance, 2, t)
         y = emissions[t]
+        trial_mask = trial_masks[t]
 
         # Update the log likelihood
         H_x = H(_pred_mean)  # (ND x V)
         y_pred = h(_pred_mean)  # ND
         s_k = H_x @ _pred_cov @ H_x.T + R
         s_k = symmetrize(s_k)
-        ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
+        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
         # Condition on this emission
         K = psd_solve(s_k, H_x @ _pred_cov).T
-        filtered_cov = _pred_cov - K @ s_k @ K.T
-        filtered_mean = _pred_mean + K @ (y - y_pred)
+        filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
+        filtered_mean = _pred_mean + trial_mask * (K @ (y - y_pred))
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
@@ -289,6 +293,7 @@ def extended_kalman_smoother(
     params: ParamsNLGSSM,
     emissions:  Float[Array, "ntime emission_dim"],
     filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
+    trial_masks = None,
 ) -> PosteriorGSSMSmoothed:
     r"""Run an extended Kalman (RTS) smoother.
 
@@ -306,7 +311,7 @@ def extended_kalman_smoother(
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions)
+        filtered_posterior = extended_kalman_filter(params, emissions, trial_masks=trial_masks)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
