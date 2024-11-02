@@ -323,6 +323,7 @@ class StiefelManifoldSSM(SSM):
             velocity=None,
             initial_velocity_mean=None,
             initial_velocity_cov=None,
+            emission_weights=None,
             emission_bias=None,
             emission_input_weights=None,
             emission_covariance=None,
