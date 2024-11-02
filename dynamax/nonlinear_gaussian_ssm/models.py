@@ -225,9 +225,12 @@ class StiefelManifoldSSM(SSM):
             fix_initial_velocity: bool = False,
             **kw_priors
     ):
-        super().__init__(state_dim=state_dim, emission_dim=emission_dim,
-                         input_dim=input_dim, num_conditions=num_conditions,
-                         has_dynamics_bias=has_dynamics_bias, has_emissions_bias=has_emissions_bias)
+        self.state_dim = state_dim
+        self.emission_dim = emission_dim
+        self.input_dim = input_dim
+        self.num_conditions = num_conditions
+        self.has_dynamics_bias = has_dynamics_bias
+        self.has_emissions_bias = has_emissions_bias
 
         self.dof = self.state_dim * (self.emission_dim - self.state_dim)
         self.dof_shape = (self.state_dim, (self.emission_dim - self.state_dim))
