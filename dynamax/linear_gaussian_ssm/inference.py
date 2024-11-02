@@ -466,7 +466,7 @@ def lgssm_filter(
 
 
     def _step(carry, t):
-        ll, pred_mean, pred_cov = carry
+        ll, _pred_mean, _pred_cov = carry
 
         # Shorthand: get parameters and inputs for time index t
         F, B, b, Q, H, D, d, R = _get_params(params, num_timesteps, t)
@@ -474,20 +474,25 @@ def lgssm_filter(
         y = emissions[t]
 
         # Update the log likelihood
-        ll += _log_likelihood(pred_mean, pred_cov, H, D, d, R, u, y)
+        ll += _log_likelihood(_pred_mean, _pred_cov, H, D, d, R, u, y)
 
         # Condition on this emission
-        filtered_mean, filtered_cov = _condition_on(pred_mean, pred_cov, H, D, d, R, u, y)
+        filtered_mean, filtered_cov = _condition_on(_pred_mean, _pred_cov, H, D, d, R, u, y)
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, F, B, b, Q, u)
 
-        return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov)
+        return (ll, pred_mean, pred_cov), (filtered_mean, filtered_cov, _pred_mean, _pred_cov)
 
     # Run the Kalman filter
     carry = (0.0, params.initial.mean[condition], params.initial.cov[condition])
-    (ll, _, _), (filtered_means, filtered_covs) = lax.scan(_step, carry, jnp.arange(num_timesteps))
-    return PosteriorGSSMFiltered(marginal_loglik=ll, filtered_means=filtered_means, filtered_covariances=filtered_covs)
+    (ll, _, _), (filtered_means, filtered_covs, pred_means, pred_covs) = lax.scan(_step, carry,
+                                                                                  jnp.arange(num_timesteps))
+    return PosteriorGSSMFiltered(marginal_loglik=ll,
+                                 filtered_means=filtered_means,
+                                 filtered_covariances=filtered_covs,
+                                 predicted_means=pred_means,
+                                 predicted_covariances=pred_covs)
 
 
 @preprocess_args
