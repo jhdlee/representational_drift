@@ -160,7 +160,7 @@ def extended_kalman_filter_x_marginalized(
 
         ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
 
-        K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=0.0).T
+        K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=1e-9).T
         filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
         filtered_mean = _pred_mean + trial_mask * (K @ (y_flattened - y_pred))
         filtered_cov = symmetrize(filtered_cov)
@@ -235,7 +235,7 @@ def extended_kalman_filter(
         ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
 
         # Condition on this emission
-        K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=0.0).T
+        K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=1e-9).T
         filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
         filtered_mean = _pred_mean + trial_mask * (K @ (y - y_pred))
         filtered_cov = symmetrize(filtered_cov)
@@ -327,7 +327,7 @@ def extended_kalman_smoother(
         # Prediction step
         m_pred = filtered_mean
         S_pred = filtered_cov + Q
-        G = psd_solve(S_pred, filtered_cov, diagonal_boost=0.0).T
+        G = psd_solve(S_pred, filtered_cov, diagonal_boost=1e-9).T
 
         # Compute smoothed mean and covariance
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)

@@ -779,7 +779,7 @@ class StiefelManifoldSSM(SSM):
         emissions_stats_1 = jnp.einsum('ti,tl->il', Ex, Ex)
         emissions_stats_1 += jnp.einsum('tij->ij', Vx)
         emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
-        emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
+        emissions_stats_1 = psd_solve(emissions_stats_1, jnp.eye(emissions_stats_1.shape[-1]))
         emissions_stats_2 = jnp.einsum('ti,tl->il', Ex, y)
         emissions_stats_2 = jnp.einsum('il,lk->ki', emissions_stats_2, Rinv).reshape(-1)
         emissions_stats_2 = jnp.einsum('ij,j->i', emissions_stats_1, emissions_stats_2)
