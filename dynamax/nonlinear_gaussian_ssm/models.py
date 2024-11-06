@@ -775,14 +775,15 @@ class StiefelManifoldSSM(SSM):
         # more expected sufficient statistics for the emissions
         # let z[t] = [x[t], u[t]] for t = 0...T-1
         Rinv = jnp.linalg.inv(params.emissions.cov)
-        reshape_dim = self.emission_dim * (self.state_dim + self.has_emissions_bias)
-        emissions_stats_1 = jnp.einsum('ti,tl->il', Ex, Ex)
+        # Assumes that Rinv is diagonal
+        Rinv_d = jnp.diag(Rinv)
+        emissions_stats_1 = jnp.einsum('ti,tj->ij', Ex, Ex)
         emissions_stats_1 += jnp.einsum('tij->ij', Vx)
-        emissions_stats_1 = jnp.einsum('il,jk->jikl', emissions_stats_1, Rinv).reshape(reshape_dim, reshape_dim)
-        emissions_stats_1 = psd_solve(emissions_stats_1, jnp.eye(emissions_stats_1.shape[-1]))
-        emissions_stats_2 = jnp.einsum('ti,tl->il', Ex, y)
-        emissions_stats_2 = jnp.einsum('il,lk->ki', emissions_stats_2, Rinv).reshape(-1)
-        emissions_stats_2 = jnp.einsum('ij,j->i', emissions_stats_1, emissions_stats_2)
+        emissions_stats_1 = jnp.einsum('ij,k->kij', emissions_stats_1, Rinv_d)
+        emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
+        emissions_stats_2 = jnp.einsum('ti,tj->ij', Ex, y)
+        emissions_stats_2 = jnp.einsum('ij,j->ji', emissions_stats_2, Rinv_d)
+        emissions_stats_2 = jnp.einsum('kij,kj->ki', emissions_stats_1, emissions_stats_2)
         emission_stats = (emissions_stats_1, emissions_stats_2)
 
         return (init_stats, dynamics_stats, emission_stats), trial_mask * posterior.marginal_loglik, posterior
@@ -855,8 +856,11 @@ class StiefelManifoldSSM(SSM):
                                                           (emission_cov_stats_1, s2))
             emissions_cov = emissions_cov_posterior.mode()
             return emissions_cov
-
         R = jnp.diag(vmap(update_emissions_cov)(emission_cov_stats_2))
+
+        # H, R = params.emissions.weights, params.emissions.cov
+        # tau = params.emissions.tau
+        # initial_velocity_mean, initial_velocity_cov = params.emissions.initial_velocity_mean, params.emissions.initial_velocity_cov
         D = params.emissions.input_weights
         d = params.emissions.bias
 

@@ -217,27 +217,32 @@ def extended_kalman_filter(
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
     H = jacfwd(h)
+    # HH = hessian(h)
 
     def _step(carry, t):
         ll, _pred_mean, _pred_cov = carry
 
         # Get parameters and inputs for time index t
-        Q = _get_params(params.dynamics_covariance, 2, t)
-        R = _get_params(params.emission_covariance, 2, t)
+        Q = params.dynamics_covariance
+        R = params.emission_covariance[t]
         y = emissions[t]
         trial_mask = trial_masks[t]
 
         # Update the log likelihood
         H_x = H(_pred_mean)  # (ND x V)
+        # HH_x = HH(_pred_mean) # (ND x V x V)
         y_pred = h(_pred_mean)  # ND
-        s_k = H_x @ _pred_cov @ H_x.T + R
+        # y_pred += 0.5*jnp.einsum('nji,ji->n', HH_x, _pred_cov)
+        s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*R)
+        # HHPHHP = jnp.einsum('nij,jk,mkl,lx->nmix', HH_x, _pred_cov, HH_x, _pred_cov)
+        # s_k += 0.5*jnp.trace(HHPHHP, axis1=-2, axis2=-1)
         s_k = symmetrize(s_k)
-        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y))
+        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y.flatten()))
 
         # Condition on this emission
         K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=1e-9).T
         filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
-        filtered_mean = _pred_mean + trial_mask * (K @ (y - y_pred))
+        filtered_mean = _pred_mean + trial_mask * (K @ (y.flatten() - y_pred))
         filtered_cov = symmetrize(filtered_cov)
 
         # Predict the next state
