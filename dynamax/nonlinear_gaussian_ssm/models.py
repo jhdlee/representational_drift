@@ -308,9 +308,11 @@ class StiefelManifoldSSM(SSM):
         lp += self.initial_velocity_prior.log_prob((params.emissions.initial_velocity_cov,
                                                     params.emissions.initial_velocity_mean))
         if not self.fix_tau:
-            tau_lp = self.tau_prior.log_prob(params.emissions.tau)
             if self.tau_per_dim:
+                tau_lp = self.tau_prior.log_prob(params.emissions.tau)
                 tau_lp = tau_lp.sum()
+            else:
+                tau_lp = self.tau_prior.log_prob(params.emissions.tau[0])
             lp += tau_lp
         lp += self.emission_covariance_prior.log_prob(jnp.diag(params.emissions.cov)).sum()
 
@@ -865,7 +867,7 @@ class StiefelManifoldSSM(SSM):
                 tau_stats_2 = jnp.diag(tau_stats_2).sum() / 2
                 tau_posterior = ig_posterior_update(self.tau_prior, (tau_stats_1, tau_stats_2))
                 tau_mode = tau_posterior.mode()
-                tau = jnp.eye(self.dof) * tau_mode
+                tau = jnp.ones(self.dof) * tau_mode
 
         Ex, Vx = posteriors.smoothed_means, posteriors.smoothed_covariances
         emission_cov_stats_1 = (trial_masks.sum() * Ex.shape[1]) / 2
