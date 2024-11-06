@@ -139,7 +139,7 @@ class PosteriorGSSMSmoothed(NamedTuple):
     filtered_means: Float[Array, "ntime state_dim"]
     filtered_covariances: Float[Array, "ntime state_dim state_dim"]
     smoothed_means: Float[Array, "ntime state_dim"]
-    smoothed_covariances: Float[Array, "ntime state_dim state_dim"]
+    smoothed_covariances: Float[Array, "ntime state_dim state_dim"] = None
     smoothed_covariances_0: Float[Array, "state_dim state_dim"] = None
     smoothed_covariances_p: Float[Array, "state_dim state_dim"] = None
     smoothed_covariances_n: Float[Array, "state_dim state_dim"] = None
