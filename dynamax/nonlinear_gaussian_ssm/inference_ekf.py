@@ -323,11 +323,11 @@ def extended_kalman_smoother(
 
     def _step(carry, args):
         # Unpack the inputs
-        smoothed_mean_next, smoothed_cov_next = carry
+        smoothed_mean_next, smoothed_cov_next, smoothed_cov_sum, smoothed_cc_sum, smoothed_co_sum = carry
         t, filtered_mean, filtered_cov = args
 
         # Get parameters and inputs for time index t
-        Q = _get_params(params.dynamics_covariance, 2, t)
+        Q = params.dynamics_covariance
 
         # Prediction step
         m_pred = filtered_mean
@@ -338,31 +338,40 @@ def extended_kalman_smoother(
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
         smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
         smoothed_cov = symmetrize(smoothed_cov)
+        smoothed_cov_sum += smoothed_cov
 
         # Compute the smoothed expectation of z_t z_{t+1}^T
-        smoothed_cross_cov = G @ smoothed_cov_next
-        smoothed_cross_outer = jnp.outer(smoothed_mean, smoothed_mean_next)
+        smoothed_cc_sum += G @ smoothed_cov_next
+        smoothed_co_sum += jnp.outer(smoothed_mean, smoothed_mean_next)
 
-        return (smoothed_mean, smoothed_cov), (smoothed_mean, smoothed_cov, smoothed_cross_cov, smoothed_cross_outer)
+        return ((smoothed_mean, smoothed_cov, smoothed_cov_sum, smoothed_cc_sum, smoothed_co_sum),
+                smoothed_mean)
 
+    dof = filtered_covs.shape[-1]
+    smoothed_cross_cov_sum_init = jnp.zeros((dof, dof))
+    smoothed_cross_outer_sum_init = jnp.zeros((dof, dof))
+    smoothed_cov_sum_init = jnp.zeros((dof, dof))
     # Run the extended Kalman smoother
-    _, (smoothed_means, smoothed_covs, smoothed_cross_cov, smoothed_cross_outer) = lax.scan(
+    ((_, smoothed_cov_0, smoothed_cov_sum, smoothed_cross_cov_sum, smoothed_cross_outer_sum),
+     smoothed_means) = lax.scan(
         _step,
-        (filtered_means[-1], filtered_covs[-1]),
+        (filtered_means[-1], filtered_covs[-1],
+         smoothed_cov_sum_init, smoothed_cross_cov_sum_init, smoothed_cross_outer_sum_init),
         (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1]),
         reverse=True,
     )
 
     # Concatenate the arrays and return
     smoothed_means = jnp.vstack((smoothed_means, filtered_means[-1][None, ...]))
-    smoothed_covs = jnp.vstack((smoothed_covs, filtered_covs[-1][None, ...]))
-    smoothed_cross = smoothed_cross_cov + smoothed_cross_outer
+    smoothed_cross = smoothed_cross_cov_sum + smoothed_cross_outer_sum
     return PosteriorGSSMSmoothed(
         marginal_loglik=ll,
         filtered_means=filtered_means,
         filtered_covariances=filtered_covs,
         smoothed_means=smoothed_means,
-        smoothed_covariances=smoothed_covs,
+        smoothed_covariances_0=smoothed_cov_0,
+        smoothed_covariances_p=smoothed_cov_sum,
+        smoothed_covariances_n=smoothed_cov_sum - smoothed_cov_0 + filtered_covs[-1],
         smoothed_cross_covariances=smoothed_cross,
     )
 

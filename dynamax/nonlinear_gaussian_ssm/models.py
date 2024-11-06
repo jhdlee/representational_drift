@@ -827,17 +827,16 @@ class StiefelManifoldSSM(SSM):
                                                            self.state_dim, Ev)
 
         Ev0 = velocity_smoother.smoothed_means[0]
-        Ev0v0T = velocity_smoother.smoothed_covariances[0] + jnp.outer(Ev0, Ev0)
+        Ev0v0T = velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0)
         init_velocity_stats = (Ev0, Ev0v0T, 1)
         initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior, init_velocity_stats)
         initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.mode()
 
         tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
-        Vv = velocity_smoother.smoothed_covariances
-        Vvpvn_sum = velocity_smoother.smoothed_cross_covariances.sum(0)
-        tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + Vv[1:].sum(0)
+        Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
+        tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
         tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
-        tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + Vv[:-1].sum(0)
+        tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + velocity_smoother.smoothed_covariances_p
         tau_stats_2 = jnp.diag(tau_stats_2) / 2
         def update_tau(s1, s2):
             tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
