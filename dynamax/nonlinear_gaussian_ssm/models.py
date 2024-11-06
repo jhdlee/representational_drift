@@ -305,7 +305,8 @@ class StiefelManifoldSSM(SSM):
 
         lp += self.initial_velocity_prior.log_prob((params.emissions.initial_velocity_cov,
                                                     params.emissions.initial_velocity_mean))
-        lp += self.tau_prior.log_prob(params.emissions.tau).sum()
+        if not self.fix_tau:
+            lp += self.tau_prior.log_prob(params.emissions.tau).sum()
         lp += self.emission_covariance_prior.log_prob(jnp.diag(params.emissions.cov)).sum()
 
         return lp
@@ -832,17 +833,20 @@ class StiefelManifoldSSM(SSM):
         initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior, init_velocity_stats)
         initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.mode()
 
-        tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
-        Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
-        tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
-        tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
-        tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + velocity_smoother.smoothed_covariances_p
-        tau_stats_2 = jnp.diag(tau_stats_2) / 2
-        def update_tau(s1, s2):
-            tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
-            tau_mode = tau_posterior.mode()
-            return tau_mode
-        tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
+        if self.fix_tau:
+            tau = params.emissions.tau
+        else:
+            tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+            Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
+            tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
+            tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
+            tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + velocity_smoother.smoothed_covariances_p
+            tau_stats_2 = jnp.diag(tau_stats_2) / 2
+            def update_tau(s1, s2):
+                tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
+                tau_mode = tau_posterior.mode()
+                return tau_mode
+            tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
 
         Ex, Vx = posteriors.smoothed_means, posteriors.smoothed_covariances
         emission_cov_stats_1 = (trial_masks.sum() * Ex.shape[1]) / 2
