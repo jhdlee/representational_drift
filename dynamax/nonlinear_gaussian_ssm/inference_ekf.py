@@ -152,10 +152,10 @@ def extended_kalman_filter_x_marginalized(
 
         # Update the log likelihood
         H_x, pred_obs_covs = H(_pred_mean, y, condition)  # (TN x V), (TN x T x N)
-        H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
+        # H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
 
         y_pred, _ = h(_pred_mean, y, condition)  # TN
-        s_k = H_x @ _pred_cov @ H_x.T + H_eps
+        s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*pred_obs_covs)
         s_k = symmetrize(s_k)
 
         ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
