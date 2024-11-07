@@ -323,7 +323,7 @@ def extended_kalman_smoother(
 
     def _step(carry, args):
         # Unpack the inputs
-        smoothed_mean_next, smoothed_cov_next, smoothed_cov_sum, smoothed_cc_sum, smoothed_co_sum = carry
+        smoothed_mean_next, smoothed_cov_next, smoothed_cov_sum, smoothed_cc_sum = carry
         t, filtered_mean, filtered_cov = args
 
         # Get parameters and inputs for time index t
@@ -341,29 +341,27 @@ def extended_kalman_smoother(
         smoothed_cov_sum += smoothed_cov
 
         # Compute the smoothed expectation of z_t z_{t+1}^T
-        smoothed_cc_sum += G @ smoothed_cov_next
-        smoothed_co_sum += jnp.outer(smoothed_mean, smoothed_mean_next)
+        smoothed_cc_sum += G @ smoothed_cov_next + jnp.outer(smoothed_mean, smoothed_mean_next)
 
-        return ((smoothed_mean, smoothed_cov, smoothed_cov_sum, smoothed_cc_sum, smoothed_co_sum),
+        return ((smoothed_mean, smoothed_cov, smoothed_cov_sum, smoothed_cc_sum),
                 smoothed_mean)
 
     dof = filtered_covs.shape[-1]
     smoothed_cross_cov_sum_init = jnp.zeros((dof, dof))
-    smoothed_cross_outer_sum_init = jnp.zeros((dof, dof))
     smoothed_cov_sum_init = jnp.zeros((dof, dof))
     # Run the extended Kalman smoother
-    ((_, smoothed_cov_0, smoothed_cov_sum, smoothed_cross_cov_sum, smoothed_cross_outer_sum),
+    ((_, smoothed_cov_0, smoothed_cov_sum, smoothed_cross_cov_sum),
      smoothed_means) = lax.scan(
         _step,
         (filtered_means[-1], filtered_covs[-1],
-         smoothed_cov_sum_init, smoothed_cross_cov_sum_init, smoothed_cross_outer_sum_init),
+         smoothed_cov_sum_init, smoothed_cross_cov_sum_init),
         (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1]),
         reverse=True,
     )
 
     # Concatenate the arrays and return
     smoothed_means = jnp.vstack((smoothed_means, filtered_means[-1][None, ...]))
-    smoothed_cross = smoothed_cross_cov_sum + smoothed_cross_outer_sum
+    smoothed_cross = smoothed_cross_cov_sum
     return PosteriorGSSMSmoothed(
         marginal_loglik=ll,
         filtered_means=filtered_means,
