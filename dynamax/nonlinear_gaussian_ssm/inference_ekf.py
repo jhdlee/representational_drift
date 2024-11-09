@@ -432,7 +432,7 @@ def extended_kalman_smoother_marginal_log_prob(
         return (ll, smoothed_mean, smoothed_cov), None
 
     # Run the extended Kalman smoother
-    marginal_loglik, _ = lax.scan(
+    (marginal_loglik, _, _), _ = lax.scan(
         _step,
         (0.0, filtered_means[-1], filtered_covs[-1]),
         (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1]),
