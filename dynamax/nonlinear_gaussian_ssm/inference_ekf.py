@@ -373,6 +373,74 @@ def extended_kalman_smoother(
         smoothed_cross_covariances=smoothed_cross,
     )
 
+def extended_kalman_smoother_marginal_log_prob(
+    params: ParamsNLGSSM,
+    emissions:  Float[Array, "ntime emission_dim"],
+    conditions=None,
+    trial_masks = None,
+    filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
+):
+    r"""Run an extended Kalman (RTS) smoother.
+
+    Args:
+        params: model parameters.
+        emissions: observation sequence.
+        filtered_posterior: optional output from filtering step.
+        inputs: optional array of inputs.
+
+    Returns:
+        post: posterior object.
+
+    """
+    num_trials = len(emissions)
+    filtered_means = filtered_posterior.filtered_means
+    filtered_covs = filtered_posterior.filtered_covariances
+
+    h = params.emission_function
+    H = jacfwd(h, argnums=0, has_aux=True)
+
+    def _step(carry, args):
+        # Unpack the inputs
+        ll, smoothed_mean_next, smoothed_cov_next = carry
+        t, filtered_mean, filtered_cov = args
+        y = emissions[t]
+        y_flattened = y.flatten()
+        condition = conditions[t]
+        trial_mask = trial_masks[t]
+
+        # Get parameters and inputs for time index t
+        Q = params.dynamics_covariance
+
+        # Prediction step
+        m_pred = filtered_mean
+        S_pred = filtered_cov + Q
+        G = psd_solve(S_pred, filtered_cov, diagonal_boost=1e-9).T
+
+        # Compute smoothed mean and covariance
+        smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
+        smoothed_cov = filtered_cov + G @ (smoothed_cov_next - S_pred) @ G.T
+        smoothed_cov = symmetrize(smoothed_cov)
+
+        H_x, pred_obs_covs = H(smoothed_mean, y, condition)  # (TN x V), (TN x T x N)
+
+        y_pred, _ = h(smoothed_mean, y, condition)  # TN
+        s_k = H_x @ smoothed_cov @ H_x.T + jscipy.linalg.block_diag(*pred_obs_covs)
+        s_k = symmetrize(s_k)
+
+        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
+
+        return (ll, smoothed_mean, smoothed_cov), None
+
+    # Run the extended Kalman smoother
+    marginal_loglik, _ = lax.scan(
+        _step,
+        (0.0, filtered_means[-1], filtered_covs[-1]),
+        (jnp.arange(num_trials - 1), filtered_means[:-1], filtered_covs[:-1]),
+        reverse=True,
+    )
+
+    return marginal_loglik
+
 
 def extended_kalman_posterior_sample(
     key: PRNGKey,

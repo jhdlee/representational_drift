@@ -1,7 +1,7 @@
 from fastprogress.fastprogress import progress_bar
 from functools import partial
 import jax
-from jax import jit, vmap, lax
+from jax import jit, vmap, lax, jacfwd
 import jax.numpy as jnp
 import jax.random as jr
 import jax.nn as jnn
@@ -22,7 +22,8 @@ from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, Posteri
 
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import (extended_kalman_smoother, extended_kalman_filter,
-                                                          extended_kalman_filter_x_marginalized)
+                                                          extended_kalman_filter_x_marginalized,
+                                                          extended_kalman_smoother_marginal_log_prob)
 
 from dynamax.parameters import ParameterProperties, ParameterSet
 from dynamax.types import PRNGKey, Scalar
@@ -638,6 +639,37 @@ class StiefelManifoldSSM(SSM):
         smoothed_posterior = extended_kalman_smoother(NLGSSM_params, emissions, filtered_posterior=filtered_posterior)
 
         return smoothed_posterior
+
+    def eks_marginal_log_prob(self,
+                              params: ParamsSMDS,
+                              emissions: Float[Array, "ntime emission_dim"],
+                              conditions: jnp.array = None,
+                              trial_masks: jnp.array = None,
+                              ):
+        num_trials = emissions.shape[0]
+        if conditions is None:
+            conditions = jnp.zeros(num_trials, dtype=int)
+        if trial_masks is None:
+            trial_masks = jnp.ones(num_trials, dtype=bool)
+
+        f = self.get_f()
+        h = self.get_h_x_marginalized(params)
+
+        NLGSSM_params = ParamsNLGSSM(
+            initial_mean=params.emissions.initial_velocity_mean,
+            initial_covariance=params.emissions.initial_velocity_cov,
+            dynamics_function=f,
+            dynamics_covariance=jnp.diag(params.emissions.tau),
+            emission_function=h,
+            emission_covariance=None
+        )
+
+        filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions,
+                                                                   conditions=conditions, trial_masks=trial_masks)
+
+        return extended_kalman_smoother_marginal_log_prob(NLGSSM_params, emissions, conditions=conditions,
+                                                          trial_masks=jnp.logical_not(trial_masks),
+                                                          filtered_posterior=filtered_posterior)
 
     def initialize_m_step_state(
             self,
