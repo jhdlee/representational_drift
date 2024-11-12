@@ -411,7 +411,8 @@ class SSM(ABC):
             params, m_step_state, marginal_loglik = em_step(params, m_step_state)
             log_probs.append(marginal_loglik)
             if print_ll:
-                print(marginal_loglik, params.emissions.tau.min(), params.emissions.tau.max())
+                print(marginal_loglik, params.emissions.tau.min(), params.emissions.tau.max(),
+                      jnp.diag(params.emissions.initial_velocity_cov).max())
         return params, jnp.array(log_probs)
 
     def fit_sgd(

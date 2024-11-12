@@ -220,6 +220,7 @@ class StiefelManifoldSSM(SSM):
             has_dynamics_bias: bool = True,
             has_emissions_bias: bool = False,
             tau_per_dim: bool = False,
+            tau_per_axis: bool = False,
             fix_initial: bool = False,
             fix_dynamics: bool = False,
             fix_emissions: bool = False,
@@ -235,6 +236,7 @@ class StiefelManifoldSSM(SSM):
         self.has_dynamics_bias = has_dynamics_bias
         self.has_emissions_bias = has_emissions_bias
         self.tau_per_dim = tau_per_dim
+        self.tau_per_axis = tau_per_axis
 
         self.dof = self.state_dim * (self.emission_dim - self.state_dim)
         self.dof_shape = (self.state_dim, (self.emission_dim - self.state_dim))
@@ -269,7 +271,7 @@ class StiefelManifoldSSM(SSM):
 
         # prior on initial velocity
         self.initial_velocity_prior = default_prior(
-            'initial_prior',
+            'initial_velocity_prior',
             NIW(loc=jnp.zeros(self.dof),
                 mean_concentration=1.,
                 df=self.dof + 0.1,
@@ -310,7 +312,10 @@ class StiefelManifoldSSM(SSM):
                                                     params.emissions.initial_velocity_mean))
         if not self.fix_tau:
             if self.tau_per_dim:
-                tau_lp = self.tau_prior.log_prob(params.emissions.tau)
+                if self.tau_per_axis:
+                    tau_lp = self.tau_prior.log_prob(params.emissions.tau.reshape(self.dof_shape)[:, 0])
+                else:
+                    tau_lp = self.tau_prior.log_prob(params.emissions.tau)
                 tau_lp = tau_lp.sum()
             else:
                 tau_lp = self.tau_prior.log_prob(params.emissions.tau[0])
@@ -875,17 +880,31 @@ class StiefelManifoldSSM(SSM):
             tau = params.emissions.tau
         else:
             if self.tau_per_dim:
-                tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
-                Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
-                tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
-                tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
-                tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + velocity_smoother.smoothed_covariances_p
-                tau_stats_2 = jnp.diag(tau_stats_2) / 2
-                def update_tau(s1, s2):
-                    tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
-                    tau_mode = tau_posterior.mode()
-                    return tau_mode
-                tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
+                if self.tau_per_axis:
+                    tau_stats_1 = jnp.ones(self.state_dim) * ((self.num_trials - 1) * (self.emission_dim - self.state_dim)) / 2
+                    Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
+                    tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
+                    tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
+                    tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + velocity_smoother.smoothed_covariances_p
+                    tau_stats_2 = jnp.diag(tau_stats_2).reshape(self.dof_shape).sum(1) / 2
+                    def update_tau(s1, s2):
+                        tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
+                        tau_mode = tau_posterior.mode()
+                        return tau_mode
+                    tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
+                    tau = jnp.repeat(tau, self.emission_dim - self.state_dim)
+                else:
+                    tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+                    Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
+                    tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
+                    tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
+                    tau_stats_2 += jnp.einsum('ti,tj->ij', Ev[:-1], Ev[:-1]) + velocity_smoother.smoothed_covariances_p
+                    tau_stats_2 = jnp.diag(tau_stats_2) / 2
+                    def update_tau(s1, s2):
+                        tau_posterior = ig_posterior_update(self.tau_prior, (s1, s2))
+                        tau_mode = tau_posterior.mode()
+                        return tau_mode
+                    tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
             else:
                 tau_stats_1 = self.dof * (self.num_trials - 1) / 2
                 Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
