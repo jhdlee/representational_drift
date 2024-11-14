@@ -8,6 +8,11 @@ from typing import List, Optional, NamedTuple, Optional, Union, Callable
 from dynamax.utils.utils import psd_solve, symmetrize
 from dynamax.linear_gaussian_ssm.models import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 
+FnStateToState = Callable[ [Float[Array, "state_dim"]], Float[Array, "state_dim"]]
+FnStateAndInputToState = Callable[ [Float[Array, "state_dim"], Float[Array, "input_dim"]], Float[Array, "state_dim"]]
+FnStateToEmission = Callable[ [Float[Array, "state_dim"]], Float[Array, "emission_dim"]]
+FnStateAndInputToEmission = Callable[ [Float[Array, "state_dim"], Float[Array, "input_dim"] ], Float[Array, "emission_dim"]]
+
 class ParamsNLGSSM(NamedTuple):
     """Parameters for a NLGSSM model.
 
