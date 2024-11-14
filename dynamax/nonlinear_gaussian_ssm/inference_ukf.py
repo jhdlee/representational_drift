@@ -266,11 +266,11 @@ def _condition_on(m, P, h, R, lamb, w_mean, w_cov, y, trial_mask):
     pred_cross = jnp.tensordot(w_cov, _outer(sigmas_cond - m, sigmas_cond_prop - pred_mean), axes=1)
 
     # Compute log-likelihood of observation
-    ll = MVN(pred_mean, pred_cov).log_prob(y)
+    ll = MVN(pred_mean, pred_cov).log_prob(y.flatten())
 
     # Compute filtered mean and covariace
     K = psd_solve(pred_cov, pred_cross.T).T  # Filter gain
-    m_cond = m + trial_mask * K @ (y - pred_mean)
+    m_cond = m + trial_mask * K @ (y.flatten() - pred_mean)
     P_cond = P - trial_mask * K @ pred_cov @ K.T
     P_cond = symmetrize(P_cond)
     return ll, m_cond, P_cond
