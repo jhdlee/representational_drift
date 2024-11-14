@@ -144,7 +144,7 @@ def extended_kalman_filter_x_marginalized(
         ll, _pred_mean, _pred_cov = carry
 
         # Get parameters and inputs for time index t
-        Q = _get_params(params.dynamics_covariance, 2, t)
+        Q = params.dynamics_covariance
         y = emissions[t]
         y_flattened = y.flatten()
         condition = conditions[t]
