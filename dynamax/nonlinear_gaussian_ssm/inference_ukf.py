@@ -211,7 +211,7 @@ def unscented_kalman_filter_x_marginalized(
         ll += trial_mask * log_likelihood
 
         # Predict the next state
-        pred_mean, pred_cov, _ = _predict(filtered_mean, filtered_cov, Q)
+        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
@@ -325,7 +325,7 @@ def unscented_kalman_filter(
         ll += trial_mask * log_likelihood
 
         # Predict the next state
-        pred_mean, pred_cov, _ = _predict(filtered_mean, filtered_cov, Q)
+        pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
