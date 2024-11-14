@@ -3,7 +3,7 @@ from jax import lax
 from jax import vmap
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
 from jaxtyping import Array, Float
-from typing import NamedTuple, Optional, List
+from typing import List, Optional, NamedTuple, Optional, Union, Callable
 
 from dynamax.utils.utils import psd_solve, symmetrize
 from dynamax.linear_gaussian_ssm.models import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
