@@ -204,7 +204,7 @@ def unscented_kalman_filter_x_marginalized(
 
         # Condition on this emission
         log_likelihood, filtered_mean, filtered_cov = _condition_on_x_marginalized(
-            pred_mean, pred_cov, h, lamb, w_mean, w_cov, y, condition, n, n_r, trial_mask
+            _pred_mean, _pred_cov, h, lamb, w_mean, w_cov, y, condition, n, n_r, trial_mask
         )
 
         # Update the log likelihood
