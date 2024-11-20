@@ -896,10 +896,10 @@ class StiefelManifoldSSM(SSM):
         emissions_stats_1 = jnp.einsum('ti,tj->ij', Ex, Ex)
         emissions_stats_1 += jnp.einsum('tij->ij', Vx)
         emissions_stats_1 = jnp.einsum('ij,k->kij', emissions_stats_1, Rinv_d)
-        emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
+        # emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
         emissions_stats_2 = jnp.einsum('ti,tj->ij', Ex, y)
         emissions_stats_2 = jnp.einsum('ij,j->ji', emissions_stats_2, Rinv_d)
-        emissions_stats_2 = jnp.einsum('kij,kj->ki', emissions_stats_1, emissions_stats_2)
+        # emissions_stats_2 = jnp.einsum('kij,kj->ki', emissions_stats_1, emissions_stats_2)
         emission_stats = (emissions_stats_1, emissions_stats_2)
 
         return (init_stats, dynamics_stats, emission_stats), trial_mask * posterior.marginal_loglik, posterior
@@ -940,7 +940,8 @@ class StiefelManifoldSSM(SSM):
 
         # EKF to infer Vs
         emission_stats_1, emission_stats2 = emission_stats
-        velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, trial_masks)
+        if velocity_smoother is None:
+            velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, trial_masks)
         Ev = velocity_smoother.smoothed_means
         H = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
 
