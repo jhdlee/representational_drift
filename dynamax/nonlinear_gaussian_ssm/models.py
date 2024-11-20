@@ -233,6 +233,7 @@ class StiefelManifoldSSM(SSM):
             fix_initial_velocity: bool = False,
             emissions_cov_eps: float = 0.0,
             velocity_smoother_method: str = 'ekf',
+            ekf_mode: str='hybrid',
             **kw_priors
     ):
         self.state_dim = state_dim
@@ -260,6 +261,7 @@ class StiefelManifoldSSM(SSM):
         self.emissions_cov_eps = emissions_cov_eps
 
         self.velocity_smoother_method = velocity_smoother_method
+        self.ekf_mode = ekf_mode
 
         # Initialize prior distributions
         def default_prior(arg, default):
@@ -792,7 +794,8 @@ class StiefelManifoldSSM(SSM):
         )
 
         if self.velocity_smoother_method == 'ekf':
-            smoother = extended_kalman_smoother(NLGSSM_params, emissions, trial_masks=trial_masks)
+            smoother = extended_kalman_smoother(NLGSSM_params, emissions, trial_masks=trial_masks,
+                                                mode=self.ekf_mode)
         else:
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
             smoother = unscented_kalman_smoother(NLGSSM_params, emissions,
@@ -896,10 +899,12 @@ class StiefelManifoldSSM(SSM):
         emissions_stats_1 = jnp.einsum('ti,tj->ij', Ex, Ex)
         emissions_stats_1 += jnp.einsum('tij->ij', Vx)
         emissions_stats_1 = jnp.einsum('ij,k->kij', emissions_stats_1, Rinv_d)
-        # emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
+        if self.ekf_mode == 'cov':
+            emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
         emissions_stats_2 = jnp.einsum('ti,tj->ij', Ex, y)
         emissions_stats_2 = jnp.einsum('ij,j->ji', emissions_stats_2, Rinv_d)
-        # emissions_stats_2 = jnp.einsum('kij,kj->ki', emissions_stats_1, emissions_stats_2)
+        if self.ekf_mode == 'cov':
+            emissions_stats_2 = jnp.einsum('kij,kj->ki', emissions_stats_1, emissions_stats_2)
         emission_stats = (emissions_stats_1, emissions_stats_2)
 
         return (init_stats, dynamics_stats, emission_stats), trial_mask * posterior.marginal_loglik, posterior

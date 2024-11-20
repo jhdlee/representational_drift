@@ -195,6 +195,7 @@ def extended_kalman_filter(
     emissions: Float[Array, "ntime emission_dim"],
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
     trial_masks = None,
+    mode = 'hybrid',
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -232,13 +233,25 @@ def extended_kalman_filter(
         H_x = H(_pred_mean)  # (ND x V)
         y_pred = h(_pred_mean)  # ND
 
-        _pred_pre = psd_solve(_pred_cov, jnp.eye(_pred_cov.shape[-1]), diagonal_boost=1e-9)
-        filtered_pre = _pred_pre + trial_mask * H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
-        filtered_cov = psd_solve(filtered_pre, jnp.eye(filtered_pre.shape[-1]), diagonal_boost=1e-9)
-        pred_cov = Q + filtered_cov
+        if mode == 'hybrid':
+            _pred_pre = psd_solve(_pred_cov, jnp.eye(_pred_cov.shape[-1]), diagonal_boost=1e-9)
+            filtered_pre = _pred_pre + trial_mask * H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
+            filtered_cov = psd_solve(filtered_pre, jnp.eye(filtered_pre.shape[-1]), diagonal_boost=1e-9)
+            pred_cov = Q + filtered_cov
+            filtered_mean = _pred_mean - trial_mask * filtered_cov @ (H_x.T @ jscipy.linalg.block_diag(*R) @ y_pred - H_x.T @ y.flatten())
+            pred_mean = filtered_mean
+        elif mode == 'cov':
+            s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*R)
+            s_k = symmetrize(s_k)
 
-        filtered_mean = _pred_mean - trial_mask * filtered_cov @ (H_x.T @ jscipy.linalg.block_diag(*R) @ y_pred - H_x.T @ y.flatten())
-        pred_mean = filtered_mean
+            # Condition on this emission
+            K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=1e-9).T
+            filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
+            filtered_mean = _pred_mean + trial_mask * (K @ (y.flatten() - y_pred))
+            filtered_cov = symmetrize(filtered_cov)
+
+            # Predict the next state
+            pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
@@ -291,6 +304,7 @@ def extended_kalman_smoother(
     emissions:  Float[Array, "ntime emission_dim"],
     filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
     trial_masks = None,
+    mode = 'hybrid',
 ) -> PosteriorGSSMSmoothed:
     r"""Run an extended Kalman (RTS) smoother.
 
@@ -308,7 +322,7 @@ def extended_kalman_smoother(
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, trial_masks=trial_masks)
+        filtered_posterior = extended_kalman_filter(params, emissions, trial_masks=trial_masks, mode=mode)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
