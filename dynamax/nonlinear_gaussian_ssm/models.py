@@ -224,12 +224,14 @@ class StiefelManifoldSSM(SSM):
             has_emissions_bias: bool = False,
             tau_per_dim: bool = False,
             tau_per_axis: bool = False,
+            max_tau: float = 1e-4,
             fix_initial: bool = False,
             fix_dynamics: bool = False,
             fix_emissions: bool = False,
             fix_emissions_cov: bool = False,
             fix_tau: bool = False,
             fix_initial_velocity: bool = False,
+            emissions_cov_eps: float = 0.0,
             velocity_smoother_method: str = 'ekf',
             **kw_priors
     ):
@@ -241,6 +243,7 @@ class StiefelManifoldSSM(SSM):
         self.has_emissions_bias = has_emissions_bias
         self.tau_per_dim = tau_per_dim
         self.tau_per_axis = tau_per_axis
+        self.max_tau = max_tau
 
         self.dof = self.state_dim * (self.emission_dim - self.state_dim)
         self.dof_shape = (self.state_dim, (self.emission_dim - self.state_dim))
@@ -254,6 +257,7 @@ class StiefelManifoldSSM(SSM):
         self.fix_emissions_cov = fix_emissions_cov
         self.fix_tau = fix_tau
         self.fix_initial_velocity = fix_initial_velocity
+        self.emissions_cov_eps = emissions_cov_eps
 
         self.velocity_smoother_method = velocity_smoother_method
 
@@ -806,13 +810,43 @@ class StiefelManifoldSSM(SSM):
         condition: int=0,
         trial_mask: bool=True,
         trial_id: int=0,
+        H=None,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
         if inputs is None:
             inputs = jnp.zeros((num_timesteps, 0))
 
+        mu_0 = params.initial.mean
+        Sigma_0 = params.initial.cov
+        A = params.dynamics.weights
+        b = params.dynamics.bias
+        Q = params.dynamics.cov
+        R = params.emissions.cov
+        mu_v_0 = params.emissions.initial_velocity_mean
+        Sigma_v_0 = params.emissions.initial_velocity_cov
+        tau = params.emissions.tau
+        h_params = ParamsSMDS(
+            initial=ParamsLGSSMInitial(
+                mean=mu_0,
+                cov=Sigma_0),
+            dynamics=ParamsLGSSMDynamics(
+                weights=A,
+                bias=b,
+                input_weights=jnp.zeros((self.state_dim, 0)),
+                cov=Q),
+            emissions=ParamsSMDSEmissions(
+                weights=params.emissions.weights if H is None else H,
+                bias=None,
+                input_weights=jnp.zeros((self.emission_dim, 0)),
+                cov=R,
+                base_subspace=params.emissions.base_subspace,
+                tau=tau,
+                initial_velocity_mean=mu_v_0,
+                initial_velocity_cov=Sigma_v_0)
+        )
+
         # Run the smoother to get posterior expectations
-        posterior = lgssm_smoother(params, emissions, inputs, condition, trial_id)
+        posterior = lgssm_smoother(h_params, emissions, inputs, condition, trial_id)
 
         # shorthand
         Ex = posterior.smoothed_means
@@ -856,7 +890,7 @@ class StiefelManifoldSSM(SSM):
 
         # more expected sufficient statistics for the emissions
         # let z[t] = [x[t], u[t]] for t = 0...T-1
-        Rinv = jnp.linalg.inv(params.emissions.cov)
+        Rinv = jnp.linalg.inv(h_params.emissions.cov)
         # Assumes that Rinv is diagonal
         Rinv_d = jnp.diag(Rinv)
         emissions_stats_1 = jnp.einsum('ti,tj->ij', Ex, Ex)
@@ -879,7 +913,9 @@ class StiefelManifoldSSM(SSM):
         posteriors,
         emissions,
         conditions=None,
-        trial_masks=None):
+        trial_masks=None,
+        velocity_smoother=None
+    ):
 
         trial_masks_a = jnp.expand_dims(trial_masks, -1)
         trial_masks_aa = jnp.expand_dims(trial_masks_a, -1)
@@ -965,7 +1001,8 @@ class StiefelManifoldSSM(SSM):
                                                           (emission_cov_stats_1, s2))
             emissions_cov = emissions_cov_posterior.mode()
             return emissions_cov
-        R = jnp.diag(vmap(update_emissions_cov)(emission_cov_stats_2))
+        R = vmap(update_emissions_cov)(emission_cov_stats_2) + self.emissions_cov_eps
+        R = jnp.diag(R)
 
         # H, R = params.emissions.weights, params.emissions.cov
         # tau = params.emissions.tau

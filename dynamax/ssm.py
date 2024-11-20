@@ -358,6 +358,7 @@ class SSM(ABC):
         num_iters: int=50,
         verbose: bool=True,
         print_ll: bool=False,
+        run_velocity_smoother: bool = False,
     ) -> Tuple[ParameterSet, Float[Array, "num_iters"]]:
         r"""Compute parameter MLE/ MAP estimate using Expectation-Maximization (EM).
 
@@ -391,28 +392,46 @@ class SSM(ABC):
 
         @jit
         def em_step(params, m_step_state):
+            if run_velocity_smoother:
+                velocity_smoother = self.smoother(params, batch_emissions, conditions, trial_masks)
+                Ev = velocity_smoother.smoothed_means
+                Hs = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
+                velocity_smoother_marginal_loglik = velocity_smoother.marginal_loglik
+            else:
+                velocity_smoother = None
+                Hs = None
+                velocity_smoother_marginal_loglik = 0.0
+
             batch_stats, lls, posteriors = vmap(partial(self.e_step, params))(batch_emissions,
                                                                               batch_inputs,
                                                                               conditions,
                                                                               trial_masks,
-                                                                              trial_ids)
-            lp = self.log_prior(params) + lls.sum()
+                                                                              trial_ids,
+                                                                              Hs)
+            lp = self.log_prior(params)
             params, m_step_state = self.m_step(params, props, batch_stats,
                                                m_step_state, posteriors,
-                                               emissions, conditions, trial_masks)
+                                               emissions, conditions, trial_masks,
+                                               velocity_smoother)
             # debug.print('e_step: {x}', x=(batch_stats, lls))
             # debug.print('m_step{y}', y=params)
-            return params, m_step_state, lp
+            return params, m_step_state, lp, lls.sum(), velocity_smoother_marginal_loglik
 
         log_probs = []
         m_step_state = self.initialize_m_step_state(params, props)
         pbar = progress_bar(range(num_iters)) if verbose else range(num_iters)
         for _ in pbar:
-            params, m_step_state, marginal_loglik = em_step(params, m_step_state)
-            log_probs.append(marginal_loglik)
+            params, m_step_state, lp, ll, vel_ll = em_step(params, m_step_state)
+            if run_velocity_smoother:
+                total_lp = lp + vel_ll
+                log_probs.append(total_lp)
+            else:
+                total_lp = lp + ll
+                log_probs.append(lp + ll)
             if print_ll:
-                print(marginal_loglik, params.emissions.tau.min(), params.emissions.tau.max(),
+                print(total_lp, lp, ll, vel_ll, params.emissions.tau.min(), params.emissions.tau.max(),
                       jnp.diag(params.emissions.initial_velocity_cov).max())
+                print('-----------------------------------------------------------------------------')
         return params, jnp.array(log_probs)
 
     def fit_sgd(
