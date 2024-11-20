@@ -420,7 +420,7 @@ class SSM(ABC):
         log_probs = []
         m_step_state = self.initialize_m_step_state(params, props)
         pbar = progress_bar(range(num_iters)) if verbose else range(num_iters)
-        for _ in pbar:
+        for iter_num in pbar:
             params, m_step_state, lp, ll, vel_ll = em_step(params, m_step_state)
             if run_velocity_smoother:
                 total_lp = lp + vel_ll
@@ -429,7 +429,7 @@ class SSM(ABC):
                 total_lp = lp + ll
                 log_probs.append(lp + ll)
             if print_ll:
-                print(total_lp, lp, ll, vel_ll, params.emissions.tau.min(), params.emissions.tau.max(),
+                print(iter_num, total_lp, lp, ll, vel_ll, params.emissions.tau.min(), params.emissions.tau.max(),
                       jnp.diag(params.emissions.initial_velocity_cov).max())
                 print('-----------------------------------------------------------------------------')
         return params, jnp.array(log_probs)
