@@ -990,6 +990,7 @@ class StiefelManifoldSSM(SSM):
                 tau_posterior = ig_posterior_update(self.tau_prior, (tau_stats_1, tau_stats_2))
                 tau_mode = tau_posterior.mode()
                 tau = jnp.ones(self.dof) * tau_mode
+            tau = jnp.clip(tau, max=self.max_tau)
 
         Ex, Vx = posteriors.smoothed_means, posteriors.smoothed_covariances
         emission_cov_stats_1 = (trial_masks.sum() * Ex.shape[1]) / 2
