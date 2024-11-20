@@ -237,7 +237,7 @@ def extended_kalman_filter(
         filtered_cov = psd_solve(filtered_pre, jnp.eye(filtered_pre.shape[-1]), diagonal_boost=1e-9)
         pred_cov = Q + filtered_cov
 
-        filtered_mean = _pred_mean - trial_mask * filtered_cov @ (H_x.T @ jscipy.linalg.block_diag(*R) @ y_pred + H_x.T @ y.flatten())
+        filtered_mean = _pred_mean - trial_mask * filtered_cov @ (H_x.T @ jscipy.linalg.block_diag(*R) @ y_pred - H_x.T @ y.flatten())
         pred_mean = filtered_mean
 
         # Build carry and output states
