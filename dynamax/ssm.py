@@ -430,7 +430,7 @@ class SSM(ABC):
                 log_probs.append(lp + ll)
             if print_ll:
                 print(iter_num, total_lp, lp, ll, vel_ll, params.emissions.tau.min(), params.emissions.tau.max(),
-                      jnp.diag(params.emissions.initial_velocity_cov).max())
+                      jnp.diag(params.emissions.initial_velocity_cov).max(), jnp.diag(params.emissions.cov).min())
                 print('-----------------------------------------------------------------------------')
         return params, jnp.array(log_probs)
 
