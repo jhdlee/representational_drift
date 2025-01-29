@@ -12,5 +12,6 @@ dist/
 *.pdf
 *-dot
 *.DS_Store
+*.idea
 .vscode/
 .venv
