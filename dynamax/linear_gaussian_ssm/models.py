@@ -567,6 +567,7 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         emissions,
         conditions=None,
         trial_masks=None,
+        session_masks=None,
         velocity_smoother=None,
     ):
         # Sum the statistics across all batches

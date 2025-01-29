@@ -195,7 +195,7 @@ def extended_kalman_filter(
     emissions: Float[Array, "ntime emission_dim"],
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
     trial_masks = None,
-    mode = 'hybrid',
+    mode = 'cov',
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -236,7 +236,7 @@ def extended_kalman_filter(
         if mode == 'hybrid':
             _pred_pre = psd_solve(_pred_cov, jnp.eye(_pred_cov.shape[-1]), diagonal_boost=1e-9)
             filtered_pre = _pred_pre + trial_mask * H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
-            filtered_cov = psd_solve(filtered_pre, jnp.eye(filtered_pre.shape[-1]), diagonal_boost=1e-9)
+            filtered_cov = psd_solve(filtered_pre, jnp.eye(filtered_pre.shape[-1]), diagonal_boost=1e-4)
             pred_cov = Q + filtered_cov
             filtered_mean = _pred_mean - trial_mask * filtered_cov @ (H_x.T @ jscipy.linalg.block_diag(*R) @ y_pred - H_x.T @ y.flatten())
             pred_mean = filtered_mean
