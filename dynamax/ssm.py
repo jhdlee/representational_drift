@@ -389,7 +389,7 @@ class SSM(ABC):
         batch_inputs = ensure_array_has_batch_dim(inputs, self.inputs_shape)
         conditions = jnp.zeros(len(batch_emissions), dtype=int) if conditions is None else conditions
         trial_masks = jnp.ones(len(batch_emissions), dtype=bool) if trial_masks is None else trial_masks
-        session_masks = jnp.zeros(len(batch_emissions), dtype=bool) if session_masks is None else session_masks
+        session_masks = jnp.zeros(len(batch_emissions)) if session_masks is None else session_masks
         trial_ids = jnp.arange(len(batch_emissions), dtype=int)
 
         @jit
