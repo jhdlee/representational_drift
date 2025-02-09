@@ -153,17 +153,21 @@ def extended_kalman_filter_x_marginalized(
         # Update the log likelihood
         H_x, pred_obs_covs = H(_pred_mean, y, condition)  # (TN x V), (TN x T x N)
         # H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
-
         y_pred, _ = h(_pred_mean, y, condition)  # TN
-        s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*pred_obs_covs)
-        s_k = symmetrize(s_k)
 
-        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
+        # # block diagonal
+        # s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*pred_obs_covs)
+        # s_k = symmetrize(s_k)
 
-        K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=1e-9).T
-        filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
-        filtered_mean = _pred_mean + trial_mask * (K @ (y_flattened - y_pred))
-        filtered_cov = symmetrize(filtered_cov)
+        # ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
+
+        # K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=1e-9).T
+        # filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
+        # filtered_mean = _pred_mean + trial_mask * (K @ (y_flattened - y_pred))
+        # filtered_cov = symmetrize(filtered_cov)
+
+        # memory efficient
+
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
