@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jscipy
@@ -7,7 +8,7 @@ from tensorflow_probability.substrates.jax.distributions import MultivariateNorm
 from jaxtyping import Array, Float
 from typing import List, Optional, NamedTuple, Optional, Union, Callable
 
-from dynamax.utils.utils import psd_solve, symmetrize
+from dynamax.utils.utils import psd_solve, symmetrize, inv_via_cholesky, rotate_subspace
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 from dynamax.types import PRNGKey
 
@@ -137,7 +138,7 @@ def extended_kalman_filter_x_marginalized(
     num_trials, num_timesteps, emissions_dim = emissions.shape
 
     # Dynamics and emission functions and their Jacobians
-    h = params.emission_function
+    h, h_s = params.emission_function
     H = jacfwd(h, argnums=0, has_aux=True)
 
     def _step(carry, t):
@@ -151,10 +152,10 @@ def extended_kalman_filter_x_marginalized(
         trial_mask = trial_masks[t]
 
         # Update the log likelihood
-        H_x, pred_obs_covs = H(_pred_mean, y, condition)  # (TN x V), (TN x T x N)
+        H_x, pred_obs_covs, _ = H(_pred_mean, y, condition)  # (TN x V), (TN x T x N)
         # H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
 
-        y_pred, _ = h(_pred_mean, y, condition)  # TN
+        y_pred, _, _ = h(_pred_mean, y, condition)  # TN
         s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*pred_obs_covs)
         s_k = symmetrize(s_k)
 
@@ -164,6 +165,39 @@ def extended_kalman_filter_x_marginalized(
         filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
         filtered_mean = _pred_mean + trial_mask * (K @ (y_flattened - y_pred))
         filtered_cov = symmetrize(filtered_cov)
+
+        # def true_fun(inputs):
+        #     ll, _pred_mean, _pred_cov = inputs
+        #     y_pred, pred_obs_covs, pred_x_means = h(_pred_mean, y, condition)  # TN
+            
+        #     def compute_jacobian(V, mu_pred):
+        #         def f(V_flat):
+        #             return jnp.ravel(h_s(V_flat).reshape(emissions_dim, mu_pred.shape[0]) @ mu_pred)
+        #         return jax.jacobian(f)(V)
+                
+        #     def step_fn(carry, inputs):
+        #         ll_t, x, P = carry
+        #         y_t, z_pred, R_t, mu_t  = inputs  # y_t: (N,), z_pred: (N,), R_t: (N,N)
+        #         H_t = compute_jacobian(_pred_mean, mu_t)    # (N, dim_V)
+        #         S_t = H_t @ P @ H_t.T + R_t                # innovation covariance # (N,N)
+        #         S_t_inv = inv_via_cholesky(S_t)
+        #         K_t = P @ H_t.T @ S_t_inv                  # Kalman gain, shape (dim_V, N)
+        #         innov = y_t - (z_pred + H_t @ (x - _pred_mean))      # innovation
+        #         innov_cov = H_t @ P @ H_t.T + S_t
+        #         ll_t +=  MVN(0.0, innov_cov).log_prob(jnp.atleast_1d(innov))
+        #         x_new = x + K_t @ innov
+        #         P_new = (jnp.eye(K_t.shape[0]) - K_t @ H_t) @ P
+        #         return (ll_t, x_new, P_new), None
+        #     (ll, filtered_mean, filtered_cov), _ = lax.scan(step_fn, 
+        #                                                 (ll, _pred_mean, _pred_cov), 
+        #                                                 (y, y_pred.reshape(num_timesteps, emissions_dim), pred_obs_covs, pred_x_means))
+        #     return ll, filtered_mean, filtered_cov
+
+        # def false_fun(inputs):
+        #     ll, _pred_mean, _pred_cov = inputs
+        #     return ll, _pred_mean, _pred_cov
+
+        # ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, (ll, _pred_mean, _pred_cov))
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
@@ -195,7 +229,7 @@ def extended_kalman_filter(
     emissions: Float[Array, "ntime emission_dim"],
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
     trial_masks = None,
-    mode = 'cov',
+    mode = 'hybrid',
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -234,9 +268,9 @@ def extended_kalman_filter(
         y_pred = h(_pred_mean)  # ND
 
         if mode == 'hybrid':
-            _pred_pre = psd_solve(_pred_cov, jnp.eye(_pred_cov.shape[-1]), diagonal_boost=1e-9)
+            _pred_pre = inv_via_cholesky(_pred_cov)
             filtered_pre = _pred_pre + trial_mask * H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
-            filtered_cov = psd_solve(filtered_pre, jnp.eye(filtered_pre.shape[-1]), diagonal_boost=1e-4)
+            filtered_cov = inv_via_cholesky(filtered_pre)
             pred_cov = Q + filtered_cov
             filtered_mean = _pred_mean - trial_mask * filtered_cov @ (H_x.T @ jscipy.linalg.block_diag(*R) @ y_pred - H_x.T @ y.flatten())
             pred_mean = filtered_mean

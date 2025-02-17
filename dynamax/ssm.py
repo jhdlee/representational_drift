@@ -16,8 +16,8 @@ from dynamax.parameters import to_unconstrained, from_unconstrained
 from dynamax.parameters import ParameterSet, PropertySet
 from dynamax.types import PRNGKey, Scalar
 from dynamax.utils.optimize import run_sgd
-from dynamax.utils.utils import ensure_array_has_batch_dim, rotate_subspace
-
+from dynamax.utils.utils import ensure_array_has_batch_dim
+from dynamax.utils.utils import rotate_subspace
 
 class Posterior(Protocol):
     """A :class:`NamedTuple` with parameters stored as :class:`jax.DeviceArray` in the leaf nodes."""
@@ -355,7 +355,6 @@ class SSM(ABC):
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
         conditions: Optional[Float[Array, "num_batches"]] = None,
         trial_masks: jnp.array = None,
-        session_masks: jnp.array = None,
         num_iters: int=50,
         verbose: bool=True,
         print_ll: bool=False,
@@ -389,7 +388,6 @@ class SSM(ABC):
         batch_inputs = ensure_array_has_batch_dim(inputs, self.inputs_shape)
         conditions = jnp.zeros(len(batch_emissions), dtype=int) if conditions is None else conditions
         trial_masks = jnp.ones(len(batch_emissions), dtype=bool) if trial_masks is None else trial_masks
-        session_masks = jnp.zeros(len(batch_emissions)) if session_masks is None else session_masks
         trial_ids = jnp.arange(len(batch_emissions), dtype=int)
 
         @jit
@@ -413,7 +411,7 @@ class SSM(ABC):
             lp = self.log_prior(params)
             params, m_step_state = self.m_step(params, props, batch_stats,
                                                m_step_state, posteriors,
-                                               emissions, conditions, trial_masks, session_masks,
+                                               emissions, conditions, trial_masks,
                                                velocity_smoother)
             # debug.print('e_step: {x}', x=(batch_stats, lls))
             # debug.print('m_step{y}', y=params)

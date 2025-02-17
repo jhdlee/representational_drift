@@ -211,6 +211,14 @@ def symmetrize(A):
     """Symmetrize one or more matrices."""
     return 0.5 * (A + jnp.swapaxes(A, -1, -2))
 
+def inv_via_cholesky(A, diagonal_boost=1e-4):
+    """
+    Compute a robust inverse of a positive–definite matrix A via Cholesky factorization.
+    """
+    A = symmetrize(A) + diagonal_boost * jnp.eye(A.shape[-1])
+    L = jnp.linalg.cholesky(A)
+    return jax.scipy.linalg.cho_solve((L, True), jnp.eye(A.shape[-1]))
+
 def rotate_subspace(base_subspace, D, v):
     N = base_subspace.shape[0]
     dof_shape = (D, (N - D))

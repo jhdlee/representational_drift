@@ -219,7 +219,6 @@ class StiefelManifoldSSM(SSM):
             emission_dim: int,
             input_dim: int = 0,
             num_trials: int = 1,  # number of trials
-            num_sessions: int = -1,
             num_conditions: int = 1,
             has_dynamics_bias: bool = True,
             has_emissions_bias: bool = False,
@@ -234,17 +233,13 @@ class StiefelManifoldSSM(SSM):
             fix_initial_velocity: bool = False,
             emissions_cov_eps: float = 0.0,
             velocity_smoother_method: str = 'ekf',
-            ekf_mode: str='cov',
+            ekf_mode: str='hybrid',
             **kw_priors
     ):
         self.state_dim = state_dim
         self.emission_dim = emission_dim
         self.input_dim = input_dim
         self.num_conditions = num_conditions
-        if num_sessions == -1:
-            self.num_sessions = num_trials
-        else:
-            self.num_sessions = num_sessions
         self.has_dynamics_bias = has_dynamics_bias
         self.has_emissions_bias = has_emissions_bias
         self.tau_per_dim = tau_per_dim
@@ -390,7 +385,7 @@ class StiefelManifoldSSM(SSM):
         _initial_velocity_mean = jnp.zeros(self.dof)
         _initial_velocity_cov = jnp.eye(self.dof)
         if velocity is None:
-            keys = jr.split(key, self.num_sessions)
+            keys = jr.split(key, self.num_trials)
             key = keys[-1]
 
             _velocity_cov = jnp.diag(tau)  # per dimension / rotation tau
@@ -403,7 +398,7 @@ class StiefelManifoldSSM(SSM):
             _initial_velocity = jr.normal(key1, shape=(self.dof,))
             _, _velocity = jax.lax.scan(_get_velocity, _initial_velocity, keys[:-1])
             _velocity = jnp.concatenate([_initial_velocity[None], _velocity])
-            _velocity = _velocity.reshape((self.num_sessions,) + self.dof_shape)
+            _velocity = _velocity.reshape((self.num_trials,) + self.dof_shape)
         else:
             _velocity = velocity
 
@@ -586,13 +581,14 @@ class StiefelManifoldSSM(SSM):
 
         f = self.get_f()
         h = self.get_h_x_marginalized(params)
+        h_s = self.get_h(params.emissions.base_subspace)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
             initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
-            emission_function=h,
+            emission_function=(h, h_s),
             emission_covariance=None
         )
 
@@ -621,13 +617,14 @@ class StiefelManifoldSSM(SSM):
 
         f = self.get_f()
         h = self.get_h_x_marginalized(params)
+        h_s = self.get_h(params.emissions.base_subspace)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
             initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
-            emission_function=h,
+            emission_function=(h, h_s),
             emission_covariance=None
         )
 
@@ -656,13 +653,14 @@ class StiefelManifoldSSM(SSM):
 
         f = self.get_f()
         h = self.get_h_x_marginalized(params)
+        h_s = self.get_h(params.emissions.base_subspace)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
             initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
-            emission_function=h,
+            emission_function=(h, h_s),
             emission_covariance=None
         )
 
@@ -764,7 +762,7 @@ class StiefelManifoldSSM(SSM):
             pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
 
             if self.velocity_smoother_method == 'ekf':
-                return pred_obs_means.flatten(), pred_obs_covs
+                return pred_obs_means.flatten(), pred_obs_covs, pred_means
             elif self.velocity_smoother_method == 'ukf':
                 pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
                 pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt,
@@ -924,7 +922,6 @@ class StiefelManifoldSSM(SSM):
         emissions,
         conditions=None,
         trial_masks=None,
-        session_masks=None,
         velocity_smoother=None
     ):
 
@@ -951,13 +948,10 @@ class StiefelManifoldSSM(SSM):
 
         # EKF to infer Vs
         emission_stats_1, emission_stats2 = emission_stats
-        emission_stats_1 = jnp.einsum('bs,bkij->skij', jax.nn.one_hot(session_masks, self.num_sessions), emission_stats_1)
-        emission_stats2 = jnp.einsum('bs,bki->ski', jax.nn.one_hot(session_masks, self.num_sessions), emission_stats2)
         if velocity_smoother is None:
-            velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, session_masks)
+            velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, trial_masks)
         Ev = velocity_smoother.smoothed_means
         H = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
-        H = jnp.einsum('bs,sij->bij', jax.nn.one_hot(session_masks, self.num_sessions), H)
 
         Ev0 = velocity_smoother.smoothed_means[0]
         Ev0v0T = velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0)
@@ -1017,7 +1011,8 @@ class StiefelManifoldSSM(SSM):
                                                           (emission_cov_stats_1, s2))
             emissions_cov = emissions_cov_posterior.mode()
             return emissions_cov
-        R = vmap(update_emissions_cov)(emission_cov_stats_2) #+ self.emissions_cov_eps
+        # R = vmap(update_emissions_cov)(emission_cov_stats_2) + self.emissions_cov_eps
+        R = vmap(update_emissions_cov)(emission_cov_stats_2)
         R = jnp.clip(R, min=self.emissions_cov_eps)
         R = jnp.diag(R)
 
