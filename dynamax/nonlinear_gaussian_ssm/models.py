@@ -23,6 +23,7 @@ from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, Posteri
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import (extended_kalman_filter, extended_kalman_smoother,
                                                           extended_kalman_filter_x_marginalized,
+                                                          extended_kalman_filter_augmented_state,
                                                           extended_kalman_smoother_marginal_log_prob)
 from dynamax.nonlinear_gaussian_ssm.inference_ukf import (unscented_kalman_filter, unscented_kalman_smoother,
                                                           unscented_kalman_filter_x_marginalized,
@@ -580,21 +581,21 @@ class StiefelManifoldSSM(SSM):
             trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
-        h = self.get_h_x_marginalized(params)
-        h_s = self.get_h(params.emissions.base_subspace)
+        # h = self.get_h_x_marginalized(params)
+        h = self.get_h_augmented(params.emissions.base_subspace)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
             initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
-            emission_function=(h, h_s),
+            emission_function=h,
             emission_covariance=None
         )
 
         if self.velocity_smoother_method == 'ekf':
-            filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions,
-                                                                       conditions=conditions, trial_masks=trial_masks)
+            filtered_posterior = extended_kalman_filter_augmented_state(NLGSSM_params, params, emissions,
+                                                                        conditions=conditions, trial_masks=trial_masks)
         elif self.velocity_smoother_method == 'ukf':
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
             filtered_posterior = unscented_kalman_filter_x_marginalized(NLGSSM_params, emissions, ukf_hyperparams,
@@ -616,21 +617,21 @@ class StiefelManifoldSSM(SSM):
             trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
-        h = self.get_h_x_marginalized(params)
-        h_s = self.get_h(params.emissions.base_subspace)
+        # h = self.get_h_x_marginalized(params)
+        h = self.get_h_augmented(params.emissions.base_subspace)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
             initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
-            emission_function=(h, h_s),
+            emission_function=h,
             emission_covariance=None
         )
 
         if self.velocity_smoother_method == 'ekf':
-            filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions,
-                                                                       conditions=conditions, trial_masks=trial_masks)
+            filtered_posterior = extended_kalman_filter_augmented_state(NLGSSM_params, params, emissions,
+                                                                        conditions=conditions, trial_masks=trial_masks)
         elif self.velocity_smoother_method == 'ukf':
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
             filtered_posterior = unscented_kalman_filter_x_marginalized(NLGSSM_params, emissions, ukf_hyperparams,
@@ -652,21 +653,21 @@ class StiefelManifoldSSM(SSM):
             trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
-        h = self.get_h_x_marginalized(params)
-        h_s = self.get_h(params.emissions.base_subspace)
+        # h = self.get_h_x_marginalized(params)
+        h = self.get_h_augmented(params.emissions.base_subspace)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
             initial_covariance=params.emissions.initial_velocity_cov,
             dynamics_function=f,
             dynamics_covariance=jnp.diag(params.emissions.tau),
-            emission_function=(h, h_s),
+            emission_function=h,
             emission_covariance=None
         )
 
         if self.velocity_smoother_method == 'ekf':
-            filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions,
-                                                                       conditions=conditions, trial_masks=trial_masks)
+            filtered_posterior = extended_kalman_filter_augmented_state(NLGSSM_params, params, emissions,
+                                                                        conditions=conditions, trial_masks=trial_masks)
             smoothed_posterior = extended_kalman_smoother(NLGSSM_params, emissions,
                                                           filtered_posterior=filtered_posterior)
         elif self.velocity_smoother_method == 'ukf':
@@ -782,6 +783,13 @@ class StiefelManifoldSSM(SSM):
             return C.flatten()
 
         return h
+    
+    def get_h_augmented(self, base_subspace):
+        def h_augmented(u):
+            x, v = jnp.split(u, [self.state_dim])
+            C = rotate_subspace(base_subspace, self.state_dim, v)
+            return C @ x
+        return h_augmented
 
     def velocity_smoother(self, params, covs, emissions, trial_masks):
         f = self.get_f()

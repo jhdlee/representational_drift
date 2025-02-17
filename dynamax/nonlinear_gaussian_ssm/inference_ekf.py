@@ -111,6 +111,147 @@ def _condition_on(m, P, h, H, R, u, y, num_iter):
     (mu_cond, Sigma_cond), _ = lax.scan(_step, carry, jnp.arange(num_iter))
     return mu_cond, symmetrize(Sigma_cond)
 
+_zeros_if_none = lambda x, shape: x if x is not None else jnp.zeros(shape)
+
+def extended_kalman_filter_augmented_state(
+    params: ParamsNLGSSM,
+    model_params,
+    emissions: Float[Array, "ntime emission_dim"],
+    conditions,
+    output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
+                                              "predicted_covariances"],
+    trial_masks = None,
+) -> PosteriorGSSMFiltered:
+    r"""Run an (iterated) extended Kalman filter to produce the
+    marginal likelihood and filtered velocity estimates.
+
+    Args:
+        params: model parameters.
+        emissions: observation sequence.
+        num_iter: number of linearizations around posterior for update step (default 1).
+        inputs: optional array of inputs.
+        output_fields: list of fields to return in posterior object.
+            These can take the values "filtered_means", "filtered_covariances",
+            "predicted_means", "predicted_covariances", and "marginal_loglik".
+
+    Returns:
+        post: posterior object.
+
+    """
+    num_trials, num_timesteps, emissions_dim = emissions.shape
+    dim_x = model_params.initial_mean.shape[-1]
+    dim_v = params.initial_mean.shape[-1]
+    
+    # Dynamics and emission functions and their Jacobians
+    h = params.emission_function
+    H = jacfwd(h)
+
+    def _step(carry, r):
+        ll, _pred_mean, _pred_cov = carry
+
+        # Get parameters and inputs for time index t
+        A = model_params.dynamics.weights
+        Q = model_params.dynamics.cov
+        R = model_params.emissions.cov
+        b = model_params.dynamics.bias
+        b = _zeros_if_none(params.dynamics.bias, (dim_x,))
+
+        A_augmented = jscipy.linalg.block_diag(A, jnp.eye(dim_v))
+        Q_augmented = jscipy.linalg.block_diag(Q, jnp.zeros((dim_v, dim_v)))
+        b_augmented = jnp.concatenate([b, jnp.zeros((dim_v,))])
+
+        y = emissions[r]
+        next_condition = conditions[r+1]
+        trial_mask = trial_masks[r]
+
+        def _inner_step(inner_carry, t):
+            ll, _pred_mean, _pred_cov = inner_carry
+
+            # Get parameters and inputs for time index t
+            y_t = y[t]
+
+            # Get the Jacobian of the emission function
+            H_u = H(_pred_mean)  # (N x (V+D))
+
+            # Get the predicted emission
+            y_pred = h(_pred_mean)  # TN
+
+            # Get the innovation covariance
+            s_k = H_u @ _pred_cov @ H_u.T + R
+            s_k = symmetrize(s_k)
+
+            # Update the log likelihood
+            ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_t))
+
+            # Get the Kalman gain
+            K = psd_solve(s_k, H_u @ _pred_cov, diagonal_boost=1e-9).T
+
+            # Get the filtered mean
+            filtered_mean = _pred_mean + K @ (y_t - y_pred) 
+
+            # Get the filtered covariance
+            filtered_cov = _pred_cov - K @ s_k @ K.T
+            filtered_cov = symmetrize(filtered_cov)
+
+            # Get the predicted mean
+            pred_mean = A_augmented @ filtered_mean + b_augmented
+
+            # Get the predicted covariance  
+            pred_cov = A_augmented @ filtered_cov @ A_augmented.T + Q_augmented
+            pred_cov = symmetrize(pred_cov)
+
+            return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
+
+        def true_fun(inputs):
+            (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), _ = lax.scan(_inner_step, inputs, jnp.arange(num_timesteps))
+            return (ll, filtered_mean, filtered_cov), None
+
+        def false_fun(inputs):
+            return (ll, _pred_mean, _pred_cov), None
+        
+        ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, (ll, _pred_mean, _pred_cov))
+
+        # Predict the next state
+        A_augmented_across_trial = jscipy.linalg.block_diag(jnp.zeros_like(A), jnp.eye(dim_v))
+        tau = params.dynamics_covariance
+        Q_augmented_across_trial = jscipy.linalg.block_diag(initial_state_covs[next_condition], tau)
+        b_augmented_across_trial = jnp.concatenate([initial_state_means[next_condition], jnp.zeros((dim_v,))])
+
+        pred_mean = A_augmented_across_trial @ filtered_mean + b_augmented_across_trial
+        pred_cov = A_augmented_across_trial @ filtered_cov @ A_augmented_across_trial.T + Q_augmented_across_trial
+        pred_cov = symmetrize(pred_cov)
+
+        # Build carry and output states
+        carry = (ll, pred_mean, pred_cov)
+        outputs = {
+            "filtered_means": filtered_mean[dim_x:],
+            "filtered_covariances": filtered_cov[dim_x:, dim_x:],
+        }
+
+        return carry, outputs
+
+
+    initial_velocity_mean = params.initial_mean
+    initial_velocity_cov = params.initial_covariance
+
+    initial_state_means = model_params.initial_mean
+    initial_state_covs = model_params.initial_covariance
+
+    initial_condition = conditions[0]
+
+    # Run the extended Kalman filter
+    carry = (0.0, 
+             jnp.concatenate([initial_state_means[initial_condition], initial_velocity_mean]), 
+             jscipy.linalg.block_diag(initial_state_covs[initial_condition], initial_velocity_cov))
+    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_trials))
+    outputs = {"marginal_loglik": ll, **outputs}
+    posterior_filtered = PosteriorGSSMFiltered(
+        **outputs,
+    )
+    return posterior_filtered
+
+    
+
 def extended_kalman_filter_x_marginalized(
         params: ParamsNLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
