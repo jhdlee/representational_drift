@@ -156,6 +156,8 @@ def extended_kalman_filter_x_marginalized(
         # H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
 
         y_pred, _, _ = h(_pred_mean, y, condition)  # TN
+
+        # block diagonal
         s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*pred_obs_covs)
         s_k = symmetrize(s_k)
 
