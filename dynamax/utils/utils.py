@@ -211,7 +211,7 @@ def symmetrize(A):
     """Symmetrize one or more matrices."""
     return 0.5 * (A + jnp.swapaxes(A, -1, -2))
 
-def inv_via_cholesky(A, diagonal_boost=1e-4):
+def inv_via_cholesky(A, diagonal_boost=1e-12):
     """
     Compute a robust inverse of a positive–definite matrix A via Cholesky factorization.
     """
