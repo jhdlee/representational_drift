@@ -139,7 +139,7 @@ def extended_kalman_filter_augmented_state(
 
     """
     num_trials, num_timesteps, emissions_dim = emissions.shape
-    dim_x = model_params.initial_mean.shape[-1]
+    dim_x = model_params.initial.mean.shape[-1]
     dim_v = params.initial_mean.shape[-1]
     
     # Dynamics and emission functions and their Jacobians
@@ -154,7 +154,7 @@ def extended_kalman_filter_augmented_state(
         Q = model_params.dynamics.cov
         R = model_params.emissions.cov
         b = model_params.dynamics.bias
-        b = _zeros_if_none(params.dynamics.bias, (dim_x,))
+        b = _zeros_if_none(b, (dim_x,))
 
         A_augmented = jscipy.linalg.block_diag(A, jnp.eye(dim_v))
         Q_augmented = jscipy.linalg.block_diag(Q, jnp.zeros((dim_v, dim_v)))
@@ -165,7 +165,7 @@ def extended_kalman_filter_augmented_state(
         trial_mask = trial_masks[r]
 
         def _inner_step(inner_carry, t):
-            ll, _pred_mean, _pred_cov = inner_carry
+            ll, _, _, _pred_mean, _pred_cov = inner_carry
 
             # Get parameters and inputs for time index t
             y_t = y[t]
@@ -204,12 +204,14 @@ def extended_kalman_filter_augmented_state(
 
         def true_fun(inputs):
             (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), _ = lax.scan(_inner_step, inputs, jnp.arange(num_timesteps))
-            return (ll, filtered_mean, filtered_cov), None
+            return ll, filtered_mean, filtered_cov
 
         def false_fun(inputs):
-            return (ll, _pred_mean, _pred_cov), None
-        
-        ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, (ll, _pred_mean, _pred_cov))
+            ll, _pred_mean, _pred_cov, _, _ = inputs
+            return ll, _pred_mean, _pred_cov
+
+        inputs = (ll, _pred_mean, _pred_cov, _pred_mean, _pred_cov)
+        ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, inputs)
 
         # Predict the next state
         A_augmented_across_trial = jscipy.linalg.block_diag(jnp.zeros_like(A), jnp.eye(dim_v))
@@ -234,8 +236,8 @@ def extended_kalman_filter_augmented_state(
     initial_velocity_mean = params.initial_mean
     initial_velocity_cov = params.initial_covariance
 
-    initial_state_means = model_params.initial_mean
-    initial_state_covs = model_params.initial_covariance
+    initial_state_means = model_params.initial.mean
+    initial_state_covs = model_params.initial.cov
 
     initial_condition = conditions[0]
 
@@ -411,12 +413,24 @@ def extended_kalman_filter(
         y_pred = h(_pred_mean)  # ND
 
         if mode == 'hybrid':
-            _pred_pre = inv_via_cholesky(_pred_cov)
-            filtered_pre = _pred_pre + trial_mask * H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
-            filtered_cov = inv_via_cholesky(filtered_pre)
-            pred_cov = Q + filtered_cov
-            filtered_mean = _pred_mean - trial_mask * filtered_cov @ (H_x.T @ jscipy.linalg.block_diag(*R) @ y_pred - H_x.T @ y.flatten())
+            def true_fun(inputs):
+                _pred_mean, _pred_cov = inputs
+                _pred_pre = inv_via_cholesky(_pred_cov)
+                filtered_pre = _pred_pre + H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
+                filtered_cov = inv_via_cholesky(filtered_pre)
+                filtered_mean = _pred_mean - filtered_cov @ H_x.T @ (jscipy.linalg.block_diag(*R) @ y_pred - y.flatten())
+                return filtered_mean, filtered_cov
+
+            def false_fun(inputs):
+                _pred_mean, _pred_cov = inputs
+                return _pred_mean, _pred_cov
+
+            inputs = (_pred_mean, _pred_cov)
+            filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, inputs)
+
             pred_mean = filtered_mean
+            pred_cov = Q + filtered_cov
+
         elif mode == 'cov':
             s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*R)
             s_k = symmetrize(s_k)
