@@ -408,14 +408,15 @@ def extended_kalman_filter(
         y = emissions[t]
         trial_mask = trial_masks[t]
 
-        # Update the log likelihood
-        H_x = H(_pred_mean)  # (ND x V)
-        y_pred = h(_pred_mean)  # ND
-
         if mode == 'hybrid':
             def true_fun(inputs):
                 def _update_step(carry, _):
                     _pred_mean, _pred_cov = carry
+
+                    # Get the Jacobian of the emission function
+                    H_x = H(_pred_mean)  # (ND x V)
+                    y_pred = h(_pred_mean)  # ND
+
                     _pred_pre = inv_via_cholesky(_pred_cov)
                     filtered_pre = _pred_pre + H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
                     filtered_cov = inv_via_cholesky(filtered_pre)
@@ -436,6 +437,10 @@ def extended_kalman_filter(
             pred_cov = Q + filtered_cov
 
         elif mode == 'cov':
+            # Get the Jacobian of the emission function
+            H_x = H(_pred_mean)  # (ND x V)
+            y_pred = h(_pred_mean)  # ND
+
             s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*R)
             s_k = symmetrize(s_k)
 
