@@ -193,7 +193,7 @@ def extended_kalman_filter_augmented_state(
             ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_t))
 
             # Get the Kalman gain
-            K = psd_solve(s_k, H_u @ _pred_cov, diagonal_boost=1e-9).T
+            K = psd_solve(s_k, H_u @ _pred_cov).T
 
             # Get the filtered mean
             filtered_mean = _pred_mean + K @ (y_t - y_pred) 
@@ -305,7 +305,7 @@ def extended_kalman_filter_x_marginalized(
 
         ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
 
-        K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=1e-9).T
+        K = psd_solve(s_k, H_x @ _pred_cov).T
         filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
         filtered_mean = _pred_mean + trial_mask * (K @ (y_flattened - y_pred))
         filtered_cov = symmetrize(filtered_cov)
@@ -435,7 +435,7 @@ def extended_kalman_filter(
             s_k = symmetrize(s_k)
 
             # Condition on this emission
-            K = psd_solve(s_k, H_x @ _pred_cov, diagonal_boost=1e-9).T
+            K = psd_solve(s_k, H_x @ _pred_cov).T
             filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
             filtered_mean = _pred_mean + trial_mask * (K @ (y.flatten() - y_pred))
             filtered_cov = symmetrize(filtered_cov)
@@ -528,7 +528,7 @@ def extended_kalman_smoother(
         # Prediction step
         m_pred = filtered_mean
         S_pred = filtered_cov + Q
-        G = psd_solve(S_pred, filtered_cov, diagonal_boost=1e-9).T
+        G = psd_solve(S_pred, filtered_cov).T
 
         # Compute smoothed mean and covariance
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
@@ -610,7 +610,7 @@ def extended_kalman_smoother_marginal_log_prob(
         # Prediction step
         m_pred = filtered_mean
         S_pred = filtered_cov + Q
-        G = psd_solve(S_pred, filtered_cov, diagonal_boost=1e-9).T
+        G = psd_solve(S_pred, filtered_cov).T
 
         # Compute smoothed mean and covariance
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
