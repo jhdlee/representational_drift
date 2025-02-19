@@ -146,15 +146,24 @@ def extended_kalman_filter_augmented_state(
     h = params.emission_function
     H = jacfwd(h)
 
+    initial_velocity_mean = params.initial_mean
+    initial_velocity_cov = params.initial_covariance
+
+    initial_state_means = model_params.initial.mean
+    initial_state_covs = model_params.initial.cov
+
+    tau = params.dynamics_covariance
+
+    initial_condition = conditions[0]
+
     def _step(carry, r):
         ll, _pred_mean, _pred_cov = carry
 
-        # Get parameters and inputs for time index t
+        # Get parameters
         A = model_params.dynamics.weights
         Q = model_params.dynamics.cov
         R = model_params.emissions.cov
-        b = model_params.dynamics.bias
-        b = _zeros_if_none(b, (dim_x,))
+        b = _zeros_if_none(model_params.dynamics.bias, (dim_x,))
 
         A_augmented = jscipy.linalg.block_diag(A, jnp.eye(dim_v))
         Q_augmented = jscipy.linalg.block_diag(Q, jnp.zeros((dim_v, dim_v)))
@@ -174,7 +183,7 @@ def extended_kalman_filter_augmented_state(
             H_u = H(_pred_mean)  # (N x (V+D))
 
             # Get the predicted emission
-            y_pred = h(_pred_mean)  # TN
+            y_pred = h(_pred_mean)  # N
 
             # Get the innovation covariance
             s_k = H_u @ _pred_cov @ H_u.T + R
@@ -207,18 +216,17 @@ def extended_kalman_filter_augmented_state(
             return ll, filtered_mean, filtered_cov
 
         def false_fun(inputs):
-            ll, _pred_mean, _pred_cov, _, _ = inputs
+            ll, _, _, _pred_mean, _pred_cov = inputs
             return ll, _pred_mean, _pred_cov
 
-        inputs = (ll, _pred_mean, _pred_cov, _pred_mean, _pred_cov)
+        inputs = (ll, jnp.zeros_like(_pred_mean), jnp.zeros_like(_pred_cov), _pred_mean, _pred_cov)
         ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, inputs)
 
-        # Predict the next state
         A_augmented_across_trial = jscipy.linalg.block_diag(jnp.zeros_like(A), jnp.eye(dim_v))
-        tau = params.dynamics_covariance
         Q_augmented_across_trial = jscipy.linalg.block_diag(initial_state_covs[next_condition], tau)
         b_augmented_across_trial = jnp.concatenate([initial_state_means[next_condition], jnp.zeros((dim_v,))])
 
+        # Predict the next state
         pred_mean = A_augmented_across_trial @ filtered_mean + b_augmented_across_trial
         pred_cov = A_augmented_across_trial @ filtered_cov @ A_augmented_across_trial.T + Q_augmented_across_trial
         pred_cov = symmetrize(pred_cov)
@@ -231,15 +239,6 @@ def extended_kalman_filter_augmented_state(
         }
 
         return carry, outputs
-
-
-    initial_velocity_mean = params.initial_mean
-    initial_velocity_cov = params.initial_covariance
-
-    initial_state_means = model_params.initial.mean
-    initial_state_covs = model_params.initial.cov
-
-    initial_condition = conditions[0]
 
     # Run the extended Kalman filter
     carry = (0.0, 
