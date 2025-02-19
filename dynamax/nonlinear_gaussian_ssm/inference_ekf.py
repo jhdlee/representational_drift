@@ -193,7 +193,7 @@ def extended_kalman_filter_augmented_state(
             ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_t))
 
             # Get the Kalman gain
-            K = psd_solve(s_k, H_u @ _pred_cov).T
+            K = psd_solve(s_k, H_u @ _pred_cov, diagonal_boost=1e-32).T
 
             # Get the filtered mean
             filtered_mean = _pred_mean + K @ (y_t - y_pred) 
@@ -212,7 +212,7 @@ def extended_kalman_filter_augmented_state(
             return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
         def true_fun(inputs):
-            (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), _ = lax.scan(_inner_step, inputs, jnp.arange(num_timesteps))
+            (ll, filtered_mean, filtered_cov, _, _), _ = lax.scan(_inner_step, inputs, jnp.arange(num_timesteps))
             return ll, filtered_mean, filtered_cov
 
         def false_fun(inputs):
@@ -374,6 +374,7 @@ def extended_kalman_filter(
     output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
     trial_masks = None,
     mode = 'hybrid',
+    num_iters = 1,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -413,11 +414,15 @@ def extended_kalman_filter(
 
         if mode == 'hybrid':
             def true_fun(inputs):
-                _pred_mean, _pred_cov = inputs
-                _pred_pre = inv_via_cholesky(_pred_cov)
-                filtered_pre = _pred_pre + H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
-                filtered_cov = inv_via_cholesky(filtered_pre)
-                filtered_mean = _pred_mean - filtered_cov @ H_x.T @ (jscipy.linalg.block_diag(*R) @ y_pred - y.flatten())
+                def _update_step(carry, _):
+                    _pred_mean, _pred_cov = carry
+                    _pred_pre = inv_via_cholesky(_pred_cov)
+                    filtered_pre = _pred_pre + H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
+                    filtered_cov = inv_via_cholesky(filtered_pre)
+                    filtered_mean = _pred_mean - filtered_cov @ H_x.T @ (jscipy.linalg.block_diag(*R) @ y_pred - y.flatten())
+                    return (filtered_mean, filtered_cov), None
+                
+                (filtered_mean, filtered_cov), _ = lax.scan(_update_step, inputs, jnp.arange(num_iters))
                 return filtered_mean, filtered_cov
 
             def false_fun(inputs):
@@ -495,6 +500,7 @@ def extended_kalman_smoother(
     filtered_posterior: Optional[PosteriorGSSMFiltered] = None,
     trial_masks = None,
     mode = 'hybrid',
+    num_iters = 1,
 ) -> PosteriorGSSMSmoothed:
     r"""Run an extended Kalman (RTS) smoother.
 
@@ -512,7 +518,7 @@ def extended_kalman_smoother(
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, trial_masks=trial_masks, mode=mode)
+        filtered_posterior = extended_kalman_filter(params, emissions, trial_masks=trial_masks, mode=mode, num_iters=num_iters)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances

@@ -235,6 +235,7 @@ class StiefelManifoldSSM(SSM):
             emissions_cov_eps: float = 0.0,
             velocity_smoother_method: str = 'ekf',
             ekf_mode: str='hybrid',
+            ekf_num_iters: int = 1,
             **kw_priors
     ):
         self.state_dim = state_dim
@@ -263,7 +264,7 @@ class StiefelManifoldSSM(SSM):
 
         self.velocity_smoother_method = velocity_smoother_method
         self.ekf_mode = ekf_mode
-
+        self.ekf_num_iters = ekf_num_iters
         # Initialize prior distributions
         def default_prior(arg, default):
             return kw_priors[arg] if arg in kw_priors else default
@@ -806,7 +807,7 @@ class StiefelManifoldSSM(SSM):
 
         if self.velocity_smoother_method == 'ekf':
             smoother = extended_kalman_smoother(NLGSSM_params, emissions, trial_masks=trial_masks,
-                                                mode=self.ekf_mode)
+                                                mode=self.ekf_mode, num_iters=self.ekf_num_iters)
         else:
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
             smoother = unscented_kalman_smoother(NLGSSM_params, emissions,
