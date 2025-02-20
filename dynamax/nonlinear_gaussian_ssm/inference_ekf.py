@@ -205,7 +205,7 @@ def extended_kalman_filter_augmented_state(
                 s_k = symmetrize(s_k)
 
                 # Get the Kalman gain
-                K = psd_solve(s_k, H_u @ _pred_cov, diagonal_boost=1e-32).T
+                K = psd_solve(s_k, H_u @ _pred_cov).T
     
                 # Get the filtered mean
                 filtered_mean = _pred_mean + K @ (y_t - y_pred) 
@@ -432,9 +432,9 @@ def extended_kalman_filter(
                     H_x = H(_pred_mean)  # (ND x V)
                     y_pred = h(_pred_mean)  # ND
 
-                    _pred_pre = psd_solve(_pred_cov, jnp.eye(_pred_cov.shape[-1]), diagonal_boost=1e-9)
+                    _pred_pre = inv_via_cholesky(_pred_cov)
                     filtered_pre = _pred_pre + H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
-                    filtered_cov = psd_solve(filtered_pre, jnp.eye(filtered_pre.shape[-1]), diagonal_boost=1e-9)
+                    filtered_cov = inv_via_cholesky(filtered_pre)
                     filtered_mean = _pred_mean - filtered_cov @ H_x.T @ (jscipy.linalg.block_diag(*R) @ y_pred - y.flatten())
                     return (filtered_mean, filtered_cov), None
                 
@@ -554,7 +554,7 @@ def extended_kalman_smoother(
         # Prediction step
         m_pred = filtered_mean
         S_pred = filtered_cov + Q
-        G = psd_solve(S_pred, filtered_cov, diagonal_boost=1e-9).T
+        G = psd_solve(S_pred, filtered_cov).T
 
         # Compute smoothed mean and covariance
         smoothed_mean = filtered_mean + G @ (smoothed_mean_next - m_pred)
