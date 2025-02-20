@@ -596,7 +596,8 @@ class StiefelManifoldSSM(SSM):
 
         if self.velocity_smoother_method == 'ekf':
             filtered_posterior = extended_kalman_filter_augmented_state(NLGSSM_params, params, emissions,
-                                                                        conditions=conditions, trial_masks=trial_masks)
+                                                                        conditions=conditions, trial_masks=trial_masks,
+                                                                        num_iters=self.ekf_num_iters)
         elif self.velocity_smoother_method == 'ukf':
             ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
             filtered_posterior = unscented_kalman_filter_x_marginalized(NLGSSM_params, emissions, ukf_hyperparams,
