@@ -2,8 +2,10 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jscipy
-from jax import lax
+from jax import lax, vmap
 from jax import jacfwd
+import tensorflow_probability.substrates.jax as tfp
+tfd = tfp.distributions
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
 from jaxtyping import Array, Float
 from typing import List, Optional, NamedTuple, Optional, Union, Callable
@@ -112,6 +114,187 @@ def _condition_on(m, P, h, H, R, u, y, num_iter):
     return mu_cond, symmetrize(Sigma_cond)
 
 _zeros_if_none = lambda x, shape: x if x is not None else jnp.zeros(shape)
+
+# --- SMC and auxiliary functions ---
+def ess_criterion(log_weights, unused_t: int):
+  """A criterion that resamples based on effective sample size."""
+  del unused_t
+  num_particles = log_weights.shape[0]
+  ess_num = 2 * jscipy.special.logsumexp(log_weights)
+  ess_denom = jscipy.special.logsumexp(2 * log_weights)
+  log_ess = ess_num - ess_denom
+  return log_ess <= jnp.log(num_particles / 2.0)
+
+
+def never_resample_criterion(log_weights, t: int):
+  """A criterion that never resamples."""
+  del log_weights
+  del t
+  return jnp.array(False)
+
+
+def always_resample_criterion(log_weights, t: int):
+  """A criterion that always resamples."""
+  del log_weights
+  del t
+  return jnp.array(True)
+
+
+def multinomial_resampling(
+    key, log_weights, states):
+  """Resample states with multinomial resampling.
+
+  Args:
+    key: A JAX PRNG key.
+    log_weights: A [num_particles] ndarray, the log weights for each particle.
+    states: A pytree of [num_particles, ...] ndarrays that
+      will be resampled.
+  Returns:
+    resampled_states: A pytree of [num_particles, ...] ndarrays resampled via
+      multinomial sampling.
+    parents: A [num_particles] array containing index of parent of each state
+  """
+  num_particles = log_weights.shape[0]
+  cat = tfd.Categorical(logits=log_weights)
+  parents = cat.sample(sample_shape=(num_particles,), seed=key)
+  assert isinstance(parents, jnp.ndarray)
+  return (jax.tree_util.tree_map(lambda item: item[parents], states), parents)
+
+
+def stratified_resampling(
+        key, log_weights, states):
+  """Resample states with stratified resampling.
+  Args:
+    key: A JAX PRNG key.
+    log_weights: A [num_particles] ndarray, the log weights for each particle.
+    states: A pytree of [num_particles, ...] ndarrays that
+      will be resampled.
+  Returns:
+    resampled_states: A pytree of [num_particles, ...] ndarrays resampled via
+      multinomial sampling.
+    parents: A [num_particles] array containing index of parent of each state
+  """
+  num_particles = log_weights.shape[0]
+  us = jax.random.uniform(key, shape=[num_particles])
+  us = (jnp.arange(num_particles) + us) / num_particles
+  norm_log_weights = log_weights - jax.nn.logsumexp(log_weights)
+  bins = jnp.cumsum(jnp.exp(norm_log_weights))
+  inds = jax.lax.stop_gradient(jnp.digitize(us, bins))
+  return (jax.tree_util.tree_map(lambda x: x[inds], states), inds)
+
+def smc_ekf_proposal_augmented_state(
+    key,
+    params: ParamsNLGSSM,
+    model_params,
+    emissions: Float[Array, "ntime emission_dim"],
+    conditions,
+    output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
+                                              "predicted_covariances"],
+    trial_masks = None,
+    num_iters = 1,
+    num_particles = 100,
+    resampling_criterion = ess_criterion,
+    resampling_fn = multinomial_resampling,
+):
+
+    r"""Run an (iterated) extended Kalman filter to produce the
+    marginal likelihood and filtered velocity estimates.
+
+    Args:
+        params: model parameters.
+        model_params: model parameters.
+        emissions: observation sequence.
+        conditions: condition indices.
+        output_fields: list of fields to return in posterior object.
+            These can take the values "filtered_means", "filtered_covariances",
+            "predicted_means", "predicted_covariances", and "marginal_loglik".
+        trial_masks: trial masks.
+        num_iters: number of linearizations around posterior for update step (default 1).
+
+    Returns:
+        posterior: posterior object.
+
+    """
+    num_trials, num_timesteps, emissions_dim = emissions.shape
+    dim_x = model_params.initial.mean.shape[-1]
+    dim_v = params.initial_mean.shape[-1]
+    num_steps = num_trials * num_timesteps
+    
+    # Dynamics and emission functions and their Jacobians
+    h = params.emission_function
+    H = jacfwd(h)
+
+    initial_velocity_mean = params.initial_mean
+    initial_velocity_cov = params.initial_covariance
+
+    initial_state_means = model_params.initial.mean
+    initial_state_covs = model_params.initial.cov
+
+    tau = params.dynamics_covariance
+
+    initial_condition = conditions[0]
+
+    def resample(args):
+        key, log_weights, states = args
+        states, inds = resampling_fn(key, log_weights, states)
+        return states, inds, jnp.zeros_like(log_weights)
+
+    def dont_resample(args):
+        _, log_weights, states = args
+        return states, jnp.arange(num_particles), log_weights
+
+    def smc_step(carry, state_slice):
+        key, states, log_ws = carry
+        key, sk1, sk2 = jax.random.split(key, num=3)
+        t, observation = state_slice
+
+        # Propagate the particle states
+        new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None))(
+            jax.random.split(sk1, num=num_particles), states, observation, t)
+
+        # Update the log weights.
+        log_ws += incr_log_ws
+
+        # Resample the particles if resampling_criterion returns True and we haven't
+        # exceeded the supplied number of steps.
+        should_resample = jax.lax.stop_gradient(
+                jnp.logical_and(resampling_criterion(log_ws, t), t < num_steps))
+
+        resampled_states, parents, resampled_log_ws = jax.lax.cond(
+            should_resample,
+            resample,
+            dont_resample,
+            (sk2, log_ws, new_states)
+        )
+
+        return ((key, resampled_states, resampled_log_ws),
+                (log_ws, should_resample))
+    
+    # --- Define initial distribution sampler ---
+    def sample_initial_states(key, num_particles: int, mean: jnp.ndarray, cov: jnp.ndarray) -> jnp.ndarray:
+        """Sample num_particles from a Gaussian with given mean and covariance."""
+        return tfd.MultivariateNormalFullCovariance(loc=mean, covariance_matrix=cov).sample(num_particles, seed=key)
+    
+    initial_states = sample_initial_states(key, num_particles, 
+                                           jnp.concatenate([initial_state_means[initial_condition], initial_velocity_mean]), 
+                                           jscipy.linalg.block_diag(initial_state_covs[initial_condition], initial_velocity_cov))
+
+    _, (log_weights, resampled) = jax.lax.scan(
+        smc_step,
+        (key, initial_states, jnp.zeros([num_particles])),
+        (jnp.arange(num_steps), emissions.reshape(num_steps, emissions_dim)))
+
+    # Average along particle dimension
+    log_p_hats = jscipy.special.logsumexp(log_weights, axis=1) - jnp.log(num_particles)
+    # Sum in time dimension on resampling steps.
+    # Note that this does not include any steps past num_steps because
+    # the resampling criterion doesn't allow resampling past num_steps steps.
+    log_Z_hat = jnp.sum(log_p_hats * resampled)
+    # If we didn't resample on the last timestep, add in the missing log_p_hat
+    log_Z_hat += jnp.where(resampled[num_steps - 1], 0., log_p_hats[num_steps - 1])
+    
+    return log_Z_hat
+
 
 def extended_kalman_filter_augmented_state(
     params: ParamsNLGSSM,
