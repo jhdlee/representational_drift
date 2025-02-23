@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jscipy
 from jax import lax, vmap
-from jax import jacfwd
+from jax import jacfwd, jacrev
 import tensorflow_probability.substrates.jax as tfp
 tfd = tfp.distributions
 from tensorflow_probability.substrates.jax.distributions import MultivariateNormalFullCovariance as MVN
@@ -222,7 +222,7 @@ def smc_ekf_proposal_augmented_state(
     
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
-    H = jacfwd(h)
+    H = jacrev(h)
 
     initial_velocity_mean = params.initial_mean
     initial_velocity_cov = params.initial_covariance
@@ -394,7 +394,7 @@ def extended_kalman_filter_augmented_state(
                 _pred_mean, _pred_cov = carry
 
                 # Get the Jacobian of the emission function
-                H_u = H(_pred_mean)  # (N x (V))
+                H_u = H(_pred_mean)  # (N x (V+D))
                 y_pred = h(_pred_mean)  # N
 
                 # Get the innovation covariance
