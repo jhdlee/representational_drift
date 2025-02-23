@@ -394,8 +394,8 @@ def extended_kalman_filter_augmented_state(
                 _pred_mean, _pred_cov = carry
 
                 # Get the Jacobian of the emission function
-                H_u = H(_pred_mean)  # (ND x V)
-                y_pred = h(_pred_mean)  # ND
+                H_u = H(_pred_mean)  # (N x (V))
+                y_pred = h(_pred_mean)  # N
 
                 # Get the innovation covariance
                 s_k = H_u @ _pred_cov @ H_u.T + R
