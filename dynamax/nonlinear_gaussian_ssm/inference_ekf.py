@@ -222,7 +222,7 @@ def smc_ekf_proposal_augmented_state(
     
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
-    H = jacrev(h)
+    H = jacfwd(h)
 
     initial_velocity_mean = params.initial_mean
     initial_velocity_cov = params.initial_covariance
@@ -342,7 +342,7 @@ def extended_kalman_filter_augmented_state(
     
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
-    H = jacfwd(h)
+    H = jacrev(h)
 
     initial_velocity_mean = params.initial_mean
     initial_velocity_cov = params.initial_covariance
