@@ -573,6 +573,7 @@ class StiefelManifoldSSM(SSM):
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
             trial_masks: jnp.array = None,
+            method: int = 0,
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
@@ -582,8 +583,12 @@ class StiefelManifoldSSM(SSM):
             trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
-        # h = self.get_h_x_marginalized(params)
-        h = self.get_h_augmented(params.emissions.base_subspace)
+        if method == 0:
+            h = self.get_h_x_marginalized(params)
+            filtering_function = extended_kalman_filter_x_marginalized
+        elif method == 1:
+            h = self.get_h_augmented(params.emissions.base_subspace)
+            filtering_function = extended_kalman_filter_augmented_state
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
@@ -594,14 +599,8 @@ class StiefelManifoldSSM(SSM):
             emission_covariance=None
         )
 
-        if self.velocity_smoother_method == 'ekf':
-            filtered_posterior = extended_kalman_filter_augmented_state(NLGSSM_params, params, emissions,
-                                                                        conditions=conditions, trial_masks=trial_masks,
-                                                                        num_iters=self.ekf_num_iters)
-        elif self.velocity_smoother_method == 'ukf':
-            ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
-            filtered_posterior = unscented_kalman_filter_x_marginalized(NLGSSM_params, emissions, ukf_hyperparams,
-                                                                        conditions=conditions, trial_masks=trial_masks)
+        filtered_posterior = filtering_function(NLGSSM_params, params, emissions,
+                                                conditions=conditions, trial_masks=trial_masks)
 
         return filtered_posterior.marginal_loglik
 
@@ -611,6 +610,7 @@ class StiefelManifoldSSM(SSM):
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
             trial_masks: jnp.array = None,
+            method: int = 0,
     ):
         num_trials = emissions.shape[0]
         if conditions is None:
@@ -619,8 +619,12 @@ class StiefelManifoldSSM(SSM):
             trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
-        # h = self.get_h_x_marginalized(params)
-        h = self.get_h_augmented(params.emissions.base_subspace)
+        if method == 0:
+            h = self.get_h_x_marginalized(params)
+            filtering_function = extended_kalman_filter_x_marginalized
+        elif method == 1:
+            h = self.get_h_augmented(params.emissions.base_subspace)
+            filtering_function = extended_kalman_filter_augmented_state
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
@@ -631,13 +635,8 @@ class StiefelManifoldSSM(SSM):
             emission_covariance=None
         )
 
-        if self.velocity_smoother_method == 'ekf':
-            filtered_posterior = extended_kalman_filter_augmented_state(NLGSSM_params, params, emissions,
-                                                                        conditions=conditions, trial_masks=trial_masks)
-        elif self.velocity_smoother_method == 'ukf':
-            ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
-            filtered_posterior = unscented_kalman_filter_x_marginalized(NLGSSM_params, emissions, ukf_hyperparams,
-                                                                        conditions=conditions, trial_masks=trial_masks)
+        filtered_posterior = filtering_function(NLGSSM_params, params, emissions,
+                                                conditions=conditions, trial_masks=trial_masks)
 
         return filtered_posterior
 
@@ -647,6 +646,7 @@ class StiefelManifoldSSM(SSM):
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
             trial_masks: jnp.array = None,
+            method: int = 0,
     ):
         num_trials = emissions.shape[0]
         if conditions is None:
@@ -655,8 +655,12 @@ class StiefelManifoldSSM(SSM):
             trial_masks = jnp.ones(num_trials, dtype=bool)
 
         f = self.get_f()
-        # h = self.get_h_x_marginalized(params)
-        h = self.get_h_augmented(params.emissions.base_subspace)
+        if method == 0:
+            h = self.get_h_x_marginalized(params)
+            filtering_function = extended_kalman_filter_x_marginalized
+        elif method == 1:
+            h = self.get_h_augmented(params.emissions.base_subspace)
+            filtering_function = extended_kalman_filter_augmented_state
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
@@ -667,51 +671,12 @@ class StiefelManifoldSSM(SSM):
             emission_covariance=None
         )
 
-        if self.velocity_smoother_method == 'ekf':
-            filtered_posterior = extended_kalman_filter_augmented_state(NLGSSM_params, params, emissions,
-                                                                        conditions=conditions, trial_masks=trial_masks)
-            smoothed_posterior = extended_kalman_smoother(NLGSSM_params, emissions,
-                                                          filtered_posterior=filtered_posterior)
-        elif self.velocity_smoother_method == 'ukf':
-            ukf_hyperparams = UKFHyperParams(alpha=1e-3, beta=2, kappa=0)
-            filtered_posterior = unscented_kalman_filter_x_marginalized(NLGSSM_params, emissions, ukf_hyperparams,
-                                                                        conditions=conditions, trial_masks=trial_masks)
-            smoothed_posterior = unscented_kalman_smoother(NLGSSM_params, emissions,
-                                                          filtered_posterior=filtered_posterior)
-
+        filtered_posterior = filtering_function(NLGSSM_params, params, emissions,
+                                                conditions=conditions, trial_masks=trial_masks)
+        smoothed_posterior = extended_kalman_smoother(NLGSSM_params, emissions,
+                                                      filtered_posterior=filtered_posterior)
 
         return smoothed_posterior
-
-    # def eks_marginal_log_prob(self,
-    #                           params: ParamsSMDS,
-    #                           emissions: Float[Array, "ntime emission_dim"],
-    #                           conditions: jnp.array = None,
-    #                           trial_masks: jnp.array = None,
-    #                           ):
-    #     num_trials = emissions.shape[0]
-    #     if conditions is None:
-    #         conditions = jnp.zeros(num_trials, dtype=int)
-    #     if trial_masks is None:
-    #         trial_masks = jnp.ones(num_trials, dtype=bool)
-    #
-    #     f = self.get_f()
-    #     h = self.get_h_x_marginalized(params)
-    #
-    #     NLGSSM_params = ParamsNLGSSM(
-    #         initial_mean=params.emissions.initial_velocity_mean,
-    #         initial_covariance=params.emissions.initial_velocity_cov,
-    #         dynamics_function=f,
-    #         dynamics_covariance=jnp.diag(params.emissions.tau),
-    #         emission_function=h,
-    #         emission_covariance=None
-    #     )
-    #
-    #     filtered_posterior = extended_kalman_filter_x_marginalized(NLGSSM_params, emissions,
-    #                                                                conditions=conditions, trial_masks=trial_masks)
-    #
-    #     return extended_kalman_smoother_marginal_log_prob(NLGSSM_params, emissions, conditions=conditions,
-    #                                                       trial_masks=jnp.logical_not(trial_masks),
-    #                                                       filtered_posterior=filtered_posterior)
 
     def initialize_m_step_state(
             self,
@@ -765,7 +730,7 @@ class StiefelManifoldSSM(SSM):
             pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
 
             if self.velocity_smoother_method == 'ekf':
-                return pred_obs_means.flatten(), pred_obs_covs, pred_means
+                return pred_obs_means, pred_obs_covs
             elif self.velocity_smoother_method == 'ukf':
                 pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
                 pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt,

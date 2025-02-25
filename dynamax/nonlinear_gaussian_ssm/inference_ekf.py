@@ -318,7 +318,6 @@ def extended_kalman_filter_augmented_state(
     output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
     trial_masks = None,
-    num_iters = 1,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered velocity estimates.
@@ -390,29 +389,15 @@ def extended_kalman_filter_augmented_state(
             # Update the log likelihood
             ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_t))
 
-            def _update_step(carry, _):
-                _pred_mean, _pred_cov = carry
+            # Get the Kalman gain
+            K = psd_solve(s_k, H_u @ _pred_cov).T
 
-                # Get the Jacobian of the emission function
-                H_u = H(_pred_mean)  # (N x (V+D))
-                y_pred = h(_pred_mean)  # N
+            # Get the filtered mean
+            filtered_mean = _pred_mean + K @ (y_t - y_pred) 
 
-                # Get the innovation covariance
-                s_k = H_u @ _pred_cov @ H_u.T + R
-                s_k = symmetrize(s_k)
-
-                # Get the Kalman gain
-                K = psd_solve(s_k, H_u @ _pred_cov).T
-    
-                # Get the filtered mean
-                filtered_mean = _pred_mean + K @ (y_t - y_pred) 
-    
-                # Get the filtered covariance
-                filtered_cov = _pred_cov - K @ s_k @ K.T
-                filtered_cov = symmetrize(filtered_cov)
-                return (filtered_mean, filtered_cov), None
-            
-            (filtered_mean, filtered_cov), _ = lax.scan(_update_step, (_pred_mean, _pred_cov), jnp.arange(num_iters))            
+            # Get the filtered covariance
+            filtered_cov = _pred_cov - K @ s_k @ K.T
+            filtered_cov = symmetrize(filtered_cov)        
 
             # Get the predicted mean
             pred_mean = A_augmented @ filtered_mean + b_augmented
@@ -490,10 +475,54 @@ def extended_kalman_filter_x_marginalized(
 
     """
     num_trials, num_timesteps, emissions_dim = emissions.shape
+    T, N = num_timesteps, emissions_dim
 
     # Dynamics and emission functions and their Jacobians
     h, h_s = params.emission_function
     H = jacfwd(h, argnums=0, has_aux=True)
+
+    def compute_log_likelihood_and_filter(ll, y_true, m, P, condition):
+        """
+        Efficiently computes the log likelihood and filtered mean and covariance:
+        ll = -0.5*(yᵀ s_k⁻¹ y + log|s_k| + m log(2π))
+        where s_k = H_x @ cov_matrix @ H_xᵀ + D,
+        D = block_diag(S_blocks).
+
+        It uses the Woodbury matrix identity:
+        s_k⁻¹ = D⁻¹ - D⁻¹ H_x (cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x)⁻¹ H_xᵀ D⁻¹,
+        and the determinant lemma:
+        log|s_k| = log|D| - log|cov_matrix| + log|cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x|.
+        """
+
+        H_x, R = H(m, y_true, condition)  # (T x N x V), (T x N x N)
+        y_pred, *_ = h(m, y_true, condition)  # T x N
+
+        residuals = y_true - y_pred
+        R_inv = jnp.linalg.inv(R)
+        P_inv = jnp.linalg.inv(P)
+
+        U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
+        U_inv = jnp.linalg.inv(U)
+
+        q = jnp.einsum('tiv,tij,tj->v', H_x, R_inv, residuals)
+        quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals) - q @ U_inv @ q
+
+        _, logdet_R = jnp.linalg.slogdet(R)
+        _, logdet_P = jnp.linalg.slogdet(P)
+        _, logdet_U = jnp.linalg.slogdet(U)
+        logdet = jnp.sum(logdet_R) + logdet_P + logdet_U
+        
+        ll += -0.5 * (quad_term + logdet + T * N * jnp.log(2 * jnp.pi))
+
+        R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
+        L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
+        K = jnp.einsum('tiv,vu->tiu', R_inv_H_x, P) - jnp.einsum('tiv,vu,uk->tik', R_inv_H_x, P_inv, L)
+        filtered_mean = m + jnp.einsum('tiu,ti->u', K, residuals)
+        filtered_cov = P - jnp.einsum('tiu,tiv->uv', K, H_x) @ P
+        filtered_cov = symmetrize(filtered_cov)
+
+        return ll, filtered_mean, filtered_cov
+
 
     def _step(carry, t):
         ll, _pred_mean, _pred_cov = carry
@@ -501,59 +530,19 @@ def extended_kalman_filter_x_marginalized(
         # Get parameters and inputs for time index t
         Q = params.dynamics_covariance
         y = emissions[t]
-        y_flattened = y.flatten()
         condition = conditions[t]
         trial_mask = trial_masks[t]
 
-        # Update the log likelihood
-        H_x, pred_obs_covs, _ = H(_pred_mean, y, condition)  # (TN x V), (TN x T x N)
-        # H_eps = jscipy.linalg.block_diag(*pred_obs_covs)
+        def true_fun(inputs):
+            ll, m, P = inputs
+            return compute_log_likelihood_and_filter(ll, y, m, P, condition)
 
-        y_pred, _, _ = h(_pred_mean, y, condition)  # TN
+        def false_fun(inputs):
+            ll, m, P = inputs
+            return ll, m, P
 
-        # block diagonal
-        s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*pred_obs_covs)
-        s_k = symmetrize(s_k)
-
-        ll += trial_mask * MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_flattened))
-
-        K = psd_solve(s_k, H_x @ _pred_cov).T
-        filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
-        filtered_mean = _pred_mean + trial_mask * (K @ (y_flattened - y_pred))
-        filtered_cov = symmetrize(filtered_cov)
-
-        # def true_fun(inputs):
-        #     ll, _pred_mean, _pred_cov = inputs
-        #     y_pred, pred_obs_covs, pred_x_means = h(_pred_mean, y, condition)  # TN
-            
-        #     def compute_jacobian(V, mu_pred):
-        #         def f(V_flat):
-        #             return jnp.ravel(h_s(V_flat).reshape(emissions_dim, mu_pred.shape[0]) @ mu_pred)
-        #         return jax.jacobian(f)(V)
-                
-        #     def step_fn(carry, inputs):
-        #         ll_t, x, P = carry
-        #         y_t, z_pred, R_t, mu_t  = inputs  # y_t: (N,), z_pred: (N,), R_t: (N,N)
-        #         H_t = compute_jacobian(_pred_mean, mu_t)    # (N, dim_V)
-        #         S_t = H_t @ P @ H_t.T + R_t                # innovation covariance # (N,N)
-        #         S_t_inv = inv_via_cholesky(S_t)
-        #         K_t = P @ H_t.T @ S_t_inv                  # Kalman gain, shape (dim_V, N)
-        #         innov = y_t - (z_pred + H_t @ (x - _pred_mean))      # innovation
-        #         innov_cov = H_t @ P @ H_t.T + S_t
-        #         ll_t +=  MVN(0.0, innov_cov).log_prob(jnp.atleast_1d(innov))
-        #         x_new = x + K_t @ innov
-        #         P_new = (jnp.eye(K_t.shape[0]) - K_t @ H_t) @ P
-        #         return (ll_t, x_new, P_new), None
-        #     (ll, filtered_mean, filtered_cov), _ = lax.scan(step_fn, 
-        #                                                 (ll, _pred_mean, _pred_cov), 
-        #                                                 (y, y_pred.reshape(num_timesteps, emissions_dim), pred_obs_covs, pred_x_means))
-        #     return ll, filtered_mean, filtered_cov
-
-        # def false_fun(inputs):
-        #     ll, _pred_mean, _pred_cov = inputs
-        #     return ll, _pred_mean, _pred_cov
-
-        # ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, (ll, _pred_mean, _pred_cov))
+        inputs = (ll, _pred_mean, _pred_cov)
+        ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, inputs)
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
