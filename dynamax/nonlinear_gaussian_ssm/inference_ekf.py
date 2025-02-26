@@ -337,8 +337,9 @@ def smc_ekf_proposal_augmented_state(
 
         params = (A_augmented_across_trial, Q_augmented_across_trial, b_augmented_across_trial, R)
         # Propagate the particle states
-        new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None, None))(
-            jax.random.split(sk1, num=num_particles), states, observation[0], params, True, (initial_state_covs[current_condition], tau))
+        new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None, None, None))(
+            jax.random.split(sk1, num=num_particles), states, observation[0], params, True, 
+            (initial_state_covs[current_condition], tau))
 
         # Update the log weights.
         log_ws += incr_log_ws
@@ -361,7 +362,7 @@ def smc_ekf_proposal_augmented_state(
 
             inner_params = (A_augmented, Q_augmented, b_augmented, R)
             # Propagate the particle states
-            new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None))(
+            new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None, None, None))(
                 jax.random.split(sk1, num=num_particles), states, y_t, inner_params, False, (Q, jnp.zeros((dim_v, dim_v))))
 
             # Update the log weights.
