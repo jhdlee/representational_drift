@@ -576,6 +576,7 @@ class StiefelManifoldSSM(SSM):
             trial_masks: jnp.array = None,
             method: int = 0,
             num_particles: int = 100,
+            key: jr.PRNGKey = jr.PRNGKey(0),
     ) -> Scalar:
 
         num_trials = emissions.shape[0]
@@ -593,7 +594,7 @@ class StiefelManifoldSSM(SSM):
             filtering_function = extended_kalman_filter_augmented_state
         elif method == 2:
             h = self.get_h_augmented(params.emissions.base_subspace)
-            filtering_function = partial(smc_ekf_proposal_augmented_state, num_particles=num_particles)
+            filtering_function = partial(smc_ekf_proposal_augmented_state, num_particles=num_particles, key=key)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,

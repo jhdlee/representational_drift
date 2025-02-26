@@ -581,11 +581,11 @@ def extended_kalman_filter_x_marginalized(
         y_pred, *_ = h(m, y_true, condition)  # T x N
 
         residuals = y_true - y_pred
-        R_inv = jnp.linalg.inv(R)
-        P_inv = jnp.linalg.inv(P)
+        R_inv = inv_via_cholesky(R)
+        P_inv = inv_via_cholesky(P)
 
         U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-        U_inv = jnp.linalg.inv(U)
+        U_inv = inv_via_cholesky(U)
 
         q = jnp.einsum('tiv,tij,tj->v', H_x, R_inv, residuals)
         quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals) - q @ U_inv @ q
