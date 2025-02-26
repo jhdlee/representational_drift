@@ -536,6 +536,7 @@ def extended_kalman_filter_x_marginalized(
         params: ParamsNLGSSM,
         emissions: Float[Array, "ntime emission_dim"],
         conditions,
+        model_params=None,
         output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
         trial_masks = None,
@@ -560,7 +561,7 @@ def extended_kalman_filter_x_marginalized(
     T, N = num_timesteps, emissions_dim
 
     # Dynamics and emission functions and their Jacobians
-    h, h_s = params.emission_function
+    h = params.emission_function
     H = jacfwd(h, argnums=0, has_aux=True)
 
     def compute_log_likelihood_and_filter(ll, y_true, m, P, condition):
