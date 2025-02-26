@@ -286,7 +286,7 @@ def smc_ekf_proposal_augmented_state(
             dim_x, pred_mean, Q_prime, x_new, aux = inputs
             
             Q_inv = jscipy.linalg.block_diag(jnp.linalg.inv(aux[0]), aux[1])
-            quad_term = jnp.einsum('ij,j,ij->', Q_inv, x_new - pred_mean, x_new - pred_mean)
+            quad_term = jnp.einsum('ij,i,j->', Q_inv, x_new - pred_mean, x_new - pred_mean)
             logdet = jnp.linalg.slogdet(aux[0])[1]
             log_p = -0.5 * (quad_term + logdet + dim_x * jnp.log(2 * jnp.pi))
             
