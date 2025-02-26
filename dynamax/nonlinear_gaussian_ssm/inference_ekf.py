@@ -284,7 +284,10 @@ def smc_ekf_proposal_augmented_state(
 
         def false_fun(inputs):
             dim_x, pred_mean, Q_prime, x_new = inputs
-            log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean[:dim_x], covariance_matrix=Q_prime[:dim_x,:dim_x]).log_prob(x_new[:dim_x])
+            pred_mean_sliced = lax.dynamic_slice(pred_mean, (0,), (dim_x,))
+            Q_prime_sliced = lax.dynamic_slice(Q_prime, (0, 0), (dim_x, dim_x))
+            x_new_sliced = lax.dynamic_slice(x_new, (0,), (dim_x,))
+            log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean_sliced, covariance_matrix=Q_prime_sliced).log_prob(x_new_sliced)
             return log_p
             
         inputs = (dim_x, pred_mean, Q_prime, x_new)
