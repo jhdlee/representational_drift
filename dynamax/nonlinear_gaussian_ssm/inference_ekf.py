@@ -576,16 +576,15 @@ def extended_kalman_filter_x_marginalized(
         and the determinant lemma:
         log|s_k| = log|D| - log|cov_matrix| + log|cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x|.
         """
-
         H_x, R = H(m, y_true, condition)  # (T x N x V), (T x N x N)
         y_pred, *_ = h(m, y_true, condition)  # T x N
 
         residuals = y_true - y_pred
-        R_inv = vmap(inv_via_cholesky)(R)
-        P_inv = inv_via_cholesky(P)
+        R_inv = jnp.linalg.inv(R)
+        P_inv = jnp.linalg.inv(P)
 
         U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-        U_inv = inv_via_cholesky(U)
+        U_inv = jnp.linalg.inv(U)
 
         q = jnp.einsum('tiv,tij,tj->v', H_x, R_inv, residuals)
         quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals) - q @ U_inv @ q
@@ -594,18 +593,24 @@ def extended_kalman_filter_x_marginalized(
         _, logdet_P = jnp.linalg.slogdet(P)
         _, logdet_U = jnp.linalg.slogdet(U)
         logdet = jnp.sum(logdet_R) + logdet_P + logdet_U
+
+        # jax.debug.print('quad_term: {quad_term}', quad_term=quad_term)
+        # jax.debug.print('logdet: {logdet}', logdet=logdet)
         
         ll += -0.5 * (quad_term + logdet + T * N * jnp.log(2 * jnp.pi))
 
         R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
         L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
-        K = jnp.einsum('tiv,vu->tiu', R_inv_H_x, P) - jnp.einsum('tiv,vu,uk->tik', R_inv_H_x, P_inv, L)
+        K = jnp.einsum('tiv,vu->tiu', R_inv_H_x, P) - jnp.einsum('tiv,vu,uk->tik', R_inv_H_x, U_inv, L)
         filtered_mean = m + jnp.einsum('tiu,ti->u', K, residuals)
         filtered_cov = P - jnp.einsum('tiu,tiv->uv', K, H_x) @ P
         filtered_cov = symmetrize(filtered_cov)
 
-        return ll, filtered_mean, filtered_cov
+        # jax.debug.print('m: {m}', m=m)
+        # jax.debug.print('filtered_mean: {filtered_mean}', filtered_mean=filtered_mean)
+        # jax.debug.print('filtered_cov: {filtered_cov}', filtered_cov=filtered_cov)
 
+        return ll, filtered_mean, filtered_cov
 
     def _step(carry, t):
         ll, _pred_mean, _pred_cov = carry
