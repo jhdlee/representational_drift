@@ -606,7 +606,6 @@ def smc_ekf_proposal_x_marginalized(
     """
     num_trials, num_timesteps, emissions_dim = emissions.shape
     T, N = num_timesteps, emissions_dim
-    dim_x = model_params.initial.mean.shape[-1]
     dim_v = params.initial_mean.shape[-1]
     
     # Dynamics and emission functions and their Jacobians
@@ -615,9 +614,6 @@ def smc_ekf_proposal_x_marginalized(
 
     initial_velocity_mean = params.initial_mean
     initial_velocity_cov = params.initial_covariance
-
-    initial_state_means = model_params.initial.mean
-    initial_state_covs = model_params.initial.cov
 
     tau = params.dynamics_covariance
 
@@ -730,10 +726,10 @@ def smc_ekf_proposal_x_marginalized(
         return ((key, resampled_states, resampled_log_ws),
                 (log_ws, should_resample))
 
-    initial_means = jnp.zeros((num_particles, dim_x + dim_v))
-    initial_means = initial_means.at[:, dim_x:].set(initial_velocity_mean)
-    initial_covs = jnp.zeros((num_particles, dim_x + dim_v, dim_x + dim_v))
-    initial_covs = initial_covs.at[:, dim_x:, dim_x:].set(initial_velocity_cov - tau)
+    initial_means = jnp.zeros((num_particles, dim_v))
+    initial_means = initial_means.at[:, :].set(initial_velocity_mean)
+    initial_covs = jnp.zeros((num_particles, dim_v, dim_v))
+    initial_covs = initial_covs.at[:, :, :].set(initial_velocity_cov-tau)
 
     initial_states = (initial_means, initial_covs)
 
