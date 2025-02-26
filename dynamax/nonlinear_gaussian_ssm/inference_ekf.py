@@ -297,9 +297,9 @@ def smc_ekf_proposal_augmented_state(
         log_q = tfd.MultivariateNormalFullCovariance(loc=x_filtered, covariance_matrix=P_filtered).log_prob(x_new)
         log_lik = tfd.MultivariateNormalFullCovariance(loc=y_new, covariance_matrix=R).log_prob(y)
 
-        # jax.debug.print('log_p: {log_p}', log_p=log_p)
-        # jax.debug.print('log_q: {log_q}', log_q=log_q)
-        # jax.debug.print('log_lik: {log_lik}', log_lik=log_lik)
+        jax.debug.print('log_p: {log_p}', log_p=log_p)
+        jax.debug.print('log_q: {log_q}', log_q=log_q)
+        jax.debug.print('log_lik: {log_lik}', log_lik=log_lik)
         
         log_incr = log_lik + log_p - log_q
 
@@ -327,7 +327,7 @@ def smc_ekf_proposal_augmented_state(
 
         A_augmented = jscipy.linalg.block_diag(A, jnp.eye(dim_v))
         Q_augmented = jscipy.linalg.block_diag(Q, jnp.zeros((dim_v, dim_v)))
-        b_augmented = jnp.concatenate([b, jnp.zeros((dim_v,))])
+        b_augmented = jnp.concatenate([b, jnp.zeros(dim_v)])
 
         current_condition = conditions[r]
 
@@ -415,6 +415,8 @@ def smc_ekf_proposal_augmented_state(
 
     # Average along particle dimension
     log_p_hats = jscipy.special.logsumexp(log_weights, axis=1) - jnp.log(num_particles)
+    jax.debug.print('log_p_hats: {log_p_hats}', log_p_hats=log_p_hats)
+    jax.debug.print('resampled: {resampled}', resampled=resampled)
     # Sum in time dimension on resampling steps.
     # Note that this does not include any steps past num_steps because
     # the resampling criterion doesn't allow resampling past num_steps steps.
@@ -508,6 +510,7 @@ def extended_kalman_filter_augmented_state(
 
             # Update the log likelihood
             ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_t))
+            jax.debug.print('ll: {ll}', ll=ll)
 
             # Get the Kalman gain
             K = psd_solve(s_k, H_u @ _pred_cov).T
@@ -568,7 +571,193 @@ def extended_kalman_filter_augmented_state(
     )
     return posterior_filtered
 
+
+def smc_ekf_proposal_x_marginalized(
+    key,
+    params: ParamsNLGSSM,
+    model_params,
+    emissions: Float[Array, "ntime emission_dim"],
+    conditions,
+    output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
+                                              "predicted_covariances"],
+    num_particles = 100,
+    resampling_criterion = ess_criterion,
+    resampling_fn = multinomial_resampling,
+    trial_masks = None,
+):
+
+    r"""Run an (iterated) extended Kalman filter to produce the
+    marginal likelihood and filtered velocity estimates.
+
+    Args:
+        params: model parameters.
+        model_params: model parameters.
+        emissions: observation sequence.
+        conditions: condition indices.
+        output_fields: list of fields to return in posterior object.
+            These can take the values "filtered_means", "filtered_covariances",
+            "predicted_means", "predicted_covariances", and "marginal_loglik".
+        trial_masks: trial masks.
+        num_iters: number of linearizations around posterior for update step (default 1).
+
+    Returns:
+        posterior: posterior object.
+
+    """
+    num_trials, num_timesteps, emissions_dim = emissions.shape
+    T, N = num_timesteps, emissions_dim
+    dim_x = model_params.initial.mean.shape[-1]
+    dim_v = params.initial_mean.shape[-1]
     
+    # Dynamics and emission functions and their Jacobians
+    h = params.emission_function
+    H = jacfwd(h, argnums=0, has_aux=True)
+
+    initial_velocity_mean = params.initial_mean
+    initial_velocity_cov = params.initial_covariance
+
+    initial_state_means = model_params.initial.mean
+    initial_state_covs = model_params.initial.cov
+
+    tau = params.dynamics_covariance
+
+    def efficient_filter(y_true, m, P, condition):
+        """
+        Efficiently computes the filtered mean and covariance:
+        where s_k = H_x @ cov_matrix @ H_xᵀ + D,
+        D = block_diag(S_blocks).
+
+        It uses the Woodbury matrix identity:
+        s_k⁻¹ = D⁻¹ - D⁻¹ H_x (cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x)⁻¹ H_xᵀ D⁻¹,
+        and the determinant lemma:
+        log|s_k| = log|D| - log|cov_matrix| + log|cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x|.
+        """
+        H_x, R = H(m, y_true, condition)  # (T x N x V), (T x N x N)
+        y_pred, *_ = h(m, y_true, condition)  # T x N
+
+        residuals = y_true - y_pred
+        R_inv = jnp.linalg.inv(R)
+        P_inv = jnp.linalg.inv(P)
+
+        U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
+        U_inv = jnp.linalg.inv(U)
+
+        R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
+        L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
+        K = jnp.einsum('tiv,vu->tiu', R_inv_H_x, P) - jnp.einsum('tiv,vu,uk->tik', R_inv_H_x, U_inv, L)
+        filtered_mean = m + jnp.einsum('tiu,ti->u', K, residuals)
+        filtered_cov = P - jnp.einsum('tiu,tiv->uv', K, H_x) @ P
+        filtered_cov = symmetrize(filtered_cov)
+
+        # jax.debug.print('m: {m}', m=m)
+        # jax.debug.print('filtered_mean: {filtered_mean}', filtered_mean=filtered_mean)
+        # jax.debug.print('filtered_cov: {filtered_cov}', filtered_cov=filtered_cov)
+
+        return filtered_mean, filtered_cov
+    
+    def efficient_log_likelihood(y_true, m, condition):
+        y_pred, R = h(m, y_true, condition)  # T x N
+
+        residuals = y_true - y_pred
+        R_inv = jnp.linalg.inv(R)
+        
+        quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals)
+
+        _, logdet_R = jnp.linalg.slogdet(R)
+        logdet = jnp.sum(logdet_R)
+
+        # jax.debug.print('quad_term: {quad_term}', quad_term=quad_term)
+        # jax.debug.print('logdet: {logdet}', logdet=logdet)
+        
+        ll = -0.5 * (quad_term + logdet + T * N * jnp.log(2 * jnp.pi))
+        return ll
+    
+    def transition_fn(key, state, y, condition):
+        """Transition function for the augmented state across trials."""
+        x_prev, P_prev = state
+
+        pred_mean, pred_cov = _predict(x_prev, P_prev, tau)
+
+        x_filtered, P_filtered = efficient_filter(y, pred_mean, pred_cov, condition)
+
+        x_new = MVN(x_filtered, P_filtered).sample(seed=key)
+            
+        log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean, covariance_matrix=tau).log_prob(x_new)
+        log_q = tfd.MultivariateNormalFullCovariance(loc=x_filtered, covariance_matrix=P_filtered).log_prob(x_new)
+        log_lik = efficient_log_likelihood(y, x_new, condition)
+
+        # jax.debug.print('log_p: {log_p}', log_p=log_p)
+        # jax.debug.print('log_q: {log_q}', log_q=log_q)
+        # jax.debug.print('log_lik: {log_lik}', log_lik=log_lik)
+        
+        log_incr = log_lik + log_p - log_q
+
+        return (x_new, P_filtered), log_incr
+
+    def resample(args):
+        key, log_weights, states = args
+        states, inds = resampling_fn(key, log_weights, states)
+        return states, inds, jnp.zeros_like(log_weights)
+
+    def dont_resample(args):
+        _, log_weights, states = args
+        return states, jnp.arange(num_particles), log_weights
+
+    def smc_step(carry, state_slice):
+        key, states, log_ws = carry
+        key, sk1, sk2 = jax.random.split(key, num=3)
+        r, observation = state_slice
+
+        current_condition = conditions[r]
+        # Propagate the particle states
+        new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None))(
+            jax.random.split(sk1, num=num_particles), states, observation, current_condition)
+
+        # Update the log weights.
+        log_ws += incr_log_ws
+
+        # Resample the particles if resampling_criterion returns True and we haven't
+        # exceeded the supplied number of steps.
+        should_resample = jnp.logical_and(resampling_criterion(log_ws, r), r < num_trials)
+
+        resampled_states, parents, resampled_log_ws = jax.lax.cond(
+            should_resample,
+            resample,
+            dont_resample,
+            (sk2, log_ws, new_states)
+        )
+
+        return ((key, resampled_states, resampled_log_ws),
+                (log_ws, should_resample))
+
+    initial_means = jnp.zeros((num_particles, dim_x + dim_v))
+    initial_means = initial_means.at[:, dim_x:].set(initial_velocity_mean)
+    initial_covs = jnp.zeros((num_particles, dim_x + dim_v, dim_x + dim_v))
+    initial_covs = initial_covs.at[:, dim_x:, dim_x:].set(initial_velocity_cov - tau)
+
+    initial_states = (initial_means, initial_covs)
+
+    _, (log_weights, resampled) = jax.lax.scan(
+        smc_step,
+        (key, initial_states, jnp.zeros([num_particles])),
+        (jnp.arange(num_trials), emissions))
+
+    # Average along particle dimension
+    log_p_hats = jscipy.special.logsumexp(log_weights, axis=1) - jnp.log(num_particles)
+    # Sum in time dimension on resampling steps.
+    # Note that this does not include any steps past num_steps because
+    # the resampling criterion doesn't allow resampling past num_steps steps.
+    log_Z_hat = jnp.sum(log_p_hats * resampled)
+    # If we didn't resample on the last timestep, add in the missing log_p_hat
+    log_Z_hat += jnp.where(resampled[num_trials - 1], 0., log_p_hats[num_trials - 1])
+
+    outputs = {"marginal_loglik": log_Z_hat}
+    posterior_filtered = PosteriorGSSMFiltered(
+        **outputs,
+    )
+    
+    return posterior_filtered
+
 
 def extended_kalman_filter_x_marginalized(
         params: ParamsNLGSSM,
