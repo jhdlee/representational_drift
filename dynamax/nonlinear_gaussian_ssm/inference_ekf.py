@@ -510,7 +510,7 @@ def extended_kalman_filter_augmented_state(
 
             # Update the log likelihood
             ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_t))
-            jax.debug.print('ll: {ll}', ll=ll)
+            # jax.debug.print('ll: {ll}', ll=ll)
 
             # Get the Kalman gain
             K = psd_solve(s_k, H_u @ _pred_cov).T
