@@ -581,7 +581,7 @@ def extended_kalman_filter_x_marginalized(
         y_pred, *_ = h(m, y_true, condition)  # T x N
 
         residuals = y_true - y_pred
-        R_inv = inv_via_cholesky(R)
+        R_inv = vmap(inv_via_cholesky)(R)
         P_inv = inv_via_cholesky(P)
 
         U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
