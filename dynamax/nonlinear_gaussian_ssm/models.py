@@ -605,7 +605,7 @@ class StiefelManifoldSSM(SSM):
             emission_covariance=None
         )
 
-        filtered_posterior = filtering_function(NLGSSM_params, model_params=params, emissions=emissions,
+        filtered_posterior = filtering_function(params=NLGSSM_params, model_params=params, emissions=emissions,
                                                 conditions=conditions, trial_masks=trial_masks)
 
         return filtered_posterior.marginal_loglik
