@@ -117,70 +117,75 @@ _zeros_if_none = lambda x, shape: x if x is not None else jnp.zeros(shape)
 
 # --- SMC and auxiliary functions ---
 def ess_criterion(log_weights, unused_t: int):
-  """A criterion that resamples based on effective sample size."""
-  del unused_t
-  num_particles = log_weights.shape[0]
-  ess_num = 2 * jscipy.special.logsumexp(log_weights)
-  ess_denom = jscipy.special.logsumexp(2 * log_weights)
-  log_ess = ess_num - ess_denom
-  return log_ess <= jnp.log(num_particles / 2.0)
+    """A criterion that resamples based on effective sample size."""
+    del unused_t
+    num_particles = log_weights.shape[0]
+    ess_num = 2 * jscipy.special.logsumexp(log_weights)
+    ess_denom = jscipy.special.logsumexp(2 * log_weights)
+    log_ess = ess_num - ess_denom
+    return log_ess <= jnp.log(num_particles / 2.0)
 
 
 def never_resample_criterion(log_weights, t: int):
-  """A criterion that never resamples."""
-  del log_weights
-  del t
-  return jnp.array(False)
+    """A criterion that never resamples."""
+    del log_weights
+    del t
+    return jnp.array(False)
 
 
 def always_resample_criterion(log_weights, t: int):
-  """A criterion that always resamples."""
-  del log_weights
-  del t
-  return jnp.array(True)
+    """A criterion that always resamples."""
+    del log_weights
+    del t
+    return jnp.array(True)
 
 
 def multinomial_resampling(
     key, log_weights, states):
-  """Resample states with multinomial resampling.
-
-  Args:
+    """Resample states with multinomial resampling.
+    
+    Args:
     key: A JAX PRNG key.
     log_weights: A [num_particles] ndarray, the log weights for each particle.
     states: A pytree of [num_particles, ...] ndarrays that
       will be resampled.
-  Returns:
+    Returns:
     resampled_states: A pytree of [num_particles, ...] ndarrays resampled via
       multinomial sampling.
     parents: A [num_particles] array containing index of parent of each state
-  """
-  num_particles = log_weights.shape[0]
-  cat = tfd.Categorical(logits=log_weights)
-  parents = cat.sample(sample_shape=(num_particles,), seed=key)
-  assert isinstance(parents, jnp.ndarray)
-  return (jax.tree_util.tree_map(lambda item: item[parents], states), parents)
+    """
+    num_particles = log_weights.shape[0]
+    cat = tfd.Categorical(logits=log_weights)
+    parents = cat.sample(sample_shape=(num_particles,), seed=key)
+    
+    # Check if JAX's default dtype is float64, and set parents accordingly
+    default_dtype = jax.dtypes.canonicalize_dtype(jnp.float_)
+    parents = parents.astype(jnp.int64 if default_dtype == jnp.float64 else jnp.int32)
+    
+    assert isinstance(parents, jnp.ndarray)
+    return (jax.tree_util.tree_map(lambda item: item[parents], states), parents)
 
 
 def stratified_resampling(
         key, log_weights, states):
-  """Resample states with stratified resampling.
-  Args:
+    """Resample states with stratified resampling.
+    Args:
     key: A JAX PRNG key.
     log_weights: A [num_particles] ndarray, the log weights for each particle.
     states: A pytree of [num_particles, ...] ndarrays that
       will be resampled.
-  Returns:
+    Returns:
     resampled_states: A pytree of [num_particles, ...] ndarrays resampled via
       multinomial sampling.
     parents: A [num_particles] array containing index of parent of each state
-  """
-  num_particles = log_weights.shape[0]
-  us = jax.random.uniform(key, shape=[num_particles])
-  us = (jnp.arange(num_particles) + us) / num_particles
-  norm_log_weights = log_weights - jax.nn.logsumexp(log_weights)
-  bins = jnp.cumsum(jnp.exp(norm_log_weights))
-  inds = jax.lax.stop_gradient(jnp.digitize(us, bins))
-  return (jax.tree_util.tree_map(lambda x: x[inds], states), inds)
+    """
+    num_particles = log_weights.shape[0]
+    us = jax.random.uniform(key, shape=[num_particles])
+    us = (jnp.arange(num_particles) + us) / num_particles
+    norm_log_weights = log_weights - jax.nn.logsumexp(log_weights)
+    bins = jnp.cumsum(jnp.exp(norm_log_weights))
+    inds = jnp.digitize(us, bins)
+    return (jax.tree_util.tree_map(lambda x: x[inds], states), inds)
 
 def smc_ekf_proposal_augmented_state(
     key,
@@ -232,7 +237,7 @@ def smc_ekf_proposal_augmented_state(
 
     tau = params.dynamics_covariance
 
-    def transition_fn(key, state, y, params):
+    def transition_fn(key, state, y, params, across_trial=False):
         """Transition function for the augmented state across trials."""
         x_prev, P_prev = state
 
@@ -250,25 +255,47 @@ def smc_ekf_proposal_augmented_state(
         y_pred = h(pred_mean)  # N
 
         # Get the innovation covariance
-        S = H_u @ P_prev @ H_u.T + R
+        S = H_u @ pred_cov @ H_u.T + R
         S = symmetrize(S)
 
         # Get the Kalman gain
-        K = psd_solve(S, H_u @ P_prev).T
+        K = psd_solve(S, H_u @ pred_cov).T
 
         # Get the filtered mean
         x_filtered = pred_mean + K @ (y - y_pred)
 
         # Get the filtered covariance
-        P_filtered = P_prev - K @ S @ K.T
+        P_filtered = pred_cov - K @ S @ K.T
         P_filtered = symmetrize(P_filtered)
 
         x_new = MVN(x_filtered, P_filtered).sample(seed=key)
         y_new = h(x_new)
 
-        log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean, covariance_matrix=Q_prime).log_prob(x_new)
+        # jax.debug.print('x_filtered: {x_filtered}', x_filtered=x_filtered)
+        # jax.debug.print('P_filtered: {P_filtered}', P_filtered=P_filtered)
+        # jax.debug.print('pred_mean: {pred_mean}', pred_mean=pred_mean)
+        # jax.debug.print('Q_prime: {Q_prime}', Q_prime=Q_prime)
+        # jax.debug.print('x_new: {x_new}', x_new=x_new)
+
+        def true_fun(inputs):
+            dim_x, pred_mean, Q_prime, x_new = inputs
+            log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean, covariance_matrix=Q_prime).log_prob(x_new)
+            return log_p
+
+        def false_fun(inputs):
+            dim_x, pred_mean, Q_prime, x_new = inputs
+            log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean[:dim_x], covariance_matrix=Q_prime[:dim_x,:dim_x]).log_prob(x_new[:dim_x])
+            return log_p
+            
+        inputs = (dim_x, pred_mean, Q_prime, x_new)
+        log_p = jax.lax.cond(across_trial, true_fun, false_fun, inputs)
         log_q = tfd.MultivariateNormalFullCovariance(loc=x_filtered, covariance_matrix=P_filtered).log_prob(x_new)
         log_lik = tfd.MultivariateNormalFullCovariance(loc=y_new, covariance_matrix=R).log_prob(y)
+
+        # jax.debug.print('log_p: {log_p}', log_p=log_p)
+        # jax.debug.print('log_q: {log_q}', log_q=log_q)
+        # jax.debug.print('log_lik: {log_lik}', log_lik=log_lik)
+        
         log_incr = log_lik + log_p - log_q
 
         return (x_new, P_filtered), log_incr
@@ -305,8 +332,8 @@ def smc_ekf_proposal_augmented_state(
 
         params = (A_augmented_across_trial, Q_augmented_across_trial, b_augmented_across_trial, R)
         # Propagate the particle states
-        new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None))(
-            jax.random.split(sk1, num=num_particles), states, observation[0], params)
+        new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None, None))(
+            jax.random.split(sk1, num=num_particles), states, observation[0], params, True)
 
         # Update the log weights.
         log_ws += incr_log_ws
@@ -322,10 +349,10 @@ def smc_ekf_proposal_augmented_state(
             (sk2, log_ws, new_states)
         )
 
-        def inner_step(carry, state_slice):
+        def inner_step(carry, t):
             key, states, log_ws = carry
             key, sk1, sk2 = jax.random.split(key, num=3)
-            t, y_t = state_slice
+            y_t = observation[t]
 
             inner_params = (A_augmented, Q_augmented, b_augmented, R)
             # Propagate the particle states
@@ -351,15 +378,15 @@ def smc_ekf_proposal_augmented_state(
         # Run the SMC loop
         (key, resampled_states, resampled_log_ws), (inner_log_ws, inner_should_resample) = jax.lax.scan(
             inner_step,
-            (key, states, log_ws),
+            (key, resampled_states, resampled_log_ws),
             jnp.arange(1, num_timesteps)
         )
 
         # Concatenate the log weights
-        log_ws = jnp.concatenate([log_ws, inner_log_ws])
+        log_ws = jnp.concatenate([log_ws[jnp.newaxis], inner_log_ws])
 
         # Concatenate the should resample
-        should_resample = jnp.concatenate([should_resample, inner_should_resample])
+        should_resample = jnp.concatenate([should_resample[jnp.newaxis], inner_should_resample])
 
         return ((key, resampled_states, resampled_log_ws),
                 (log_ws, should_resample))
@@ -376,8 +403,8 @@ def smc_ekf_proposal_augmented_state(
         (key, initial_states, jnp.zeros([num_particles])),
         (jnp.arange(num_trials), emissions))
 
-    # Reshape log_weights and resampled to be [num_trials * num_timesteps]
-    log_weights = log_weights.reshape(num_trials * num_timesteps)
+    # Reshape log_weights and resampled to be [num_trials * num_timesteps, num_particles]
+    log_weights = log_weights.reshape(num_trials * num_timesteps, num_particles)
     resampled = resampled.reshape(num_trials * num_timesteps)
 
     # Average along particle dimension
@@ -388,8 +415,13 @@ def smc_ekf_proposal_augmented_state(
     log_Z_hat = jnp.sum(log_p_hats * resampled)
     # If we didn't resample on the last timestep, add in the missing log_p_hat
     log_Z_hat += jnp.where(resampled[num_steps - 1], 0., log_p_hats[num_steps - 1])
+
+    outputs = {"marginal_loglik": log_Z_hat}
+    posterior_filtered = PosteriorGSSMFiltered(
+        **outputs,
+    )
     
-    return log_Z_hat
+    return posterior_filtered
 
 
 def extended_kalman_filter_augmented_state(
