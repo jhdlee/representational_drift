@@ -237,7 +237,7 @@ def smc_ekf_proposal_augmented_state(
 
     tau = params.dynamics_covariance
 
-    def transition_fn(key, state, y, params, across_trial=False):
+    def transition_fn(key, state, y, params, across_trial, aux):
         """Transition function for the augmented state across trials."""
         x_prev, P_prev = state
 
@@ -278,20 +278,21 @@ def smc_ekf_proposal_augmented_state(
         # jax.debug.print('x_new: {x_new}', x_new=x_new)
 
         def true_fun(inputs):
-            dim_x, pred_mean, Q_prime, x_new = inputs
+            dim_x, pred_mean, Q_prime, x_new, aux = inputs
             log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean, covariance_matrix=Q_prime).log_prob(x_new)
             return log_p
-
+        
         def false_fun(inputs):
-            dim_x, pred_mean, Q_prime, x_new = inputs
-            # Use indexing instead of dynamic_slice to avoid tracing issues
-            pred_mean_sliced = pred_mean[:dim_x]
-            Q_prime_sliced = Q_prime[:dim_x, :dim_x]
-            x_new_sliced = x_new[:dim_x]
-            log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean_sliced, covariance_matrix=Q_prime_sliced).log_prob(x_new_sliced)
+            dim_x, pred_mean, Q_prime, x_new, aux = inputs
+            
+            Q_inv = jscipy.linalg.block_diag(jnp.linalg.inv(aux[0]), aux[1])
+            quad_term = jnp.einsum('ij,j,ij->', Q_inv, x_new - pred_mean, x_new - pred_mean)
+            logdet = jnp.linalg.slogdet(aux[0])[1]
+            log_p = -0.5 * (quad_term + logdet + dim_x * jnp.log(2 * jnp.pi))
+            
             return log_p
             
-        inputs = (dim_x, pred_mean, Q_prime, x_new)
+        inputs = (dim_x, pred_mean, Q_prime, x_new, aux)
         log_p = jax.lax.cond(across_trial, true_fun, false_fun, inputs)
         log_q = tfd.MultivariateNormalFullCovariance(loc=x_filtered, covariance_matrix=P_filtered).log_prob(x_new)
         log_lik = tfd.MultivariateNormalFullCovariance(loc=y_new, covariance_matrix=R).log_prob(y)
@@ -337,7 +338,7 @@ def smc_ekf_proposal_augmented_state(
         params = (A_augmented_across_trial, Q_augmented_across_trial, b_augmented_across_trial, R)
         # Propagate the particle states
         new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None, None))(
-            jax.random.split(sk1, num=num_particles), states, observation[0], params, True)
+            jax.random.split(sk1, num=num_particles), states, observation[0], params, True, (initial_state_covs[current_condition], tau))
 
         # Update the log weights.
         log_ws += incr_log_ws
@@ -361,7 +362,7 @@ def smc_ekf_proposal_augmented_state(
             inner_params = (A_augmented, Q_augmented, b_augmented, R)
             # Propagate the particle states
             new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None))(
-                jax.random.split(sk1, num=num_particles), states, y_t, inner_params)
+                jax.random.split(sk1, num=num_particles), states, y_t, inner_params, False, (Q, jnp.zeros((dim_v, dim_v))))
 
             # Update the log weights.
             log_ws += incr_log_ws
