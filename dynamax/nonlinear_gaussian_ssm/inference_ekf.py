@@ -190,11 +190,10 @@ def smc_ekf_proposal_augmented_state(
     conditions,
     output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
-    trial_masks = None,
-    num_iters = 1,
     num_particles = 100,
     resampling_criterion = ess_criterion,
     resampling_fn = multinomial_resampling,
+    trial_masks = None,
 ):
 
     r"""Run an (iterated) extended Kalman filter to produce the
@@ -216,6 +215,7 @@ def smc_ekf_proposal_augmented_state(
 
     """
     num_trials, num_timesteps, emissions_dim = emissions.shape
+    T = num_timesteps
     dim_x = model_params.initial.mean.shape[-1]
     dim_v = params.initial_mean.shape[-1]
     num_steps = num_trials * num_timesteps
@@ -230,9 +230,48 @@ def smc_ekf_proposal_augmented_state(
     initial_state_means = model_params.initial.mean
     initial_state_covs = model_params.initial.cov
 
-    def transition_fn(key, state, observation, t):
-        """Transition function for the augmented state."""
-        return state, jnp.zeros_like(state)
+    tau = params.dynamics_covariance
+
+    def transition_fn(key, state, y, params):
+        """Transition function for the augmented state across trials."""
+        x_prev, P_prev = state
+
+        A_prime, Q_prime, b_prime, R = params
+
+        # Predict the next state
+        pred_mean = A_prime @ x_prev + b_prime
+        pred_cov = A_prime @ P_prev @ A_prime.T + Q_prime
+        pred_cov = symmetrize(pred_cov)
+
+        # Get the Jacobian of the emission function
+        H_u = H(pred_mean)  # (N x (V+D))
+
+        # Get the predicted emission
+        y_pred = h(pred_mean)  # N
+
+        # Get the innovation covariance
+        S = H_u @ P_prev @ H_u.T + R
+        S = symmetrize(S)
+
+        # Get the Kalman gain
+        K = psd_solve(S, H_u @ P_prev).T
+
+        # Get the filtered mean
+        x_filtered = pred_mean + K @ (y - y_pred)
+
+        # Get the filtered covariance
+        P_filtered = P_prev - K @ S @ K.T
+        P_filtered = symmetrize(P_filtered)
+
+        x_new = MVN(x_filtered, P_filtered).sample(seed=key)
+        y_new = h(x_new)
+
+        log_p = tfd.MultivariateNormalFullCovariance(loc=pred_mean, covariance_matrix=Q_prime).log_prob(x_new)
+        log_q = tfd.MultivariateNormalFullCovariance(loc=x_filtered, covariance_matrix=P_filtered).log_prob(x_new)
+        log_lik = tfd.MultivariateNormalFullCovariance(loc=y_new, covariance_matrix=R).log_prob(y)
+        log_incr = log_lik + log_p - log_q
+
+        return (x_new, P_filtered), log_incr
 
     def resample(args):
         key, log_weights, states = args
@@ -257,21 +296,24 @@ def smc_ekf_proposal_augmented_state(
         A_augmented = jscipy.linalg.block_diag(A, jnp.eye(dim_v))
         Q_augmented = jscipy.linalg.block_diag(Q, jnp.zeros((dim_v, dim_v)))
         b_augmented = jnp.concatenate([b, jnp.zeros((dim_v,))])
-        tau = params.dynamics_covariance
 
-        next_condition = conditions[r+1]
-        trial_mask = trial_masks[r]
+        current_condition = conditions[r]
 
+        A_augmented_across_trial = jscipy.linalg.block_diag(jnp.zeros_like(A), jnp.eye(dim_v))
+        Q_augmented_across_trial = jscipy.linalg.block_diag(initial_state_covs[current_condition], tau)
+        b_augmented_across_trial = jnp.concatenate([initial_state_means[current_condition], jnp.zeros((dim_v))])
+
+        params = (A_augmented_across_trial, Q_augmented_across_trial, b_augmented_across_trial, R)
         # Propagate the particle states
         new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None))(
-            jax.random.split(sk1, num=num_particles), states, observation, t)
+            jax.random.split(sk1, num=num_particles), states, observation[0], params)
 
         # Update the log weights.
         log_ws += incr_log_ws
 
         # Resample the particles if resampling_criterion returns True and we haven't
         # exceeded the supplied number of steps.
-        should_resample = jnp.logical_and(resampling_criterion(log_ws, t), t < num_steps)
+        should_resample = jnp.logical_and(resampling_criterion(log_ws, r*T), r*T < num_steps)
 
         resampled_states, parents, resampled_log_ws = jax.lax.cond(
             should_resample,
@@ -280,23 +322,63 @@ def smc_ekf_proposal_augmented_state(
             (sk2, log_ws, new_states)
         )
 
+        def inner_step(carry, state_slice):
+            key, states, log_ws = carry
+            key, sk1, sk2 = jax.random.split(key, num=3)
+            t, y_t = state_slice
+
+            inner_params = (A_augmented, Q_augmented, b_augmented, R)
+            # Propagate the particle states
+            new_states, incr_log_ws = vmap(transition_fn, (0, 0, None, None))(
+                jax.random.split(sk1, num=num_particles), states, y_t, inner_params)
+
+            # Update the log weights.
+            log_ws += incr_log_ws
+
+            # Resample the particles if resampling_criterion returns True and we haven't
+            # exceeded the supplied number of steps.
+            should_resample = jnp.logical_and(resampling_criterion(log_ws, r*T+t), r*T+t < num_steps)
+
+            resampled_states, parents, resampled_log_ws = jax.lax.cond(
+                should_resample,
+                resample,
+                dont_resample,
+                (sk2, log_ws, new_states)
+            )
+
+            return (key, resampled_states, resampled_log_ws), (log_ws, should_resample)
+
+        # Run the SMC loop
+        (key, resampled_states, resampled_log_ws), (inner_log_ws, inner_should_resample) = jax.lax.scan(
+            inner_step,
+            (key, states, log_ws),
+            jnp.arange(1, num_timesteps)
+        )
+
+        # Concatenate the log weights
+        log_ws = jnp.concatenate([log_ws, inner_log_ws])
+
+        # Concatenate the should resample
+        should_resample = jnp.concatenate([should_resample, inner_should_resample])
+
         return ((key, resampled_states, resampled_log_ws),
                 (log_ws, should_resample))
-    
-    # --- Define initial distribution sampler ---
-    def sample_initial_states(key, num_particles: int, mean: jnp.ndarray, cov: jnp.ndarray) -> jnp.ndarray:
-        """Sample num_particles from a Gaussian with given mean and covariance."""
-        return tfd.MultivariateNormalFullCovariance(loc=mean, covariance_matrix=cov).sample(num_particles, seed=key)
-    
-    initial_condition = conditions[0]
-    initial_states = sample_initial_states(key, num_particles, 
-                                           jnp.concatenate([initial_state_means[initial_condition], initial_velocity_mean]), 
-                                           jscipy.linalg.block_diag(initial_state_covs[initial_condition], initial_velocity_cov))
+
+    initial_means = jnp.zeros((num_particles, dim_x + dim_v))
+    initial_means = initial_means.at[:, dim_x:].set(initial_velocity_mean)
+    initial_covs = jnp.zeros((num_particles, dim_x + dim_v, dim_x + dim_v))
+    initial_covs = initial_covs.at[:, dim_x:, dim_x:].set(initial_velocity_cov - tau)
+
+    initial_states = (initial_means, initial_covs)
 
     _, (log_weights, resampled) = jax.lax.scan(
         smc_step,
         (key, initial_states, jnp.zeros([num_particles])),
         (jnp.arange(num_trials), emissions))
+
+    # Reshape log_weights and resampled to be [num_trials * num_timesteps]
+    log_weights = log_weights.reshape(num_trials * num_timesteps)
+    resampled = resampled.reshape(num_trials * num_timesteps)
 
     # Average along particle dimension
     log_p_hats = jscipy.special.logsumexp(log_weights, axis=1) - jnp.log(num_particles)

@@ -22,6 +22,7 @@ from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, Posteri
 
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import (extended_kalman_filter, extended_kalman_smoother,
+                                                          smc_ekf_proposal_augmented_state,
                                                           extended_kalman_filter_x_marginalized,
                                                           extended_kalman_filter_augmented_state,
                                                           extended_kalman_smoother_marginal_log_prob)
@@ -589,6 +590,9 @@ class StiefelManifoldSSM(SSM):
         elif method == 1:
             h = self.get_h_augmented(params.emissions.base_subspace)
             filtering_function = extended_kalman_filter_augmented_state
+        elif method == 2:
+            h = self.get_h_augmented(params.emissions.base_subspace)
+            filtering_function = smc_ekf_proposal_augmented_state
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
