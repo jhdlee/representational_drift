@@ -762,7 +762,7 @@ def extended_kalman_filter_x_marginalized(
         model_params=None,
         output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
-        trial_masks = None,
+        block_masks = None,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -780,9 +780,9 @@ def extended_kalman_filter_x_marginalized(
         post: posterior object.
 
     """
-    num_trials, num_timesteps, emissions_dim = emissions.shape
+    num_blocks, num_trials_per_block, num_timesteps, emissions_dim = emissions.shape
     T, N = num_timesteps, emissions_dim
-
+    V = params.initial_mean.shape[-1]
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
     H = jacfwd(h, argnums=0, has_aux=True)
@@ -799,9 +799,13 @@ def extended_kalman_filter_x_marginalized(
         and the determinant lemma:
         log|s_k| = log|D| - log|cov_matrix| + log|cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x|.
         """
-        H_x, R = H(m, y_true, condition)  # (T x N x V), (T x N x N)
-        y_pred, *_ = h(m, y_true, condition)  # T x N
-
+        H_x, R = vmap(H, (None, 0, 0))(m, y_true, condition)  # (B x T x N x V), (B x T x N x N)
+        y_pred, *_ = vmap(h, (None, 0, 0))(m, y_true, condition)  # B x T x N
+        H_x = H_x.reshape(-1, N, V)
+        R = R.reshape(-1, N, N)
+        y_pred = y_pred.reshape(-1, N)
+        y_true = y_true.reshape(-1, N)
+        
         residuals = y_true - y_pred
         R_inv = jnp.linalg.inv(R)
         P_inv = jnp.linalg.inv(P)
@@ -842,7 +846,7 @@ def extended_kalman_filter_x_marginalized(
         Q = params.dynamics_covariance
         y = emissions[t]
         condition = conditions[t]
-        trial_mask = trial_masks[t]
+        block_mask = block_masks[t]
 
         def true_fun(inputs):
             ll, m, P = inputs
@@ -853,7 +857,7 @@ def extended_kalman_filter_x_marginalized(
             return ll, m, P
 
         inputs = (ll, _pred_mean, _pred_cov)
-        ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, inputs)
+        ll, filtered_mean, filtered_cov = jax.lax.cond(block_mask, true_fun, false_fun, inputs)
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
@@ -873,7 +877,7 @@ def extended_kalman_filter_x_marginalized(
 
     # Run the extended Kalman filter
     carry = (0.0, params.initial_mean, params.initial_covariance)
-    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_trials))
+    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_blocks))
     outputs = {"marginal_loglik": ll, **outputs}
     posterior_filtered = PosteriorGSSMFiltered(
         **outputs,

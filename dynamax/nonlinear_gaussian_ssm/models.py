@@ -574,17 +574,17 @@ class StiefelManifoldSSM(SSM):
             params: ParamsSMDS,
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
-            trial_masks: jnp.array = None,
+            block_masks: jnp.array = None,
             method: int = 0,
             num_particles: int = 100,
             key: jr.PRNGKey = jr.PRNGKey(0),
     ) -> Scalar:
 
-        num_trials = emissions.shape[0]
+        num_blocks = emissions.shape[0]
         if conditions is None:
-            conditions = jnp.zeros(num_trials, dtype=int)
-        if trial_masks is None:
-            trial_masks = jnp.ones(num_trials, dtype=bool)
+            conditions = jnp.zeros(emissions.shape[:2], dtype=int)
+        if block_masks is None:
+            block_masks = jnp.ones(num_blocks, dtype=bool)
 
         f = self.get_f()
         if method == 0:
@@ -610,7 +610,7 @@ class StiefelManifoldSSM(SSM):
         )
 
         filtered_posterior = filtering_function(params=NLGSSM_params, model_params=params, emissions=emissions,
-                                                conditions=conditions, trial_masks=trial_masks)
+                                                conditions=conditions, block_masks=block_masks)
 
         return filtered_posterior.marginal_loglik
 
