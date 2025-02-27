@@ -783,6 +783,7 @@ def extended_kalman_filter_x_marginalized(
     num_blocks, num_trials_per_block, num_timesteps, emissions_dim = emissions.shape
     T, N = num_timesteps, emissions_dim
     V = params.initial_mean.shape[-1]
+    
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
     H = jacfwd(h, argnums=0, has_aux=True)
@@ -805,7 +806,7 @@ def extended_kalman_filter_x_marginalized(
         R = R.reshape(-1, N, N)
         y_pred = y_pred.reshape(-1, N)
         y_true = y_true.reshape(-1, N)
-        
+
         residuals = y_true - y_pred
         R_inv = jnp.linalg.inv(R)
         P_inv = jnp.linalg.inv(P)
@@ -824,7 +825,7 @@ def extended_kalman_filter_x_marginalized(
         # jax.debug.print('quad_term: {quad_term}', quad_term=quad_term)
         # jax.debug.print('logdet: {logdet}', logdet=logdet)
         
-        ll += -0.5 * (quad_term + logdet + T * N * jnp.log(2 * jnp.pi))
+        ll += -0.5 * (quad_term + logdet + num_trials_per_block * T * N * jnp.log(2 * jnp.pi))
 
         R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
         L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
