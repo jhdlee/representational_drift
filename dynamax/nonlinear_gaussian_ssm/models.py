@@ -932,7 +932,7 @@ class StiefelManifoldSSM(SSM):
             else (FB[:, self.state_dim:], jnp.zeros(self.state_dim))
 
         # EKF to infer Vs
-        emission_stats_1, emission_stats2 = emission_stats
+        emission_stats_1, emission_stats_2 = emission_stats
         if velocity_smoother is None:
             emission_stats_1 = jnp.einsum('bkij,lb->lkij', emission_stats_1, block_ids)
             if self.ekf_mode == 'cov':
@@ -940,7 +940,7 @@ class StiefelManifoldSSM(SSM):
             emission_stats_2 = jnp.einsum('bki,lb->lki', emission_stats_2, block_ids)
             if self.ekf_mode == 'cov':
                 emissions_stats_2 = jnp.einsum('lkij,lkj->lki', emission_stats_1, emissions_stats_2)
-            velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, block_masks)
+            velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats_2, block_masks)
         Ev = velocity_smoother.smoothed_means
         H = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
         H = jnp.einsum('bij,bk->kij', H, block_ids)
