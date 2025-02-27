@@ -569,6 +569,8 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
         trial_masks=None,
         session_masks=None,
         velocity_smoother=None,
+        block_ids=None,
+        block_masks=None,
     ):
         # Sum the statistics across all batches
         stats = tree_map(partial(jnp.sum, axis=0), batch_stats)

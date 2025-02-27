@@ -356,6 +356,8 @@ class SSM(ABC):
         conditions: Optional[Float[Array, "num_batches"]] = None,
         trial_masks: jnp.array = None,
         num_iters: int=50,
+        block_ids: jnp.array = None,
+        block_masks: jnp.array = None,
         verbose: bool=True,
         print_ll: bool=False,
         run_velocity_smoother: bool = False,
@@ -389,6 +391,8 @@ class SSM(ABC):
         conditions = jnp.zeros(len(batch_emissions), dtype=int) if conditions is None else conditions
         trial_masks = jnp.ones(len(batch_emissions), dtype=bool) if trial_masks is None else trial_masks
         trial_ids = jnp.arange(len(batch_emissions), dtype=int)
+        block_masks = jnp.ones(len(batch_emissions), dtype=bool) if block_masks is None else block_masks
+        block_ids = jnp.eye(len(batch_emissions)) if block_ids is None else block_ids
 
         @jit
         def em_step(params, m_step_state):
@@ -412,7 +416,7 @@ class SSM(ABC):
             params, m_step_state = self.m_step(params, props, batch_stats,
                                                m_step_state, posteriors,
                                                emissions, conditions, trial_masks,
-                                               velocity_smoother)
+                                               velocity_smoother, block_ids)
             # debug.print('e_step: {x}', x=(batch_stats, lls))
             # debug.print('m_step{y}', y=params)
             return params, m_step_state, lp, lls.sum(), velocity_smoother_marginal_loglik

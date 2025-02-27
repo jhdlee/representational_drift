@@ -887,12 +887,8 @@ class StiefelManifoldSSM(SSM):
         emissions_stats_1 = jnp.einsum('ti,tj->ij', Ex, Ex)
         emissions_stats_1 += jnp.einsum('tij->ij', Vx)
         emissions_stats_1 = jnp.einsum('ij,k->kij', emissions_stats_1, Rinv_d)
-        if self.ekf_mode == 'cov':
-            emissions_stats_1 = jnp.linalg.inv(emissions_stats_1)
         emissions_stats_2 = jnp.einsum('ti,tj->ij', Ex, y)
         emissions_stats_2 = jnp.einsum('ij,j->ji', emissions_stats_2, Rinv_d)
-        if self.ekf_mode == 'cov':
-            emissions_stats_2 = jnp.einsum('kij,kj->ki', emissions_stats_1, emissions_stats_2)
         emission_stats = (emissions_stats_1, emissions_stats_2)
 
         return (init_stats, dynamics_stats, emission_stats), trial_mask * posterior.marginal_loglik, posterior
@@ -907,8 +903,12 @@ class StiefelManifoldSSM(SSM):
         emissions,
         conditions=None,
         trial_masks=None,
-        velocity_smoother=None
+        velocity_smoother=None,
+        block_ids=None,
+        block_masks=None,
     ):
+        
+        num_blocks = block_ids.shape[0]
 
         trial_masks_a = jnp.expand_dims(trial_masks, -1)
         trial_masks_aa = jnp.expand_dims(trial_masks_a, -1)
@@ -934,9 +934,16 @@ class StiefelManifoldSSM(SSM):
         # EKF to infer Vs
         emission_stats_1, emission_stats2 = emission_stats
         if velocity_smoother is None:
-            velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, trial_masks)
+            emission_stats_1 = jnp.einsum('kij,bk->bij', emission_stats_1, block_ids)
+            if self.ekf_mode == 'cov':
+                emission_stats_1 = jnp.linalg.inv(emission_stats_1)
+            emission_stats_2 = jnp.einsum('ki,bk->bi', emission_stats_2, block_ids)
+            if self.ekf_mode == 'cov':
+                emissions_stats_2 = jnp.einsum('kij,kj->ki', emission_stats_1, emissions_stats_2)
+            velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats2, block_masks)
         Ev = velocity_smoother.smoothed_means
         H = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
+        H = jnp.einsum('bij,bk->kij', H, block_ids)
 
         Ev0 = velocity_smoother.smoothed_means[0]
         Ev0v0T = velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0)
@@ -949,7 +956,7 @@ class StiefelManifoldSSM(SSM):
         else:
             if self.tau_per_dim:
                 if self.tau_per_axis:
-                    tau_stats_1 = jnp.ones(self.state_dim) * ((self.num_trials - 1) * (self.emission_dim - self.state_dim)) / 2
+                    tau_stats_1 = jnp.ones(self.state_dim) * ((num_blocks - 1) * (self.emission_dim - self.state_dim)) / 2
                     Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
                     tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
                     tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
@@ -962,7 +969,7 @@ class StiefelManifoldSSM(SSM):
                     tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
                     tau = jnp.repeat(tau, self.emission_dim - self.state_dim)
                 else:
-                    tau_stats_1 = jnp.ones(self.dof) * (self.num_trials - 1) / 2
+                    tau_stats_1 = jnp.ones(self.dof) * (num_blocks - 1) / 2
                     Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
                     tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
                     tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
@@ -974,7 +981,7 @@ class StiefelManifoldSSM(SSM):
                         return tau_mode
                     tau = vmap(update_tau)(tau_stats_1, tau_stats_2)
             else:
-                tau_stats_1 = self.dof * (self.num_trials - 1) / 2
+                tau_stats_1 = self.dof * (num_blocks - 1) / 2
                 Vvpvn_sum = velocity_smoother.smoothed_cross_covariances
                 tau_stats_2 = jnp.einsum('ti,tj->ij', Ev[1:], Ev[1:]) + velocity_smoother.smoothed_covariances_n
                 tau_stats_2 -= (Vvpvn_sum + Vvpvn_sum.T)
