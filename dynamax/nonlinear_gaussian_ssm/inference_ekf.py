@@ -763,6 +763,7 @@ def extended_kalman_filter_x_marginalized(
         output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
         block_masks = None,
+        num_iters = 1,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered state estimates.
@@ -783,7 +784,7 @@ def extended_kalman_filter_x_marginalized(
     num_blocks, num_trials_per_block, num_timesteps, emissions_dim = emissions.shape
     T, N = num_timesteps, emissions_dim
     V = params.initial_mean.shape[-1]
-    
+
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
     H = jacfwd(h, argnums=0, has_aux=True)
@@ -827,12 +828,33 @@ def extended_kalman_filter_x_marginalized(
         
         ll += -0.5 * (quad_term + logdet + num_trials_per_block * T * N * jnp.log(2 * jnp.pi))
 
-        R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
-        L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
-        K = jnp.einsum('tiv,vu->tiu', R_inv_H_x, P) - jnp.einsum('tiv,vu,uk->tik', R_inv_H_x, U_inv, L)
-        filtered_mean = m + jnp.einsum('tiu,ti->u', K, residuals)
-        filtered_cov = P - jnp.einsum('tiu,tiv->uv', K, H_x) @ P
-        filtered_cov = symmetrize(filtered_cov)
+        def update_step(carry, _):
+            prior_mean, prior_cov = carry
+
+            H_x, R = vmap(H, (None, 0, 0))(prior_mean, y_true, condition)  # (B x T x N x V), (B x T x N x N)
+            y_pred, *_ = vmap(h, (None, 0, 0))(prior_mean, y_true, condition)  # B x T x N
+            H_x = H_x.reshape(-1, N, V)
+            R = R.reshape(-1, N, N)
+            y_pred = y_pred.reshape(-1, N)
+            y_true = y_true.reshape(-1, N)
+
+            residuals = y_true - y_pred
+            R_inv = jnp.linalg.inv(R)
+            P_inv = jnp.linalg.inv(prior_cov)
+
+            U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
+            U_inv = jnp.linalg.inv(U)
+
+            R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
+            L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
+            K = jnp.einsum('tiv,vu->tiu', R_inv_H_x, P) - jnp.einsum('tiv,vu,uk->tik', R_inv_H_x, U_inv, L)
+            filtered_mean = prior_mean + jnp.einsum('tiu,ti->u', K, residuals)
+            filtered_cov = prior_cov - jnp.einsum('tiu,tiv->uv', K, H_x) @ prior_cov
+            filtered_cov = symmetrize(filtered_cov)
+
+            return (filtered_mean, filtered_cov), None
+
+        (filtered_mean, filtered_cov), _ = lax.scan(update_step, (m, P), jnp.arange(num_iters))
 
         # jax.debug.print('m: {m}', m=m)
         # jax.debug.print('filtered_mean: {filtered_mean}', filtered_mean=filtered_mean)

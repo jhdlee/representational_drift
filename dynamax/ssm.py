@@ -393,13 +393,18 @@ class SSM(ABC):
         trial_ids = jnp.arange(len(batch_emissions), dtype=int)
         block_ids = jnp.eye(len(batch_emissions)) if block_ids is None else block_ids
         block_masks = jnp.ones(block_ids.shape[0], dtype=bool) if block_masks is None else block_masks
+        num_blocks = block_ids.shape[0]
+        block_size = len(batch_emissions) // num_blocks
+        T, N = batch_emissions.shape[1:]
 
         @jit
         def em_step(params, m_step_state):
             if run_velocity_smoother:
-                velocity_smoother = self.smoother(params, batch_emissions, conditions, trial_masks)
+                velocity_smoother = self.smoother(params, batch_emissions.reshape(num_blocks, block_size, T, N), 
+                                                  conditions.reshape(num_blocks, block_size), block_masks)
                 Ev = velocity_smoother.smoothed_means
                 Hs = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
+                Hs = jnp.einsum('bij,bk->kij', Hs, block_ids)
                 velocity_smoother_marginal_loglik = velocity_smoother.marginal_loglik
             else:
                 velocity_smoother = None
