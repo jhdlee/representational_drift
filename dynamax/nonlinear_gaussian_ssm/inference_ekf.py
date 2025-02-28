@@ -871,11 +871,11 @@ def extended_kalman_filter_x_marginalized(
         def true_fun(inputs):
             ll, m, P = inputs
             ll = compute_log_likelihood(ll, y, m, P, condition)
-            jax.debug.print('t: {t}', t=t)
-            jax.debug.print('ll: {ll}', ll=ll)
+            # jax.debug.print('t: {t}', t=t)
+            # jax.debug.print('ll: {ll}', ll=ll)
             filtered_mean, filtered_cov = compute_filter(y, m, P, condition)
-            jax.debug.print('filtered_mean: {filtered_mean}', filtered_mean=filtered_mean)
-            jax.debug.print('filtered_cov: {filtered_cov}', filtered_cov=filtered_cov)
+            # jax.debug.print('filtered_mean: {filtered_mean}', filtered_mean=filtered_mean)
+            # jax.debug.print('filtered_cov: {filtered_cov}', filtered_cov=filtered_cov)
             return ll, filtered_mean, filtered_cov
 
         def false_fun(inputs):
