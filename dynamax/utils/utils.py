@@ -200,7 +200,7 @@ def find_permutation(
     return perm
 
 
-def psd_solve(A, b, diagonal_boost=1e-12):
+def psd_solve(A, b, diagonal_boost=1e-9):
     """A wrapper for coordinating the linalg solvers used in the library for psd matrices."""
     A = symmetrize(A) + diagonal_boost * jnp.eye(A.shape[-1])
     L, lower = cho_factor(A, lower=True)
@@ -211,7 +211,7 @@ def symmetrize(A):
     """Symmetrize one or more matrices."""
     return 0.5 * (A + jnp.swapaxes(A, -1, -2))
 
-def inv_via_cholesky(A, diagonal_boost=1e-12):
+def inv_via_cholesky(A, diagonal_boost=1e-9):
     """
     Compute a robust inverse of a positive–definite matrix A via Cholesky factorization.
     """
