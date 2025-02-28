@@ -439,7 +439,8 @@ def extended_kalman_filter_augmented_state(
     conditions,
     output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
-    trial_masks = None,
+    block_masks = None,
+    num_iters = 1,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
     marginal likelihood and filtered velocity estimates.
@@ -457,13 +458,13 @@ def extended_kalman_filter_augmented_state(
         post: posterior object.
 
     """
-    num_trials, num_timesteps, emissions_dim = emissions.shape
+    num_blocks, num_trials_per_block, num_timesteps, emissions_dim = emissions.shape
     dim_x = model_params.initial.mean.shape[-1]
     dim_v = params.initial_mean.shape[-1]
     
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
-    H = jacrev(h)
+    H = jacrev(h, argnums=0, has_aux=True)
 
     initial_velocity_mean = params.initial_mean
     initial_velocity_cov = params.initial_covariance
@@ -484,55 +485,85 @@ def extended_kalman_filter_augmented_state(
         R = model_params.emissions.cov
         b = _zeros_if_none(model_params.dynamics.bias, (dim_x,))
 
-        A_augmented = jscipy.linalg.block_diag(A, jnp.eye(dim_v))
-        Q_augmented = jscipy.linalg.block_diag(Q, jnp.zeros((dim_v, dim_v)))
-        b_augmented = jnp.concatenate([b, jnp.zeros((dim_v,))])
+        # A_augmented = jscipy.linalg.block_diag(A, jnp.eye(dim_v))
+        # Q_augmented = jscipy.linalg.block_diag(Q, jnp.zeros((dim_v, dim_v)))
+        # b_augmented = jnp.concatenate([b, jnp.zeros((dim_v,))])
 
         y = emissions[r]
         next_condition = conditions[r+1]
-        trial_mask = trial_masks[r]
+        block_mask = block_masks[r]
 
-        def _inner_step(inner_carry, t):
+        def _inner_step(inner_carry, r):
             ll, _, _, _pred_mean, _pred_cov = inner_carry
 
             # Get parameters and inputs for time index t
-            y_t = y[t]
+            y_r = y[r]
 
-            # Get the Jacobian of the emission function
-            H_u = H(_pred_mean)  # (N x (V+D))
+            def _inner_inner_step(inner_inner_carry, t):
+                ll, _, _, _pred_mean, _pred_cov = inner_inner_carry
 
-            # Get the predicted emission
-            y_pred = h(_pred_mean)  # N
+                y_t = y_r[t]
 
-            # Get the innovation covariance
-            s_k = H_u @ _pred_cov @ H_u.T + R
-            s_k = symmetrize(s_k)
+                # Get the Jacobian of the emission function
+                H_u, y_pred = H(_pred_mean)  # (N x (V+D)), N
 
-            # Update the log likelihood
-            ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_t))
-            # jax.debug.print('ll: {ll}', ll=ll)
+                # Get the innovation covariance
+                s_k = H_u @ _pred_cov @ H_u.T + R
+                s_k = symmetrize(s_k)
 
-            # Get the Kalman gain
-            K = psd_solve(s_k, H_u @ _pred_cov).T
+                # Update the log likelihood
+                ll += MVN(y_pred, s_k).log_prob(jnp.atleast_1d(y_t))
+                # jax.debug.print('ll: {ll}', ll=ll)
 
-            # Get the filtered mean
-            filtered_mean = _pred_mean + K @ (y_t - y_pred) 
+                def update_step(carry, _):
+                    prior_mean, prior_cov = carry
+                    # Get the Jacobian of the emission function
+                    H_u, y_pred = H(prior_mean)  # (N x (V+D)), N
 
-            # Get the filtered covariance
-            filtered_cov = _pred_cov - K @ s_k @ K.T
-            filtered_cov = symmetrize(filtered_cov)        
+                    # Get the innovation covariance
+                    s_k = H_u @ prior_cov @ H_u.T + R
+                    s_k = symmetrize(s_k)
 
-            # Get the predicted mean
-            pred_mean = A_augmented @ filtered_mean + b_augmented
+                    # Get the Kalman gain
+                    K = psd_solve(s_k, H_u @ prior_cov).T
 
-            # Get the predicted covariance  
-            pred_cov = A_augmented @ filtered_cov @ A_augmented.T + Q_augmented
-            pred_cov = symmetrize(pred_cov)
+                    # Get the filtered mean
+                    filtered_mean = prior_mean + K @ (y_t - y_pred) 
+
+                    # Get the filtered covariance
+                    filtered_cov = prior_cov - K @ s_k @ K.T
+                    filtered_cov = symmetrize(filtered_cov)        
+
+                    return (filtered_mean, filtered_cov), None
+                
+                filtered_mean, filtered_cov = jax.lax.scan(update_step, 
+                                                           (_pred_mean, _pred_cov), 
+                                                           jnp.arange(num_iters))
+
+                # # Get the predicted mean
+                # pred_mean = A_augmented @ filtered_mean + b_augmented
+
+                # # Get the predicted covariance  
+                # pred_cov = A_augmented @ filtered_cov @ A_augmented.T + Q_augmented
+                # pred_cov = symmetrize(pred_cov)
+
+                pred_mean = filtered_mean.at[:dim_x].set(A @ filtered_mean[:dim_x] + b)
+                pred_cov = filtered_cov.at[:dim_x].set(A @ filtered_cov[:dim_x])
+                pred_cov = pred_cov.at[:, :dim_x].set(pred_cov[:, :dim_x] @ A.T)
+                pred_cov = pred_cov.at[:dim_x, :dim_x].set(pred_cov[:dim_x, :dim_x] + Q)
+
+                return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
+
+            init_carry = (ll, jnp.zeros_like(filtered_mean), jnp.zeros_like(filtered_cov), _pred_mean, _pred_cov)
+            # Scan over time steps
+            (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), _ = lax.scan(_inner_inner_step, 
+                                                                                 init_carry, 
+                                                                                 jnp.arange(num_timesteps))
 
             return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
         def true_fun(inputs):
-            (ll, filtered_mean, filtered_cov, _, _), _ = lax.scan(_inner_step, inputs, jnp.arange(num_timesteps))
+            (ll, filtered_mean, filtered_cov, _, _), _ = lax.scan(_inner_step, inputs, jnp.arange(num_trials_per_block))
             return ll, filtered_mean, filtered_cov
 
         def false_fun(inputs):
@@ -540,16 +571,21 @@ def extended_kalman_filter_augmented_state(
             return ll, _pred_mean, _pred_cov
 
         inputs = (ll, jnp.zeros_like(_pred_mean), jnp.zeros_like(_pred_cov), _pred_mean, _pred_cov)
-        ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, inputs)
+        ll, filtered_mean, filtered_cov = jax.lax.cond(block_mask, true_fun, false_fun, inputs)
 
-        A_augmented_across_trial = jscipy.linalg.block_diag(jnp.zeros_like(A), jnp.eye(dim_v))
-        Q_augmented_across_trial = jscipy.linalg.block_diag(initial_state_covs[next_condition], tau)
-        b_augmented_across_trial = jnp.concatenate([initial_state_means[next_condition], jnp.zeros((dim_v))])
+        # A_augmented_across_trial = jscipy.linalg.block_diag(jnp.zeros_like(A), jnp.eye(dim_v))
+        # Q_augmented_across_trial = jscipy.linalg.block_diag(initial_state_covs[next_condition], tau)
+        # b_augmented_across_trial = jnp.concatenate([initial_state_means[next_condition], jnp.zeros((dim_v))])
 
-        # Predict the next state
-        pred_mean = A_augmented_across_trial @ filtered_mean + b_augmented_across_trial
-        pred_cov = A_augmented_across_trial @ filtered_cov @ A_augmented_across_trial.T + Q_augmented_across_trial
-        pred_cov = symmetrize(pred_cov)
+        # # Predict the next state
+        # pred_mean = A_augmented_across_trial @ filtered_mean + b_augmented_across_trial
+        # pred_cov = A_augmented_across_trial @ filtered_cov @ A_augmented_across_trial.T + Q_augmented_across_trial
+        # pred_cov = symmetrize(pred_cov)
+
+        pred_mean = filtered_mean.at[:dim_x].set(initial_state_means[next_condition])
+        pred_cov = filtered_cov.at[:dim_x].set(0.0)
+        pred_cov = pred_cov.at[:,:dim_x].set(0.0)
+        pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_condition])
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
@@ -564,7 +600,7 @@ def extended_kalman_filter_augmented_state(
     carry = (0.0, 
              jnp.concatenate([initial_state_means[initial_condition], initial_velocity_mean]), 
              jscipy.linalg.block_diag(initial_state_covs[initial_condition], initial_velocity_cov))
-    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_trials))
+    (ll, *_), outputs = lax.scan(_step, carry, jnp.arange(num_blocks))
     outputs = {"marginal_loglik": ll, **outputs}
     posterior_filtered = PosteriorGSSMFiltered(
         **outputs,

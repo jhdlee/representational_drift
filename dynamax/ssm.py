@@ -361,6 +361,7 @@ class SSM(ABC):
         verbose: bool=True,
         print_ll: bool=False,
         run_velocity_smoother: bool = False,
+        velocity_smoother_method: int = 0,
     ) -> Tuple[ParameterSet, Float[Array, "num_iters"]]:
         r"""Compute parameter MLE/ MAP estimate using Expectation-Maximization (EM).
 
@@ -401,7 +402,8 @@ class SSM(ABC):
         def em_step(params, m_step_state):
             if run_velocity_smoother:
                 velocity_smoother = self.smoother(params, batch_emissions.reshape(num_blocks, block_size, T, N), 
-                                                  conditions.reshape(num_blocks, block_size), block_masks)
+                                                  conditions.reshape(num_blocks, block_size), block_masks,
+                                                  method=velocity_smoother_method)
                 Ev = velocity_smoother.smoothed_means
                 Hs = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
                 Hs = jnp.einsum('bij,bk->kij', Hs, block_ids)

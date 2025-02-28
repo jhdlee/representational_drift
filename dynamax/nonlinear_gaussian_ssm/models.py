@@ -576,6 +576,7 @@ class StiefelManifoldSSM(SSM):
             conditions: jnp.array = None,
             block_masks: jnp.array = None,
             method: int = 0,
+            num_iters: int = 1,
             num_particles: int = 100,
             key: jr.PRNGKey = jr.PRNGKey(0),
     ) -> Scalar:
@@ -589,10 +590,10 @@ class StiefelManifoldSSM(SSM):
         f = self.get_f()
         if method == 0:
             h = self.get_h_x_marginalized(params)
-            filtering_function = partial(extended_kalman_filter_x_marginalized, num_iters=self.ekf_num_iters)
+            filtering_function = partial(extended_kalman_filter_x_marginalized, num_iters=num_iters)
         elif method == 1:
             h = self.get_h_augmented(params.emissions.base_subspace)
-            filtering_function = extended_kalman_filter_augmented_state
+            filtering_function = partial(extended_kalman_filter_augmented_state, num_iters=num_iters)
         elif method == 2:
             h = self.get_h_augmented(params.emissions.base_subspace)
             filtering_function = partial(smc_ekf_proposal_augmented_state, num_particles=num_particles, key=key)
@@ -670,7 +671,7 @@ class StiefelManifoldSSM(SSM):
             filtering_function = partial(extended_kalman_filter_x_marginalized, num_iters=self.ekf_num_iters)
         elif method == 1:
             h = self.get_h_augmented(params.emissions.base_subspace)
-            filtering_function = extended_kalman_filter_augmented_state
+            filtering_function = partial(extended_kalman_filter_augmented_state, num_iters=self.ekf_num_iters)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
@@ -765,7 +766,8 @@ class StiefelManifoldSSM(SSM):
         def h_augmented(u):
             x, v = jnp.split(u, [self.state_dim])
             C = rotate_subspace(base_subspace, self.state_dim, v)
-            return C @ x
+            y_pred = C @ x
+            return y_pred, y_pred
         return h_augmented
 
     def velocity_smoother(self, params, covs, emissions, trial_masks):
