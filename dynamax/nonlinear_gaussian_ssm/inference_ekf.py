@@ -474,7 +474,7 @@ def extended_kalman_filter_augmented_state(
 
     tau = params.dynamics_covariance
 
-    initial_condition = conditions[0]
+    initial_condition = conditions[0, 0]
 
     def _step(carry, r):
         ll, _pred_mean, _pred_cov = carry
@@ -490,7 +490,7 @@ def extended_kalman_filter_augmented_state(
         # b_augmented = jnp.concatenate([b, jnp.zeros((dim_v,))])
 
         y = emissions[r]
-        next_condition = conditions[r+1]
+        next_condition = conditions[r+1, 0]
         block_mask = block_masks[r]
 
         def _inner_step(inner_carry, r):
