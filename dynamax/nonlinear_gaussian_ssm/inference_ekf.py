@@ -476,7 +476,7 @@ def extended_kalman_filter_augmented_state(
 
     initial_condition = conditions[0, 0]
 
-    def _step(carry, b):
+    def _step(carry, block_id):
         ll, _pred_mean, _pred_cov = carry
 
         # Get parameters
@@ -485,9 +485,9 @@ def extended_kalman_filter_augmented_state(
         R = model_params.emissions.cov
         b = _zeros_if_none(model_params.dynamics.bias, (dim_x,))
 
-        y = emissions[b]
-        next_block_condition = conditions[b+1, 0]
-        block_mask = block_masks[b]
+        y = emissions[block_id]
+        next_block_condition = conditions[block_id+1, 0]
+        block_mask = block_masks[block_id]
 
         def _inner_step(inner_carry, r):
             ll, _, _, _pred_mean, _pred_cov = inner_carry
