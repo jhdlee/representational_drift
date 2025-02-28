@@ -494,7 +494,7 @@ def extended_kalman_filter_augmented_state(
 
             # Get parameters and inputs for time index t
             y_r = y[r]
-            next_trial_condition = conditions[b, r+1]
+            next_trial_condition = conditions[block_id, r+1]
 
             def _inner_inner_step(inner_inner_carry, t):
                 ll, _, _, _pred_mean, _pred_cov = inner_inner_carry
