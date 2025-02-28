@@ -740,7 +740,7 @@ class StiefelManifoldSSM(SSM):
             pred_obs_covs = jnp.einsum('ij,tjk,lk->til', C, pred_covs, C) + R
 
             if self.velocity_smoother_method == 'ekf':
-                return pred_obs_means, pred_obs_covs
+                return pred_obs_means, (pred_obs_means, pred_obs_covs)
             elif self.velocity_smoother_method == 'ukf':
                 pred_obs_covs_sqrt = jnp.linalg.cholesky(pred_obs_covs)
                 pred_obs_means += jnp.einsum('til,tl->ti', pred_obs_covs_sqrt,

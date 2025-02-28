@@ -789,7 +789,7 @@ def extended_kalman_filter_x_marginalized(
     h = params.emission_function
     H = jacfwd(h, argnums=0, has_aux=True)
 
-    def compute_log_likelihood_and_filter(ll, y_true, m, P, condition):
+    def compute_log_likelihood(ll, y_true, m, P, condition):
         """
         Efficiently computes the log likelihood and filtered mean and covariance:
         ll = -0.5*(yᵀ s_k⁻¹ y + log|s_k| + m log(2π))
@@ -801,14 +801,13 @@ def extended_kalman_filter_x_marginalized(
         and the determinant lemma:
         log|s_k| = log|D| - log|cov_matrix| + log|cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x|.
         """
-        H_x, R = vmap(H, (None, 0, 0))(m, y_true, condition)  # (B x T x N x V), (B x T x N x N)
-        y_pred, *_ = vmap(h, (None, 0, 0))(m, y_true, condition)  # B x T x N
+        H_x, (y_pred, R) = vmap(H, (None, 0, 0))(m, y_true, condition)  # (B x T x N x V), (B x T x N x N)
+        # y_pred, *_ = vmap(h, (None, 0, 0))(m, y_true, condition)  # B x T x N
         H_x = H_x.reshape(-1, N, V)
         R = R.reshape(-1, N, N)
         y_pred = y_pred.reshape(-1, N)
-        y_true = y_true.reshape(-1, N)
 
-        residuals = y_true - y_pred
+        residuals = y_true.reshape(-1, N) - y_pred
         R_inv = jnp.linalg.inv(R)
         P_inv = jnp.linalg.inv(P)
 
@@ -828,17 +827,19 @@ def extended_kalman_filter_x_marginalized(
         
         ll += -0.5 * (quad_term + logdet + num_trials_per_block * T * N * jnp.log(2 * jnp.pi))
 
+        return ll
+    
+    def compute_filter(y_true, m, P, condition):
         def update_step(carry, _):
             prior_mean, prior_cov = carry
 
-            H_x, R = vmap(H, (None, 0, 0))(prior_mean, y_true, condition)  # (B x T x N x V), (B x T x N x N)
-            y_pred, *_ = vmap(h, (None, 0, 0))(prior_mean, y_true, condition)  # B x T x N
+            H_x, (y_pred, R) = vmap(H, (None, 0, 0))(prior_mean, y_true, condition)  # (B x T x N x V), (B x T x N x N)
+            # y_pred, *_ = vmap(h, (None, 0, 0))(prior_mean, y_true, condition)  # B x T x N
             H_x = H_x.reshape(-1, N, V)
             R = R.reshape(-1, N, N)
             y_pred = y_pred.reshape(-1, N)
-            y_true = y_true.reshape(-1, N)
 
-            residuals = y_true - y_pred
+            residuals = y_true.reshape(-1, N) - y_pred
             R_inv = jnp.linalg.inv(R)
             P_inv = jnp.linalg.inv(prior_cov)
 
@@ -856,11 +857,7 @@ def extended_kalman_filter_x_marginalized(
 
         (filtered_mean, filtered_cov), _ = lax.scan(update_step, (m, P), jnp.arange(num_iters))
 
-        # jax.debug.print('m: {m}', m=m)
-        # jax.debug.print('filtered_mean: {filtered_mean}', filtered_mean=filtered_mean)
-        # jax.debug.print('filtered_cov: {filtered_cov}', filtered_cov=filtered_cov)
-
-        return ll, filtered_mean, filtered_cov
+        return filtered_mean, filtered_cov
 
     def _step(carry, t):
         ll, _pred_mean, _pred_cov = carry
@@ -873,7 +870,9 @@ def extended_kalman_filter_x_marginalized(
 
         def true_fun(inputs):
             ll, m, P = inputs
-            return compute_log_likelihood_and_filter(ll, y, m, P, condition)
+            ll = compute_log_likelihood(ll, y, m, P, condition)
+            filtered_mean, filtered_cov = compute_filter(y, m, P, condition)
+            return ll, filtered_mean, filtered_cov
 
         def false_fun(inputs):
             ll, m, P = inputs
