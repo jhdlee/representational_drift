@@ -536,7 +536,7 @@ def extended_kalman_filter_augmented_state(
 
                     return (filtered_mean, filtered_cov), None
                 
-                filtered_mean, filtered_cov = jax.lax.scan(update_step, 
+                (filtered_mean, filtered_cov), _ = jax.lax.scan(update_step, 
                                                            (_pred_mean, _pred_cov), 
                                                            jnp.arange(num_iters))
 
