@@ -476,7 +476,7 @@ def extended_kalman_filter_augmented_state(
 
     initial_condition = conditions[0, 0]
 
-    def _step(carry, r):
+    def _step(carry, b):
         ll, _pred_mean, _pred_cov = carry
 
         # Get parameters
@@ -485,19 +485,16 @@ def extended_kalman_filter_augmented_state(
         R = model_params.emissions.cov
         b = _zeros_if_none(model_params.dynamics.bias, (dim_x,))
 
-        # A_augmented = jscipy.linalg.block_diag(A, jnp.eye(dim_v))
-        # Q_augmented = jscipy.linalg.block_diag(Q, jnp.zeros((dim_v, dim_v)))
-        # b_augmented = jnp.concatenate([b, jnp.zeros((dim_v,))])
-
-        y = emissions[r]
-        next_condition = conditions[r+1, 0]
-        block_mask = block_masks[r]
+        y = emissions[b]
+        next_block_condition = conditions[b+1, 0]
+        block_mask = block_masks[b]
 
         def _inner_step(inner_carry, r):
             ll, _, _, _pred_mean, _pred_cov = inner_carry
 
             # Get parameters and inputs for time index t
             y_r = y[r]
+            next_trial_condition = conditions[b, r+1]
 
             def _inner_inner_step(inner_inner_carry, t):
                 ll, _, _, _pred_mean, _pred_cov = inner_inner_carry
@@ -540,13 +537,6 @@ def extended_kalman_filter_augmented_state(
                                                            (_pred_mean, _pred_cov), 
                                                            jnp.arange(num_iters))
 
-                # # Get the predicted mean
-                # pred_mean = A_augmented @ filtered_mean + b_augmented
-
-                # # Get the predicted covariance  
-                # pred_cov = A_augmented @ filtered_cov @ A_augmented.T + Q_augmented
-                # pred_cov = symmetrize(pred_cov)
-
                 pred_mean = filtered_mean.at[:dim_x].set(A @ filtered_mean[:dim_x] + b)
                 pred_cov = filtered_cov.at[:dim_x].set(A @ filtered_cov[:dim_x])
                 pred_cov = pred_cov.at[:, :dim_x].set(pred_cov[:, :dim_x] @ A.T)
@@ -559,6 +549,12 @@ def extended_kalman_filter_augmented_state(
             (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), _ = lax.scan(_inner_inner_step, 
                                                                                  init_carry, 
                                                                                  jnp.arange(num_timesteps))
+            
+            # Get the predicted mean and covariance across trials but within block
+            pred_mean = filtered_mean.at[:dim_x].set(initial_state_means[next_trial_condition])
+            pred_cov = filtered_cov.at[:dim_x].set(0.0)
+            pred_cov = pred_cov.at[:,:dim_x].set(0.0)
+            pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_trial_condition])
 
             return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
@@ -573,19 +569,11 @@ def extended_kalman_filter_augmented_state(
         inputs = (ll, jnp.zeros_like(_pred_mean), jnp.zeros_like(_pred_cov), _pred_mean, _pred_cov)
         ll, filtered_mean, filtered_cov = jax.lax.cond(block_mask, true_fun, false_fun, inputs)
 
-        # A_augmented_across_trial = jscipy.linalg.block_diag(jnp.zeros_like(A), jnp.eye(dim_v))
-        # Q_augmented_across_trial = jscipy.linalg.block_diag(initial_state_covs[next_condition], tau)
-        # b_augmented_across_trial = jnp.concatenate([initial_state_means[next_condition], jnp.zeros((dim_v))])
-
-        # # Predict the next state
-        # pred_mean = A_augmented_across_trial @ filtered_mean + b_augmented_across_trial
-        # pred_cov = A_augmented_across_trial @ filtered_cov @ A_augmented_across_trial.T + Q_augmented_across_trial
-        # pred_cov = symmetrize(pred_cov)
-
-        pred_mean = filtered_mean.at[:dim_x].set(initial_state_means[next_condition])
+        # Get the predicted mean and covariance across blocks
+        pred_mean = filtered_mean.at[:dim_x].set(initial_state_means[next_block_condition])
         pred_cov = filtered_cov.at[:dim_x].set(0.0)
         pred_cov = pred_cov.at[:,:dim_x].set(0.0)
-        pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_condition])
+        pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_block_condition])
         pred_cov = pred_cov.at[dim_x:, dim_x:].set(pred_cov[dim_x:, dim_x:] + tau)
 
         # Build carry and output states
