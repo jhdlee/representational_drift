@@ -554,7 +554,7 @@ def extended_kalman_filter_augmented_state(
 
                 return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
-            init_carry = (ll, jnp.zeros_like(filtered_mean), jnp.zeros_like(filtered_cov), _pred_mean, _pred_cov)
+            init_carry = (ll, jnp.zeros_like(_pred_mean), jnp.zeros_like(_pred_cov), _pred_mean, _pred_cov)
             # Scan over time steps
             (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), _ = lax.scan(_inner_inner_step, 
                                                                                  init_carry, 
