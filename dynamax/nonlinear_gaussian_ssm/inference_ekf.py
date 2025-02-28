@@ -586,6 +586,7 @@ def extended_kalman_filter_augmented_state(
         pred_cov = filtered_cov.at[:dim_x].set(0.0)
         pred_cov = pred_cov.at[:,:dim_x].set(0.0)
         pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_condition])
+        pred_cov = pred_cov.at[dim_x:, dim_x:].set(pred_cov[dim_x:, dim_x:] + tau)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
