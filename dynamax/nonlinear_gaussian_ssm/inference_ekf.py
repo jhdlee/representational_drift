@@ -608,7 +608,7 @@ def smc_ekf_proposal_x_marginalized(
     num_particles = 100,
     resampling_criterion = ess_criterion,
     resampling_fn = multinomial_resampling,
-    trial_masks = None,
+    block_masks = None,
 ):
 
     r"""Run an (iterated) extended Kalman filter to produce the
