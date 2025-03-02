@@ -629,9 +629,9 @@ def smc_ekf_proposal_x_marginalized(
         posterior: posterior object.
 
     """
-    num_trials, num_timesteps, emissions_dim = emissions.shape
+    num_blocks, num_trials_per_block, num_timesteps, emissions_dim = emissions.shape
     T, N = num_timesteps, emissions_dim
-    dim_v = params.initial_mean.shape[-1]
+    V = params.initial_mean.shape[-1]
     
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
@@ -653,10 +653,12 @@ def smc_ekf_proposal_x_marginalized(
         and the determinant lemma:
         log|s_k| = log|D| - log|cov_matrix| + log|cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x|.
         """
-        H_x, R = H(m, y_true, condition)  # (T x N x V), (T x N x N)
-        y_pred, *_ = h(m, y_true, condition)  # T x N
+        H_x, (y_pred, R) = vmap(H, (None, 0, 0))(m, y_true, condition)  # (T x N x V), (T x N x N)
+        H_x = H_x.reshape(-1, N, V)
+        R = R.reshape(-1, N, N)
+        y_pred = y_pred.reshape(-1, N)
 
-        residuals = y_true - y_pred
+        residuals = y_true.reshape(-1, N) - y_pred
         R_inv = jnp.linalg.inv(R)
         P_inv = jnp.linalg.inv(P)
 
@@ -677,9 +679,11 @@ def smc_ekf_proposal_x_marginalized(
         return filtered_mean, filtered_cov
     
     def efficient_log_likelihood(y_true, m, condition):
-        y_pred, R = h(m, y_true, condition)  # T x N
+        *_, (y_pred, R) = vmap(h, (None, 0, 0))(m, y_true, condition)  # T x N
+        R = R.reshape(-1, N, N)
+        y_pred = y_pred.reshape(-1, N)
 
-        residuals = y_true - y_pred
+        residuals = y_true.reshape(-1, N) - y_pred
         R_inv = jnp.linalg.inv(R)
         
         quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals)
@@ -690,7 +694,7 @@ def smc_ekf_proposal_x_marginalized(
         # jax.debug.print('quad_term: {quad_term}', quad_term=quad_term)
         # jax.debug.print('logdet: {logdet}', logdet=logdet)
         
-        ll = -0.5 * (quad_term + logdet + T * N * jnp.log(2 * jnp.pi))
+        ll = -0.5 * (quad_term + logdet + num_trials_per_block * T * N * jnp.log(2 * jnp.pi))
         return ll
     
     def transition_fn(key, state, y, condition):
@@ -739,7 +743,7 @@ def smc_ekf_proposal_x_marginalized(
 
         # Resample the particles if resampling_criterion returns True and we haven't
         # exceeded the supplied number of steps.
-        should_resample = jnp.logical_and(resampling_criterion(log_ws, r), r < num_trials)
+        should_resample = jnp.logical_and(resampling_criterion(log_ws, r), r < num_blocks)
 
         resampled_states, parents, resampled_log_ws = jax.lax.cond(
             should_resample,
@@ -751,9 +755,9 @@ def smc_ekf_proposal_x_marginalized(
         return ((key, resampled_states, resampled_log_ws),
                 (log_ws, should_resample))
 
-    initial_means = jnp.zeros((num_particles, dim_v))
+    initial_means = jnp.zeros((num_particles, V))
     initial_means = initial_means.at[:, :].set(initial_velocity_mean)
-    initial_covs = jnp.zeros((num_particles, dim_v, dim_v))
+    initial_covs = jnp.zeros((num_particles, V, V))
     initial_covs = initial_covs.at[:, :, :].set(initial_velocity_cov-tau)
 
     initial_states = (initial_means, initial_covs)
@@ -761,7 +765,7 @@ def smc_ekf_proposal_x_marginalized(
     _, (log_weights, resampled) = jax.lax.scan(
         smc_step,
         (key, initial_states, jnp.zeros([num_particles])),
-        (jnp.arange(num_trials), emissions))
+        (jnp.arange(num_blocks), emissions))
 
     # Average along particle dimension
     log_p_hats = jscipy.special.logsumexp(log_weights, axis=1) - jnp.log(num_particles)
@@ -770,7 +774,7 @@ def smc_ekf_proposal_x_marginalized(
     # the resampling criterion doesn't allow resampling past num_steps steps.
     log_Z_hat = jnp.sum(log_p_hats * resampled)
     # If we didn't resample on the last timestep, add in the missing log_p_hat
-    log_Z_hat += jnp.where(resampled[num_trials - 1], 0., log_p_hats[num_trials - 1])
+    log_Z_hat += jnp.where(resampled[num_blocks - 1], 0., log_p_hats[num_blocks - 1])
 
     outputs = {"marginal_loglik": log_Z_hat}
     posterior_filtered = PosteriorGSSMFiltered(
