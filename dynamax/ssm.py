@@ -445,9 +445,10 @@ class SSM(ABC):
                 print(iter_num, total_lp, lp, ll, vel_ll, params.emissions.tau.min(), params.emissions.tau.max(),
                       jnp.diag(params.emissions.initial_velocity_cov).max(), jnp.diag(params.emissions.cov).min())
                 print('-----------------------------------------------------------------------------')
-            if total_lp > best_lp:
-                best_lp = total_lp
-                best_params = params
+            # if total_lp > best_lp:
+            #     best_lp = total_lp
+            #     best_params = params
+            best_params = params
         return best_params, jnp.array(log_probs)
 
     def fit_sgd(
