@@ -38,7 +38,7 @@ from dynamax.utils.distributions import MatrixNormalInverseWishart as MNIW
 from dynamax.utils.distributions import NormalInverseWishart as NIW
 from dynamax.utils.distributions import (mniw_posterior_update, niw_posterior_update,
                                          mvn_posterior_update, ig_posterior_update)
-from dynamax.utils.utils import pytree_stack, psd_solve, symmetrize, rotate_subspace
+from dynamax.utils.utils import pytree_stack, psd_solve, symmetrize, rotate_subspace, inv_via_cholesky
 
 tfd = tfp.distributions
 tfb = tfp.bijectors
@@ -938,7 +938,7 @@ class StiefelManifoldSSM(SSM):
         if velocity_smoother is None:
             emission_stats_1 = jnp.einsum('bkij,lb->lkij', emission_stats_1, block_ids)
             if self.ekf_mode == 'cov':
-                emission_stats_1 = jnp.linalg.inv(emission_stats_1)
+                emission_stats_1 = inv_via_cholesky(emission_stats_1)
             emission_stats_2 = jnp.einsum('bki,lb->lki', emission_stats_2, block_ids)
             if self.ekf_mode == 'cov':
                 emission_stats_2 = jnp.einsum('lkij,lkj->lki', emission_stats_1, emission_stats_2)

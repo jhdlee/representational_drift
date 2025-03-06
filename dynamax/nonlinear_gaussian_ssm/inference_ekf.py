@@ -1008,18 +1008,32 @@ def extended_kalman_filter(
             pred_cov = Q + filtered_cov
 
         elif mode == 'cov':
-            # Get the Jacobian of the emission function
-            H_x = H(_pred_mean)  # (ND x V)
-            y_pred = h(_pred_mean)  # ND
+            def true_fun(inputs):
+                def _update_step(carry, _):
+                    _pred_mean, _pred_cov = carry
+                    # Get the Jacobian of the emission function
+                    H_x = H(_pred_mean)  # (ND x V)
+                    y_pred = h(_pred_mean)  # ND
 
-            s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*R)
-            s_k = symmetrize(s_k)
+                    s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*R)
+                    s_k = symmetrize(s_k)
 
-            # Condition on this emission
-            K = psd_solve(s_k, H_x @ _pred_cov).T
-            filtered_cov = _pred_cov - trial_mask * (K @ s_k @ K.T)
-            filtered_mean = _pred_mean + trial_mask * (K @ (y.flatten() - y_pred))
-            filtered_cov = symmetrize(filtered_cov)
+                    # Condition on this emission
+                    K = psd_solve(s_k, H_x @ _pred_cov).T
+                    filtered_cov = _pred_cov -  K @ s_k @ K.T
+                    filtered_mean = _pred_mean + K @ (y.flatten() - y_pred)
+                    filtered_cov = symmetrize(filtered_cov)
+                    return (filtered_mean, filtered_cov), None
+                
+                (filtered_mean, filtered_cov), _ = lax.scan(_update_step, inputs, jnp.arange(num_iters))
+                return filtered_mean, filtered_cov
+
+            def false_fun(inputs):
+                _pred_mean, _pred_cov = inputs
+                return _pred_mean, _pred_cov
+
+            inputs = (_pred_mean, _pred_cov)
+            filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, inputs)
 
             # Predict the next state
             pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
