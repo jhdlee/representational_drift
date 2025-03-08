@@ -963,9 +963,9 @@ class StiefelManifoldSSM(SSM):
         # initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.mode()
 
         initial_velocity_cov = params.emissions.initial_velocity_cov
-        initial_velocity_cov_inv = jnp.linalg.inv(initial_velocity_cov)
+        initial_velocity_cov_inv = 1/jnp.diag(initial_velocity_cov)#jnp.linalg.inv(initial_velocity_cov)
         Ev0 = velocity_smoother.smoothed_means[0]
-        init_velocity_stats = (initial_velocity_cov_inv, initial_velocity_cov_inv @ Ev0)
+        init_velocity_stats = (jnp.diag(initial_velocity_cov_inv), initial_velocity_cov_inv * Ev0)
         initial_velocity_posterior = mvn_posterior_update(self.initial_velocity_prior, init_velocity_stats)
         initial_velocity_mean = initial_velocity_posterior.mode()
 
