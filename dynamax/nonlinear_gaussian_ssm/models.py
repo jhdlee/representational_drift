@@ -889,9 +889,9 @@ class StiefelManifoldSSM(SSM):
 
         # more expected sufficient statistics for the emissions
         # let z[t] = [x[t], u[t]] for t = 0...T-1
-        Rinv = jnp.linalg.inv(h_params.emissions.cov)
+        # Rinv = jnp.linalg.inv(h_params.emissions.cov)
         # Assumes that Rinv is diagonal
-        Rinv_d = jnp.diag(Rinv)
+        Rinv_d = 1.0/jnp.diag(h_params.emissions.cov)
         emissions_stats_1 = jnp.einsum('ti,tj->ij', Ex, Ex)
         emissions_stats_1 += jnp.einsum('tij->ij', Vx)
         emissions_stats_1 = jnp.einsum('ij,k->kij', emissions_stats_1, Rinv_d)
