@@ -529,7 +529,7 @@ def extended_kalman_filter_augmented_state(
 
                     # Get the filtered covariance
                     filtered_cov = prior_cov - K @ s_k @ K.T
-                    filtered_cov = symmetrize(filtered_cov)        
+                    filtered_cov = symmetrize(filtered_cov)
 
                     return (filtered_mean, filtered_cov), None
                 
@@ -837,11 +837,11 @@ def extended_kalman_filter_x_marginalized(
         y_pred = y_pred.reshape(-1, N)
 
         residuals = y_true.reshape(-1, N) - y_pred
-        R_inv = vmap(inv_via_cholesky)(R)#jnp.linalg.inv(R)
-        P_inv = inv_via_cholesky(P)#jnp.linalg.inv(P)
+        R_inv = jnp.linalg.inv(R)
+        P_inv = jnp.linalg.inv(P)
 
         U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-        U_inv = inv_via_cholesky(U)
+        U_inv = jnp.linalg.inv(U)
 
         q = jnp.einsum('tiv,tij,tj->v', H_x, R_inv, residuals)
         quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals) - q @ U_inv @ q
@@ -869,11 +869,11 @@ def extended_kalman_filter_x_marginalized(
             y_pred = y_pred.reshape(-1, N)
 
             residuals = y_true.reshape(-1, N) - y_pred
-            R_inv = vmap(inv_via_cholesky)(R)#jnp.linalg.inv(R)
-            P_inv = inv_via_cholesky(prior_cov)#jnp.linalg.inv(prior_cov)
+            R_inv = jnp.linalg.inv(R)
+            P_inv = jnp.linalg.inv(prior_cov)
 
             U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-            U_inv = inv_via_cholesky(U)
+            U_inv = jnp.linalg.inv(U)
 
             R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
             L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
@@ -942,7 +942,7 @@ def extended_kalman_filter_x_marginalized(
 def extended_kalman_filter(
     params: ParamsNLGSSM,
     emissions: Float[Array, "ntime emission_dim"],
-    output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances", "predicted_means", "predicted_covariances"],
+    output_fields: Optional[List[str]]=["filtered_means", "filtered_covariances"], # "predicted_means", "predicted_covariances"],
     trial_masks = None,
     mode = 'hybrid',
     num_iters = 1,
@@ -967,7 +967,7 @@ def extended_kalman_filter(
 
     # Dynamics and emission functions and their Jacobians
     h = params.emission_function
-    H = jacfwd(h)
+    H = jacfwd(h, argnums=0, has_aux=True)
     # HH = hessian(h)
 
     def _step(carry, t):
@@ -985,8 +985,8 @@ def extended_kalman_filter(
                     _pred_mean, _pred_cov = carry
 
                     # Get the Jacobian of the emission function
-                    H_x = H(_pred_mean)  # (ND x V)
-                    y_pred = h(_pred_mean)  # ND
+                    H_x, y_pred = H(_pred_mean)  # (ND x V), ND
+                    # y_pred = h(_pred_mean)  # ND
 
                     _pred_pre = inv_via_cholesky(_pred_cov)
                     filtered_pre = _pred_pre + H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
@@ -1012,11 +1012,10 @@ def extended_kalman_filter(
                 def _update_step(carry, _):
                     _pred_mean, _pred_cov = carry
                     # Get the Jacobian of the emission function
-                    H_x = H(_pred_mean)  # (ND x V)
-                    y_pred = h(_pred_mean)  # ND
+                    H_x, y_pred = H(_pred_mean)  # (ND x V), ND
+                    # y_pred = h(_pred_mean)  # ND
 
                     s_k = H_x @ _pred_cov @ H_x.T + jscipy.linalg.block_diag(*R)
-                    s_k = symmetrize(s_k)
 
                     # Condition on this emission
                     K = psd_solve(s_k, H_x @ _pred_cov).T
@@ -1043,8 +1042,8 @@ def extended_kalman_filter(
         outputs = {
             "filtered_means": filtered_mean,
             "filtered_covariances": filtered_cov,
-            "predicted_means": _pred_mean,
-            "predicted_covariances": _pred_cov,
+            # "predicted_means": _pred_mean,
+            # "predicted_covariances": _pred_cov,
             "marginal_loglik": ll,
         }
         outputs = {key: val for key, val in outputs.items() if key in output_fields}

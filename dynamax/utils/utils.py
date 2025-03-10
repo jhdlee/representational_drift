@@ -217,7 +217,7 @@ def inv_via_cholesky(A, diagonal_boost=1e-12):
     """
     A = symmetrize(A) + diagonal_boost * jnp.eye(A.shape[-1])
     L = jnp.linalg.cholesky(A)
-    return jax.scipy.linalg.cho_solve((L, True), jnp.eye(A.shape[-1]))
+    return cho_solve((L, True), jnp.eye(A.shape[-1]))
 
 def rotate_subspace(base_subspace, D, v):
     N = base_subspace.shape[0]
