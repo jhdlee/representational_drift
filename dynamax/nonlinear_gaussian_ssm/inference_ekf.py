@@ -285,7 +285,7 @@ def smc_ekf_proposal_augmented_state(
         def false_fun(inputs):
             dim_x, pred_mean, Q_prime, x_new, aux = inputs
             
-            Q_inv = jscipy.linalg.block_diag(jnp.linalg.inv(aux[0]), aux[1])
+            Q_inv = jscipy.linalg.block_diag(inv_via_cholesky(aux[0]), aux[1])
             quad_term = jnp.einsum('ij,i,j->', Q_inv, x_new - pred_mean, x_new - pred_mean)
             logdet = jnp.linalg.slogdet(aux[0])[1]
             log_p = -0.5 * (quad_term + logdet + dim_x * jnp.log(2 * jnp.pi))
@@ -659,11 +659,11 @@ def smc_ekf_proposal_x_marginalized(
         y_pred = y_pred.reshape(-1, N)
 
         residuals = y_true.reshape(-1, N) - y_pred
-        R_inv = jnp.linalg.inv(R)
-        P_inv = jnp.linalg.inv(P)
+        R_inv = vmap(inv_via_cholesky)(R)
+        P_inv = inv_via_cholesky(P)
 
         U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-        U_inv = jnp.linalg.inv(U)
+        U_inv = inv_via_cholesky(U)
 
         R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
         L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
@@ -684,7 +684,7 @@ def smc_ekf_proposal_x_marginalized(
         y_pred = y_pred.reshape(-1, N)
 
         residuals = y_true.reshape(-1, N) - y_pred
-        R_inv = jnp.linalg.inv(R)
+        R_inv = vmap(inv_via_cholesky)(R)
         
         quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals)
 
@@ -837,11 +837,11 @@ def extended_kalman_filter_x_marginalized(
         y_pred = y_pred.reshape(-1, N)
 
         residuals = y_true.reshape(-1, N) - y_pred
-        R_inv = jnp.linalg.inv(R)
-        P_inv = jnp.linalg.inv(P)
+        R_inv = vmap(inv_via_cholesky)(R)
+        P_inv = inv_via_cholesky(P)
 
         U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-        U_inv = jnp.linalg.inv(U)
+        U_inv = inv_via_cholesky(U)
 
         q = jnp.einsum('tiv,tij,tj->v', H_x, R_inv, residuals)
         quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals) - q @ U_inv @ q
@@ -869,11 +869,11 @@ def extended_kalman_filter_x_marginalized(
             y_pred = y_pred.reshape(-1, N)
 
             residuals = y_true.reshape(-1, N) - y_pred
-            R_inv = jnp.linalg.inv(R)
-            P_inv = jnp.linalg.inv(prior_cov)
+            R_inv = vmap(inv_via_cholesky)(R)
+            P_inv = inv_via_cholesky(prior_cov)
 
             U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-            U_inv = jnp.linalg.inv(U)
+            U_inv = inv_via_cholesky(U)
 
             R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
             L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
@@ -988,9 +988,9 @@ def extended_kalman_filter(
                     H_x, y_pred = H(_pred_mean)  # (ND x V), ND
                     # y_pred = h(_pred_mean)  # ND
 
-                    _pred_pre = jnp.linalg.inv(_pred_cov)
+                    _pred_pre = inv_via_cholesky(_pred_cov)
                     filtered_pre = _pred_pre + H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
-                    filtered_cov = jnp.linalg.inv(filtered_pre)
+                    filtered_cov = inv_via_cholesky(filtered_pre)
                     filtered_mean = _pred_mean - filtered_cov @ H_x.T @ (jscipy.linalg.block_diag(*R) @ y_pred - y.flatten())
                     return (filtered_mean, filtered_cov), None
                 
