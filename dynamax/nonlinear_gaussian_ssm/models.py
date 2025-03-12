@@ -945,7 +945,8 @@ class StiefelManifoldSSM(SSM):
             emission_stats_1 = jnp.einsum('bkij,lb->lkij', emission_stats_1, block_ids)
             if self.ekf_mode == 'cov':
                 dim1, dim2, dim3, dim4 = emission_stats_1.shape
-                emission_stats_1 = vmap(inv_via_cholesky)(emission_stats_1.reshape(dim1 * dim2, dim3, dim4))
+                # emission_stats_1 = vmap(inv_via_cholesky)(emission_stats_1.reshape(dim1 * dim2, dim3, dim4))
+                emission_stats_1 = jnp.linalg.inv(emission_stats_1.reshape(dim1 * dim2, dim3, dim4))
                 emission_stats_1 = emission_stats_1.reshape(dim1, dim2, dim3, dim4)
             emission_stats_2 = jnp.einsum('bki,lb->lki', emission_stats_2, block_ids)
             if self.ekf_mode == 'cov':

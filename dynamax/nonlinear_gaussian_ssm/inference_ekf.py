@@ -988,9 +988,9 @@ def extended_kalman_filter(
                     H_x, y_pred = H(_pred_mean)  # (ND x V), ND
                     # y_pred = h(_pred_mean)  # ND
 
-                    _pred_pre = inv_via_cholesky(_pred_cov)
+                    _pred_pre = jnp.linalg.inv(_pred_cov)
                     filtered_pre = _pred_pre + H_x.T @ jscipy.linalg.block_diag(*R) @ H_x
-                    filtered_cov = inv_via_cholesky(filtered_pre)
+                    filtered_cov = jnp.linalg.inv(filtered_pre)
                     filtered_mean = _pred_mean - filtered_cov @ H_x.T @ (jscipy.linalg.block_diag(*R) @ y_pred - y.flatten())
                     return (filtered_mean, filtered_cov), None
                 
