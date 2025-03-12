@@ -764,7 +764,7 @@ class StiefelManifoldSSM(SSM):
     def get_h(self, base_subspace):
         def h(v):
             C = rotate_subspace(base_subspace, self.state_dim, v)
-            return C.flatten()
+            return C.flatten(), C.flatten()
 
         return h
     
