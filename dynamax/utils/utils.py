@@ -220,6 +220,14 @@ def inv_via_cholesky(A, diagonal_boost=1e-16):
     x = cho_solve((L, lower), jnp.eye(A.shape[-1]))
     return x
 
+def cayley_map(A):
+    """
+    Compute the Cayley map of a matrix A.
+    """
+    N = A.shape[0]
+    I = jnp.eye(N, dtype=A.dtype)
+    return jnp.linalg.solve(I - A, I + A)
+
 def rotate_subspace(base_subspace, D, v):
     N = base_subspace.shape[0]
     dof_shape = (D, (N - D))
@@ -227,7 +235,8 @@ def rotate_subspace(base_subspace, D, v):
     rotation = jnp.zeros((N, N))
     rotation = rotation.at[:D, D:].set(v.reshape(dof_shape))
     rotation -= rotation.T
-    rotation = jscipy.linalg.expm(rotation)
+    # rotation = jscipy.linalg.expm(rotation)
+    rotation = cayley_map(rotation)
     new_subspace = base_subspace @ rotation
 
     return new_subspace[:, :D]
