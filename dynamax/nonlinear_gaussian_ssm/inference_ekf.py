@@ -837,11 +837,11 @@ def extended_kalman_filter_x_marginalized(
         y_pred = y_pred.reshape(-1, N)
 
         residuals = y_true.reshape(-1, N) - y_pred
-        R_inv = vmap(inv_via_cholesky)(R)
-        P_inv = inv_via_cholesky(P)
+        R_inv = jnp.linalg.inv(R)
+        P_inv = jnp.linalg.inv(P)
 
         U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-        U_inv = inv_via_cholesky(U)
+        U_inv = jnp.linalg.inv(U)
 
         q = jnp.einsum('tiv,tij,tj->v', H_x, R_inv, residuals)
         quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals) - q @ U_inv @ q
@@ -869,11 +869,11 @@ def extended_kalman_filter_x_marginalized(
             y_pred = y_pred.reshape(-1, N)
 
             residuals = y_true.reshape(-1, N) - y_pred
-            R_inv = vmap(inv_via_cholesky)(R)
-            P_inv = inv_via_cholesky(prior_cov)
+            R_inv = jnp.linalg.inv(R)
+            P_inv = jnp.linalg.inv(prior_cov)
 
             U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-            U_inv = inv_via_cholesky(U)
+            U_inv = jnp.linalg.inv(U)
 
             R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
             L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
