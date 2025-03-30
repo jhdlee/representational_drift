@@ -958,8 +958,7 @@ class StiefelManifoldSSM(SSM):
 
         Ev0 = velocity_smoother.smoothed_means[0]
         Ev0v0T = velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0)
-        Ev0v0T_inv = jnp.linalg.inv(Ev0v0T)
-        init_velocity_stats = (Ev0v0T_inv, Ev0v0T_inv @ Ev0)
+        init_velocity_stats = (Ev0, Ev0v0T, 1)
         initial_velocity_posterior = niw_posterior_update(self.initial_velocity_prior, init_velocity_stats)
         initial_velocity_cov, initial_velocity_mean = initial_velocity_posterior.mode()
 
