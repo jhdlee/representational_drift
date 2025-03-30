@@ -1039,7 +1039,7 @@ def extended_kalman_filter(
 
             # normalize the eigenvalues of the predicted covariance by their maximum
             L, U = jnp.linalg.eigh(pred_cov)
-            threshold = 1e-4
+            threshold = 1e-3
             should_normalize = jnp.max(L) > threshold
             normalized_L = jnp.where(should_normalize, 
                                    threshold * L / jnp.max(L), 
