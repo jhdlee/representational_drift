@@ -970,11 +970,13 @@ def extended_kalman_filter(
     H = jacfwd(h, argnums=0, has_aux=True)
     # HH = hessian(h)
 
+    Q = params.dynamics_covariance
+    dv = Q.shape[-1]
+
     def _step(carry, t):
         ll, _pred_mean, _pred_cov = carry
 
         # Get parameters and inputs for time index t
-        Q = params.dynamics_covariance
         R = params.emission_covariance[t]
         y = emissions[t]
         trial_mask = trial_masks[t]
@@ -1035,14 +1037,25 @@ def extended_kalman_filter(
             filtered_mean, filtered_cov = jax.lax.cond(trial_mask, true_fun, false_fun, inputs)
 
             # normalize the eigenvalues of the predicted covariance by their maximum
-            L, U = jnp.linalg.eigh(filtered_cov)
-            threshold = 1e-3
-            should_normalize = jnp.max(L) > threshold
-            # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
-            normalized_L = jnp.where(should_normalize, 
-                                   threshold * L / jnp.max(L), 
-                                   L)
-            filtered_cov = U @ jnp.diag(normalized_L) @ U.T
+            # L, U = jnp.linalg.eigh(filtered_cov)
+            # threshold = 1e-3
+            # should_normalize = jnp.max(L) > threshold
+            # # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
+            # normalized_L = jnp.where(should_normalize, 
+            #                        threshold * L / jnp.max(L), 
+            #                        L)
+            # filtered_cov = U @ jnp.diag(normalized_L) @ U.T
+            threshold = dv * 1e-4
+
+            # 1. Compute the trace
+            S = jnp.trace(filtered_cov)
+
+            # 2. Determine the scale factor
+            #    scale = 1.0 if S <= T, or T/S otherwise.
+            scale = jnp.where(S > threshold, threshold / S, 1.0)
+
+            # 3. Scale the matrix
+            filtered_cov = scale * filtered_cov
 
             # Predict the next state
             pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
