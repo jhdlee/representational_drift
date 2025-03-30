@@ -1037,6 +1037,14 @@ def extended_kalman_filter(
             # Predict the next state
             pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
 
+            # # impose an upper bound on the eigenvalues of the predicted covariance
+            # L, U = jnp.linalg.eigh(pred_cov)
+            # L = jnp.clip(L, 0, 1e-3)
+            # pred_cov = U @ jnp.diag(L) @ U.T
+
+            # normalize the predicted covariance to have unit trace
+            pred_cov = 1e-3 * pred_cov / jnp.trace(pred_cov)
+
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
         outputs = {
