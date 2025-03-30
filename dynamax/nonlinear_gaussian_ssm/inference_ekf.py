@@ -542,6 +542,16 @@ def extended_kalman_filter_augmented_state(
                 pred_cov = pred_cov.at[:, :dim_x].set(pred_cov[:, :dim_x] @ A.T)
                 pred_cov = pred_cov.at[:dim_x, :dim_x].set(pred_cov[:dim_x, :dim_x] + Q)
 
+                # normalize the eigenvalues of the predicted covariance by their maximum
+                # L, U = jnp.linalg.eigh(filtered_cov)
+                lambda_max, _ = power_iteration(pred_cov)
+                threshold = 1e-3
+                should_normalize = lambda_max > threshold
+                # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
+                pred_cov = jnp.where(should_normalize, 
+                                        threshold * pred_cov / lambda_max, 
+                                        pred_cov)
+
                 return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
             init_carry = (ll, jnp.zeros_like(_pred_mean), jnp.zeros_like(_pred_cov), _pred_mean, _pred_cov)
@@ -555,6 +565,16 @@ def extended_kalman_filter_augmented_state(
             pred_cov = filtered_cov.at[:dim_x].set(0.0)
             pred_cov = pred_cov.at[:,:dim_x].set(0.0)
             pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_trial_condition])
+
+            # normalize the eigenvalues of the predicted covariance by their maximum
+            # L, U = jnp.linalg.eigh(filtered_cov)
+            lambda_max, _ = power_iteration(pred_cov)
+            threshold = 1e-3
+            should_normalize = lambda_max > threshold
+            # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
+            pred_cov = jnp.where(should_normalize, 
+                                    threshold * pred_cov / lambda_max, 
+                                    pred_cov)
 
             return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
@@ -575,6 +595,16 @@ def extended_kalman_filter_augmented_state(
         pred_cov = pred_cov.at[:,:dim_x].set(0.0)
         pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_block_condition])
         pred_cov = pred_cov.at[dim_x:, dim_x:].set(pred_cov[dim_x:, dim_x:] + tau)
+
+        # normalize the eigenvalues of the predicted covariance by their maximum
+        # L, U = jnp.linalg.eigh(filtered_cov)
+        lambda_max, _ = power_iteration(pred_cov)
+        threshold = 1e-3
+        should_normalize = lambda_max > threshold
+        # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
+        pred_cov = jnp.where(should_normalize, 
+                                threshold * pred_cov / lambda_max, 
+                                pred_cov)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
@@ -916,6 +946,16 @@ def extended_kalman_filter_x_marginalized(
 
         # Predict the next state
         pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
+
+        # normalize the eigenvalues of the predicted covariance by their maximum
+        # L, U = jnp.linalg.eigh(filtered_cov)
+        lambda_max, _ = power_iteration(pred_cov)
+        threshold = 1e-3
+        should_normalize = lambda_max > threshold
+        # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
+        pred_cov = jnp.where(should_normalize, 
+                                threshold * pred_cov / lambda_max, 
+                                pred_cov)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
