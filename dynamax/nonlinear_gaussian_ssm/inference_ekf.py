@@ -1039,8 +1039,12 @@ def extended_kalman_filter(
 
             # normalize the eigenvalues of the predicted covariance by their maximum
             L, U = jnp.linalg.eigh(pred_cov)
-            L = 1e-3 * L / jnp.max(L)
-            pred_cov = U @ jnp.diag(L) @ U.T
+            threshold = 1e-4
+            should_normalize = jnp.max(L) > threshold
+            normalized_L = jnp.where(should_normalize, 
+                                   threshold * L / jnp.max(L), 
+                                   L)
+            pred_cov = U @ jnp.diag(normalized_L) @ U.T
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
