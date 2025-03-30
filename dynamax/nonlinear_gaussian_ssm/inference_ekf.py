@@ -1041,7 +1041,7 @@ def extended_kalman_filter(
             L, U = jnp.linalg.eigh(pred_cov)
             threshold = 1e-3
             should_normalize = jnp.max(L) > threshold
-            jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
+            # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
             normalized_L = jnp.where(should_normalize, 
                                    threshold * L / jnp.max(L), 
                                    L)
