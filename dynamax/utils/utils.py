@@ -241,7 +241,7 @@ def rotate_subspace(base_subspace, D, v):
 
     return new_subspace[:, :D]
 
-def power_iteration(M, num_iters=100):
+def power_iteration(M, num_iters=1000):
     """
     Compute the largest eigenvalue/eigenvector of a matrix M (assumed real symmetric or PSD)
     using Power Iteration, unrolled with lax.scan for a fixed number of steps.

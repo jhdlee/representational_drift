@@ -531,14 +531,6 @@ def extended_kalman_filter_augmented_state(
                     filtered_cov = prior_cov - K @ s_k @ K.T
                     filtered_cov = symmetrize(filtered_cov)
 
-                    lambda_max, _ = power_iteration(filtered_cov)
-                    threshold = 1e-3
-                    should_normalize = lambda_max > threshold
-                    # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
-                    filtered_cov = jnp.where(should_normalize, 
-                                            threshold * filtered_cov / lambda_max, 
-                                            filtered_cov)
-
                     return (filtered_mean, filtered_cov), None
                 
                 (filtered_mean, filtered_cov), _ = jax.lax.scan(update_step, 
@@ -889,14 +881,6 @@ def extended_kalman_filter_x_marginalized(
             filtered_mean = prior_mean + jnp.einsum('tiu,ti->u', K, residuals)
             filtered_cov = prior_cov - jnp.einsum('tiu,tiv->uv', K, H_x) @ prior_cov
             filtered_cov = symmetrize(filtered_cov)
-
-            lambda_max, _ = power_iteration(filtered_cov)
-            threshold = 1e-3
-            should_normalize = lambda_max > threshold
-            # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
-            filtered_cov = jnp.where(should_normalize, 
-                                     threshold * filtered_cov / lambda_max, 
-                                     filtered_cov)
 
             return (filtered_mean, filtered_cov), None
 
