@@ -458,6 +458,9 @@ def extended_kalman_filter_augmented_state(
         post: posterior object.
 
     """
+
+    threshold = 1e-4
+
     num_blocks, num_trials_per_block, num_timesteps, emissions_dim = emissions.shape
     dim_x = model_params.initial.mean.shape[-1]
     dim_v = params.initial_mean.shape[-1]
@@ -545,7 +548,6 @@ def extended_kalman_filter_augmented_state(
                 # normalize the eigenvalues of the predicted covariance by their maximum
                 # L, U = jnp.linalg.eigh(filtered_cov)
                 lambda_max, _ = power_iteration(pred_cov)
-                threshold = 1e-3
                 should_normalize = lambda_max > threshold
                 # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
                 pred_cov = jnp.where(should_normalize, 
@@ -569,7 +571,6 @@ def extended_kalman_filter_augmented_state(
             # normalize the eigenvalues of the predicted covariance by their maximum
             # L, U = jnp.linalg.eigh(filtered_cov)
             lambda_max, _ = power_iteration(pred_cov)
-            threshold = 1e-3
             should_normalize = lambda_max > threshold
             # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
             pred_cov = jnp.where(should_normalize, 
@@ -599,7 +600,6 @@ def extended_kalman_filter_augmented_state(
         # normalize the eigenvalues of the predicted covariance by their maximum
         # L, U = jnp.linalg.eigh(filtered_cov)
         lambda_max, _ = power_iteration(pred_cov)
-        threshold = 1e-3
         should_normalize = lambda_max > threshold
         # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
         pred_cov = jnp.where(should_normalize, 
@@ -950,7 +950,7 @@ def extended_kalman_filter_x_marginalized(
         # normalize the eigenvalues of the predicted covariance by their maximum
         # L, U = jnp.linalg.eigh(filtered_cov)
         lambda_max, _ = power_iteration(pred_cov)
-        threshold = 1e-3
+        threshold = 1e-4
         should_normalize = lambda_max > threshold
         # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
         pred_cov = jnp.where(should_normalize, 
@@ -1082,7 +1082,7 @@ def extended_kalman_filter(
             # normalize the eigenvalues of the predicted covariance by their maximum
             # L, U = jnp.linalg.eigh(filtered_cov)
             lambda_max, _ = power_iteration(pred_cov)
-            threshold = 1e-3
+            threshold = 1e-4
             should_normalize = lambda_max > threshold
             # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
             pred_cov = jnp.where(should_normalize, 
