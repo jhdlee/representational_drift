@@ -10,7 +10,7 @@ from tensorflow_probability.substrates.jax.distributions import MultivariateNorm
 from jaxtyping import Array, Float
 from typing import List, Optional, NamedTuple, Optional, Union, Callable
 
-from dynamax.utils.utils import psd_solve, symmetrize, inv_via_cholesky, rotate_subspace
+from dynamax.utils.utils import psd_solve, symmetrize, inv_via_cholesky, rotate_subspace, power_iteration
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 from dynamax.types import PRNGKey
 
@@ -1038,24 +1038,13 @@ def extended_kalman_filter(
 
             # normalize the eigenvalues of the predicted covariance by their maximum
             # L, U = jnp.linalg.eigh(filtered_cov)
-            # threshold = 1e-3
-            # should_normalize = jnp.max(L) > threshold
-            # # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
-            # normalized_L = jnp.where(should_normalize, 
-            #                        threshold * L / jnp.max(L), 
-            #                        L)
-            # filtered_cov = U @ jnp.diag(normalized_L) @ U.T
-            threshold = dv * 1e-4
-
-            # 1. Compute the trace
-            S = jnp.trace(filtered_cov)
-
-            # 2. Determine the scale factor
-            #    scale = 1.0 if S <= T, or T/S otherwise.
-            scale = jnp.where(S > threshold, threshold / S, 1.0)
-
-            # 3. Scale the matrix
-            filtered_cov = scale * filtered_cov
+            lambda_max, _ = power_iteration(filtered_cov)
+            threshold = 1e-3
+            should_normalize = lambda_max > threshold
+            # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
+            filtered_cov = jnp.where(should_normalize, 
+                                     threshold * filtered_cov / lambda_max, 
+                                     filtered_cov)
 
             # Predict the next state
             pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
