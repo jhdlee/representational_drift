@@ -978,7 +978,7 @@ class StiefelManifoldSSM(SSM):
 
         # MAP estimation for the initial velocity variance
         initial_velocity_cov_stats_1 = 0.5
-        initial_velocity_cov_stats_2 = jnp.diag(velocity_smoother.smoothed_covariances_0)
+        initial_velocity_cov_stats_2 = jnp.diag(velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0))
         initial_velocity_cov_stats_2 -= 2 * initial_velocity_mean * Ev0
         initial_velocity_cov_stats_2 += initial_velocity_mean ** 2
 
