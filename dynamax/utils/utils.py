@@ -240,3 +240,35 @@ def rotate_subspace(base_subspace, D, v):
     new_subspace = base_subspace @ rotation
 
     return new_subspace[:, :D]
+
+def power_iteration(M, num_iters=100):
+    """
+    Compute the largest eigenvalue/eigenvector of a matrix M (assumed real symmetric or PSD)
+    using Power Iteration, unrolled with lax.scan for a fixed number of steps.
+    
+    Args:
+      M: 2D array (N x N)
+      num_iters: int, number of iteration steps.
+
+    Returns:
+      (lambda_max, v_final): largest eigenvalue (approx) and corresponding eigenvector (approx).
+    """
+    # Random init for the vector
+    key = jr.PRNGKey(0)
+    v0 = jr.normal(key, shape=(M.shape[0],))
+    v0 = v0 / jnp.linalg.norm(v0)
+    
+    def iteration_func(v, _):
+        # One step of power iteration
+        v_new = M @ v
+        v_new = v_new / jnp.linalg.norm(v_new)
+        return v_new, v_new  # (new_carry, output_for_this_step)
+    
+    # Run 'num_iters' steps of iteration.
+    # - carry is the vector 'v'
+    # - we ignore the second output (scan outputs all intermediate vs)
+    v_final, _ = jax.lax.scan(iteration_func, v0, None, length=num_iters)
+    
+    # Rayleigh quotient as approximate largest eigenvalue
+    lambda_max = jnp.dot(v_final, M @ v_final)
+    return lambda_max, v_final
