@@ -235,8 +235,8 @@ def rotate_subspace(base_subspace, D, v):
     rotation = jnp.zeros((N, N))
     rotation = rotation.at[:D, D:].set(v.reshape(dof_shape))
     rotation -= rotation.T
-    # rotation = jscipy.linalg.expm(rotation)
-    rotation = cayley_map(rotation)
+    rotation = jscipy.linalg.expm(rotation)
+    # rotation = cayley_map(rotation)
     new_subspace = base_subspace @ rotation
 
     return new_subspace[:, :D]
