@@ -858,7 +858,7 @@ def extended_kalman_filter_x_marginalized(
         It uses the Woodbury matrix identity:
         s_k⁻¹ = D⁻¹ - D⁻¹ H_x (cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x)⁻¹ H_xᵀ D⁻¹,
         and the determinant lemma:
-        log|s_k| = log|D| - log|cov_matrix| + log|cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x|.
+        log|s_k| = log|D| + log|cov_matrix| + log|cov_matrix⁻¹ + H_xᵀ D⁻¹ H_x|.
         """
         H_x, (y_pred, R) = vmap(H, (None, 0, 0))(m, y_true, condition)  # (B x T x N x V), (B x T x N x N)
         # y_pred, *_ = vmap(h, (None, 0, 0))(m, y_true, condition)  # B x T x N
