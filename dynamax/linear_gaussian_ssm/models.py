@@ -315,10 +315,10 @@ class LinearGaussianSSM(SSM):
         """
         posterior = lgssm_smoother(params, emissions, inputs, condition)
         H = params.emissions.weights
-        b = params.emissions.bias
+        d = params.emissions.bias
         R = params.emissions.cov
         emission_dim = R.shape[0]
-        smoothed_emissions = posterior.smoothed_means @ H.T + b
+        smoothed_emissions = posterior.smoothed_means @ H.T + d
         smoothed_emissions_cov = H @ posterior.smoothed_covariances @ H.T + R
         smoothed_emissions_std = jnp.sqrt(
             jnp.array([smoothed_emissions_cov[:, i, i] for i in range(emission_dim)]))
@@ -342,7 +342,7 @@ class LinearGaussianSSM(SSM):
             :posterior predictive means $\mathbb{E}[y_{t,d} \mid y_{1:T}]$ and standard deviations $\mathrm{std}[y_{t,d} \mid y_{1:T}]$
 
         """
-        posterior_predictive_vmap = vmap(posterior_predictive, in_axes=(None, 0, None, 0))
+        posterior_predictive_vmap = vmap(self.posterior_predictive, in_axes=(None, 0, None, 0))
         return posterior_predictive_vmap(params, emissions, inputs, conditions)
 
     # Expectation-maximization (EM) code

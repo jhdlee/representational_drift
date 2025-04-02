@@ -201,7 +201,7 @@ def make_lgssm_params(initial_mean,
                       emissions_bias=None,
                       emissions_input_weights=None):
     """Helper function to construct a ParamsLGSSM object from arguments."""
-    state_dim = len(initial_mean)
+    state_dim = initial_mean.shape[-1]
     emission_dim = emissions_cov.shape[-1]
     input_dim = max(dynamics_input_weights.shape[-1] if dynamics_input_weights is not None else 0,
                     emissions_input_weights.shape[-1] if emissions_input_weights is not None else 0)
