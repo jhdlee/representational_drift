@@ -153,6 +153,7 @@ def main():
         
         model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
         model_name = f"smds_model_{config['model']['state_dim']}_{config['model']['ekf_mode']}_{config['model']['fix_tau']}_{config['model']['fix_initial_velocity']}_{config['model']['fix_emissions_cov']}_{config['model']['base_subspace_type']}_{config['model']['initial_velocity_cov']}_{config['model']['init_tau']}_{config['model']['max_tau']}_{config['model']['ekf_num_iters']}"
+        model_name = f"{model_name}_{seed}"
         # Save model
         if use_wandb:
             save_model(wandb_run, best_params, model_dir, model_name)

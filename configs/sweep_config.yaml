@@ -4,9 +4,11 @@ command:
   - ${program}
   - ${args}
 method: grid
-seed:
-  values: [0, 42, 667]
 parameters:
+  # Seed parameter
+  seed:
+    values: [0, 42, 667]
+  
   # Sweep parameters
   model.state_dim:
     values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
