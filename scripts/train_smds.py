@@ -6,7 +6,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import jax.random as jr
-import jax.vmap as vmap
+from jax import vmap
 import numpy as np
 import pickle as pkl
 from sklearn.decomposition import PCA

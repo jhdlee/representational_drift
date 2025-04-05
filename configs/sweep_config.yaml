@@ -7,17 +7,17 @@ method: grid
 parameters:
   # Seed parameter
   seed:
-    values: [0, 42, 667]
+    values: [0, 42]
   
   # Sweep parameters
   model.state_dim:
-    values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+    values: [5, 10, 15]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
     value: true
   training.num_iters:
-    value: 200
+    value: 10
     
   # Default configuration parameters
   model.num_conditions:
