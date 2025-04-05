@@ -9,6 +9,7 @@ dist/
 # ignore figures unless manually added
 *.logs
 *wandb
+*outputs
 *.png
 *.jpg
 *.pdf
