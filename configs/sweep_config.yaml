@@ -1,9 +1,9 @@
-command:
-  - ${env}
-  - python
-  - ${program}
-  - ${args}
+# Wandb configuration
+program: /home/groups/swl1/hdlee/representational_drift/scripts/train_smds.py
+project: smds
+name: smds_sweep
 method: grid
+
 parameters:
   # Seed parameter
   seed:
@@ -54,8 +54,3 @@ parameters:
     value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
   data.block_size:
     value: 1
-
-# Wandb configuration
-program: /home/groups/swl1/hdlee/representational_drift/scripts/train_smds.py
-project: smds
-name: smds_sweep

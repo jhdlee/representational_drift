@@ -9,17 +9,23 @@ model:
   dynamics_cov_type: "diagonal"
   emissions_cov_type: "diagonal"
   has_dynamics_bias: true
-  has_emissions_bias: true
+  has_emissions_bias: false
   ekf_mode: "cov"
   fix_tau: false
   tau_per_dim: true
-  emissions_cov_eps: 1e-4
+  emissions_cov_eps: 1e-2
+  base_subspace_type: "random"
+  initial_velocity_cov: 1e-4
+  init_tau: 1e-6
+  max_tau: 1e-4
 
 # Training parameters
 training:
-  num_iters: 50
-  run_velocity_smoother: true
-  print_ll: false
+  num_iters: 200
+  run_velocity_smoother: false
+  print_ll: true
+  velocity_smoother_method: "ekf"
+  ekf_num_iters: 1
 
 # Evaluation parameters
 evaluation:
@@ -31,13 +37,17 @@ evaluation:
 
 # Data parameters
 data:
-  train_path: "data/train.npz"
-  test_path: "data/test.npz"
-  val_ratio: 0.1
-  batch_size: 32
+  path: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
+  block_size: 1
 
 # Wandb configuration
 wandb:
   project: "smds"
   entity: null  # Your wandb username or team
-  mode: "online"  # "online", "offline", or "disabled" 
+  mode: "online"  # "online", "offline", or "disabled"
+
+# Global parameters
+seed: 42
+use_wandb: true
+eval_only: false
+pretrained_model: null 

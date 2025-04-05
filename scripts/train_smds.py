@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 import os
-import argparse
+import hydra
+from omegaconf import DictConfig, OmegaConf
 import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
@@ -57,28 +58,28 @@ def split_and_standardize_data(emissions, conditions, block_size, seed):
 
     return (train_obs, test_obs, train_conditions, test_conditions, block_ids, 
             trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks)
+
+@hydra.main(version_base=None, config_path="../configs", config_name="smds_config")
+def main(config: DictConfig):
+    """Main function to train and evaluate SMDS model"""
+    # Print config if needed
+    print(OmegaConf.to_yaml(config))
     
-def main():
-    parser = argparse.ArgumentParser(description="Train SMDS model with wandb logging")
-    parser.add_argument('--config', type=str, default='configs/smds_config.yaml', help='Path to config file')
-    parser.add_argument('--no_wandb', action='store_true', default=False, help='Disable wandb logging')
-    parser.add_argument('--eval_only', action='store_true', default=False, help='Skip training and only evaluate')
-    parser.add_argument('--pretrained_model', type=str, default=None, help='Path to pretrained model for evaluation')
-    args = parser.parse_args()
+    # Check for evaluation-only mode
+    eval_only = config.get('eval_only', False)
+    pretrained_model = config.get('pretrained_model', None)
     
     # Initialize wandb
-    use_wandb = not args.no_wandb
+    use_wandb = config.get('use_wandb', True)
     if use_wandb:
-        wandb_run, config = init_wandb(args.config)
+        wandb_run, _ = init_wandb(config)
     else:
-        import yaml
-        with open(args.config, 'r') as f:
-            config = yaml.safe_load(f)
+        wandb_run = None
     
     # Load data
-    data_path = config['data']['path']
-    block_size = config['data']['block_size']
-    seed = config['seed']
+    data_path = config.data.path
+    block_size = config.data.block_size
+    seed = config.seed
     emissions, conditions = load_data(data_path)
     (train_obs, test_obs, train_conditions, test_conditions, block_ids,
         trial_masks, block_masks, sequence_length,
@@ -89,36 +90,36 @@ def main():
     cosmoothing_mask = cosmoothing_mask.at[held_out_idx].set(False)
     
     # Initialize model
-    model_config = config['model']
-    training_config = config['training']
+    model_config = config.model
+    training_config = config.training
     
     smds = StiefelManifoldSSM(
-        state_dim=model_config['state_dim'],
+        state_dim=model_config.state_dim,
         emission_dim=emission_dim,
         num_trials=len(train_obs),
         num_conditions=num_conditions,
-        has_dynamics_bias=model_config['has_dynamics_bias'],
-        tau_per_dim=model_config['tau_per_dim'],
-        fix_tau=model_config['fix_tau'],
-        emissions_cov_eps=model_config['emissions_cov_eps'],
-        velocity_smoother_method=training_config['velocity_smoother_method'],
-        ekf_mode=model_config['ekf_mode'],
-        max_tau=model_config['max_tau'],
-        ekf_num_iters=training_config['ekf_num_iters'],
+        has_dynamics_bias=model_config.has_dynamics_bias,
+        tau_per_dim=model_config.tau_per_dim,
+        fix_tau=model_config.fix_tau,
+        emissions_cov_eps=model_config.emissions_cov_eps,
+        velocity_smoother_method=training_config.velocity_smoother_method,
+        ekf_mode=model_config.ekf_mode,
+        max_tau=model_config.max_tau,
+        ekf_num_iters=training_config.ekf_num_iters,
     )
     
-    if args.eval_only and args.pretrained_model:
+    if eval_only and pretrained_model:
         # Load pretrained model
-        print(f"Loading pretrained model from {args.pretrained_model}")
-        params = pkl.load(open(args.pretrained_model, 'rb'))
+        print(f"Loading pretrained model from {pretrained_model}")
+        params = pkl.load(open(pretrained_model, 'rb'))
     else:
         # Initialize parameters
-        D = model_config['state_dim']
+        D = model_config.state_dim
         N = emission_dim
         ddof = D * (N - D)
         key = jr.PRNGKey(seed)
 
-        if model_config['base_subspace_type'] == 'pca':
+        if model_config.base_subspace_type == 'pca':
             base_subspace = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T
             emission_weights = jnp.tile(base_subspace[:, :D][None], (len(train_obs), 1, 1))
         else:
@@ -131,8 +132,8 @@ def main():
 
         params, props = smds.initialize_parameters(base_subspace=base_subspace, 
                                                    emission_weights=emission_weights,
-                                                   tau=jnp.ones(ddof) * model_config['init_tau'],
-                                                   initial_velocity_cov=jnp.eye(ddof) * model_config['initial_velocity_cov'],
+                                                   tau=jnp.ones(ddof) * model_config.init_tau,
+                                                   initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
                                                    key=key)
         
         # Train model
@@ -144,15 +145,15 @@ def main():
             trial_masks=trial_masks,
             block_ids=block_ids,
             block_masks=block_masks,
-            num_iters=training_config['num_iters'],
-            run_velocity_smoother=training_config['run_velocity_smoother'],
-            print_ll=training_config['print_ll'],
+            num_iters=training_config.num_iters,
+            run_velocity_smoother=training_config.run_velocity_smoother,
+            print_ll=training_config.print_ll,
             use_wandb=use_wandb,
             wandb_run=wandb_run if use_wandb else None,
         )
         
         model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
-        model_name = f"smds_model_{config['model']['state_dim']}_{config['model']['ekf_mode']}_{config['model']['fix_tau']}_{config['model']['fix_initial_velocity']}_{config['model']['fix_emissions_cov']}_{config['model']['base_subspace_type']}_{config['model']['initial_velocity_cov']}_{config['model']['init_tau']}_{config['model']['max_tau']}_{config['model']['ekf_num_iters']}"
+        model_name = f"smds_model_{model_config.state_dim}_{model_config.ekf_mode}_{model_config.fix_tau}_{model_config.fix_initial_velocity if hasattr(model_config, 'fix_initial_velocity') else False}_{model_config.fix_emissions_cov if hasattr(model_config, 'fix_emissions_cov') else False}_{model_config.base_subspace_type}_{model_config.initial_velocity_cov}_{model_config.init_tau}_{model_config.max_tau}_{training_config.ekf_num_iters}"
         model_name = f"{model_name}_{seed}"
         # Save model
         if use_wandb:
