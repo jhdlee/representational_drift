@@ -66,9 +66,9 @@ def main(config: DictConfig):
     print(OmegaConf.to_yaml(config))
 
     # Initialize model
-    model_config = config.model
-    training_config = config.training
-    seed = config.seed
+    model_config = config.parameters.model
+    training_config = config.parameters.training
+    seed = config.parameters.seed
 
     model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
     model_name = f"smds_model_{model_config.state_dim}_{model_config.ekf_mode}_{model_config.fix_tau}_{model_config.base_subspace_type}_{model_config.initial_velocity_cov}_{model_config.init_tau}_{model_config.max_tau}_{training_config.ekf_num_iters}"
