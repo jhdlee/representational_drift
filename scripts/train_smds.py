@@ -82,7 +82,9 @@ def main(config: DictConfig):
     use_wandb = config.get('use_wandb', True)
     if use_wandb:
         # Convert the config to a dictionary
-        wandb_configs = OmegaConf.to_container(config)
+        args_as_dict = OmegaConf.to_container(config)
+        wandb_configs = {}
+        wandb_configs['config'] = args_as_dict
         wandb_configs['name'] = model_name
         wandb_configs['project'] = config.project
         wandb_run, _ = init_wandb(**wandb_configs)
