@@ -84,7 +84,7 @@ def main(config: DictConfig):
         # Convert the config to a dictionary
         wandb_configs = OmegaConf.to_container(config)
         wandb_configs['name'] = model_name
-        wandb_configs['project'] = config.project_name
+        wandb_configs['project'] = config.project
         wandb_run, _ = init_wandb(**wandb_configs)
     else:
         wandb_run = None
