@@ -65,8 +65,12 @@ def main(config: DictConfig):
     # Print config if needed
     print(OmegaConf.to_yaml(config))
 
+    # Initialize model
+    model_config = config.model
+    training_config = config.training
+
     model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
-    model_name = f"smds_model_{model_config.state_dim}_{model_config.ekf_mode}_{model_config.fix_tau}_{model_config.fix_initial_velocity if hasattr(model_config, 'fix_initial_velocity') else False}_{model_config.fix_emissions_cov if hasattr(model_config, 'fix_emissions_cov') else False}_{model_config.base_subspace_type}_{model_config.initial_velocity_cov}_{model_config.init_tau}_{model_config.max_tau}_{training_config.ekf_num_iters}"
+    model_name = f"smds_model_{model_config.state_dim}_{model_config.ekf_mode}_{model_config.fix_tau}_{model_config.base_subspace_type}_{model_config.initial_velocity_cov}_{model_config.init_tau}_{model_config.max_tau}_{training_config.ekf_num_iters}"
     model_name = f"{model_name}_{seed}"
     
     # Check for evaluation-only mode
@@ -96,10 +100,6 @@ def main(config: DictConfig):
     held_out_idx = sorted_var_idx[:5]
     cosmoothing_mask = jnp.ones(emission_dim, dtype=bool)
     cosmoothing_mask = cosmoothing_mask.at[held_out_idx].set(False)
-    
-    # Initialize model
-    model_config = config.model
-    training_config = config.training
     
     smds = StiefelManifoldSSM(
         state_dim=model_config.state_dim,
