@@ -5,11 +5,11 @@ import jax.numpy as jnp
 import numpy as np
 from typing import Dict, Any, Optional, Union, List, Tuple
 
-def init_wandb(config_path: str, mode: str = "online", project: str = "smds", entity: Optional[str] = None):
+def init_wandb(config: Dict[str, Any], mode: str = "online", project: str = "smds", entity: Optional[str] = None):
     """Initialize wandb with configuration from a YAML file.
     
     Args:
-        config_path: Path to the YAML configuration file
+        config: Dictionary of configuration parameters
         mode: wandb mode ('online', 'offline', 'disabled')
         project: wandb project name
         entity: wandb entity name (username or team name)
@@ -17,10 +17,6 @@ def init_wandb(config_path: str, mode: str = "online", project: str = "smds", en
     Returns:
         wandb run object
     """
-    # Load config from YAML
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
     # Initialize wandb
     run = wandb.init(
         project=project,
