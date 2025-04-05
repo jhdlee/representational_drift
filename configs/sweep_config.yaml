@@ -1,0 +1,64 @@
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args}
+method: grid
+seed:
+  value: [0, 42, 667]
+parameters:
+  # Sweep parameters
+  model.state_dim:
+    values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+  model.ekf_mode:
+    values: "cov"
+  model.tau_per_dim:
+    values: true
+  training.num_iters:
+    value: 200
+    
+  # Default configuration parameters
+  model.num_conditions:
+    value: 1
+  model.has_dynamics_bias:
+    value: true
+  model.has_emissions_bias:
+    value: false
+  model.emissions_cov_eps:
+    value: 1e-2
+  model.base_subspace_type:
+    values: ["pca", "random"]
+  model.initial_velocity_cov:
+    values: [1e-4]
+  model.init_tau:
+    values: [1e-6]
+  model.fix_tau:
+    values: false
+  model.max_tau:
+    values: [1e-4]
+
+  model.model_dir:
+    value: "models"
+  model.model_name:
+    value: "smds_model"
+  
+  # Training parameters (non-swept)
+  training.run_velocity_smoother:
+    value: false
+  training.print_ll:
+    value: true
+  training.velocity_smoother_method:
+    values: "ekf"
+  training.ekf_num_iters:
+    values: [1]
+
+  # Data parameters
+  data.path:
+    value: "data/train.npy"
+  data.block_size:
+    value: 1
+
+# Wandb configuration
+program: scripts/train_smds.py
+project: smds
+name: smds_sweep

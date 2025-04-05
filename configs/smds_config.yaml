@@ -1,0 +1,43 @@
+# SMDS model configuration
+
+# Model parameters
+model:
+  state_dim: 10
+  emission_dim: 100
+  input_dim: 0
+  num_conditions: 1
+  dynamics_cov_type: "diagonal"
+  emissions_cov_type: "diagonal"
+  has_dynamics_bias: true
+  has_emissions_bias: true
+  ekf_mode: "cov"
+  fix_tau: false
+  tau_per_dim: true
+  emissions_cov_eps: 1e-4
+
+# Training parameters
+training:
+  num_iters: 50
+  run_velocity_smoother: true
+  print_ll: false
+
+# Evaluation parameters
+evaluation:
+  compute_r2: true
+  compute_cosmoothing: false
+  cosmoothing_mask_ratio: 0.8  # Use 80% of dimensions for held-in
+  # cosmoothing_mask_file: "path/to/mask.npy"  # Alternative: load mask from file
+  method: "marginal"  # "marginal" or "joint"
+
+# Data parameters
+data:
+  train_path: "data/train.npz"
+  test_path: "data/test.npz"
+  val_ratio: 0.1
+  batch_size: 32
+
+# Wandb configuration
+wandb:
+  project: "smds"
+  entity: null  # Your wandb username or team
+  mode: "online"  # "online", "offline", or "disabled" 

@@ -241,6 +241,24 @@ def rotate_subspace(base_subspace, D, v):
 
     return new_subspace[:, :D]
 
+def proj(u, a):
+    return ((u @ a) / (u @ u)) * u
+
+def normalize(x):
+    return x / jnp.linalg.norm(x, ord=2, axis=-1, keepdims=True)
+
+def gram_schmidt(mat):
+    output = jnp.zeros_like(mat)
+    obs_dim, state_dim = mat.shape
+
+    output = output.at[:, 0].set(normalize(mat[:, 0]))
+    for d in range(1, state_dim):
+        u2 = mat[:, d]
+        for d_prime in range(d):
+            u2 -= proj(output[:, d_prime], mat[:, d])
+        output = output.at[:, d].set(normalize(u2))
+    return output
+
 def power_iteration(M, num_iters=1000):
     """
     Compute the largest eigenvalue/eigenvector of a matrix M (assumed real symmetric or PSD)

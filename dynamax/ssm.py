@@ -362,30 +362,34 @@ class SSM(ABC):
         print_ll: bool=False,
         run_velocity_smoother: bool = False,
         velocity_smoother_method: int = 0,
+        use_wandb: bool = False,
+        wandb_run = None,
     ) -> Tuple[ParameterSet, Float[Array, "num_iters"]]:
-        r"""Compute parameter MLE/ MAP estimate using Expectation-Maximization (EM).
-
-        EM aims to find parameters that maximize the marginal log probability,
-
-        $$\theta^\star = \mathrm{argmax}_\theta \; \log p(y_{1:T}, \theta \mid u_{1:T})$$
-
-        It does so by iteratively forming a lower bound (the "E-step") and then maximizing it (the "M-step").
-
-        *Note:* ``emissions`` *and* ``inputs`` *can either be single sequences or batches of sequences.*
-
+        """Fit the model with expectation maximization (EM) given a batch of sequences.
+        
         Args:
-            params: model parameters $\theta$
-            props: properties specifying which parameters should be learned
-            emissions: one or more sequences of emissions
-            inputs: one or more sequences of corresponding inputs
-            num_iters: number of iterations of EM to run
+            params: initial parameters
+            props: parameter property specifications
+            emissions: one or more emission sequences
+            inputs: optional inputs
+            conditions: optional conditions for each sequence
+            trial_masks: optional mask for each trial
+            num_iters: number of EM iterations
+            block_ids: optional block IDs for block-structured observations (used by SMDS)
+            block_masks: optional masks for blocks
             verbose: whether or not to show a progress bar
-
+            print_ll: whether to print log likelihood at each step
+            run_velocity_smoother: whether to run velocity smoother (used by SMDS)
+            use_wandb: whether to use wandb for logging
+            wandb_run: optional existing wandb run object
+            model_dir: directory to save models
+            model_name: name for saved model
+            eval_data: optional tuple of (test_emissions, test_inputs, test_conditions, test_masks) for evaluation
+            
         Returns:
             tuple of new parameters and log likelihoods over the course of EM iterations.
-
+        
         """
-
         # Make sure the emissions and inputs have batch dimensions
         batch_emissions = ensure_array_has_batch_dim(emissions, self.emission_shape)
         batch_inputs = ensure_array_has_batch_dim(inputs, self.inputs_shape)
@@ -397,7 +401,16 @@ class SSM(ABC):
         num_blocks = block_ids.shape[0]
         block_size = len(batch_emissions) // num_blocks
         T, N = batch_emissions.shape[1:]
-
+        
+        # Import wandb utils only if needed
+        if use_wandb:
+            from dynamax.utils.wandb_utils import log_training_step, save_model, log_evaluation_metrics
+            if wandb_run is None:
+                import wandb
+                wandb_run = wandb.run
+                if wandb_run is None:
+                    raise ValueError("No active wandb run found. Initialize wandb before calling fit_em or provide a run object.")
+        
         @jit
         def em_step(params, m_step_state):
             if run_velocity_smoother:
@@ -433,6 +446,7 @@ class SSM(ABC):
         pbar = progress_bar(range(num_iters)) if verbose else range(num_iters)
         best_lp = -jnp.inf
         best_params = params
+        
         for iter_num in pbar:
             params, m_step_state, lp, ll, vel_ll = em_step(params, m_step_state)
             if run_velocity_smoother:
@@ -441,14 +455,37 @@ class SSM(ABC):
             else:
                 total_lp = lp + ll
                 log_probs.append(lp + ll)
+            
             if print_ll:
                 print(iter_num, total_lp, lp, ll, vel_ll, params.emissions.tau.min(), params.emissions.tau.max(),
-                      jnp.diag(params.emissions.initial_velocity_cov).max(), jnp.diag(params.emissions.cov).min())
+                    jnp.diag(params.emissions.initial_velocity_cov).max(), jnp.diag(params.emissions.cov).min())
                 print('-----------------------------------------------------------------------------')
+            
             if total_lp > best_lp:
                 best_lp = total_lp
                 best_params = params
-            # best_params = params
+            
+            # Log metrics to wandb
+            if use_wandb:
+                metrics = {
+                    'iteration': iter_num,
+                    'total_log_prob': float(total_lp),
+                    'log_prior': float(lp),
+                    'log_likelihood': float(ll),
+                }
+                
+                if run_velocity_smoother:
+                    metrics['velocity_smoother_log_likelihood'] = float(vel_ll)
+                    if hasattr(params.emissions, 'tau'):
+                        metrics['tau_min'] = float(params.emissions.tau.min())
+                        metrics['tau_max'] = float(params.emissions.tau.max())
+                    if hasattr(params.emissions, 'initial_velocity_cov'):
+                        metrics['initial_velocity_cov_max'] = float(jnp.diag(params.emissions.initial_velocity_cov).max())
+                    if hasattr(params.emissions, 'cov'):
+                        metrics['emissions_cov_min'] = float(jnp.diag(params.emissions.cov).min())
+                
+                log_training_step(wandb_run, metrics, iter_num)
+        
         return best_params, jnp.array(log_probs)
 
     def fit_sgd(
