@@ -1,34 +1,37 @@
 # SMDS model configuration
+parameters:
+  # Seed parameter
+  seed:
+    value: 0
 
-# Model parameters
-model:
-  state_dim: 10
-  has_dynamics_bias: true
-  has_emissions_bias: false
-  ekf_mode: "cov"
-  fix_tau: false
-  tau_per_dim: true
-  emissions_cov_eps: 1e-2
-  base_subspace_type: "random"
-  initial_velocity_cov: 1e-4
-  init_tau: 1e-6
-  max_tau: 1e-4
+  # Model parameters
+  model:
+    state_dim: 10
+    has_dynamics_bias: true
+    has_emissions_bias: false
+    ekf_mode: "cov"
+    fix_tau: false
+    tau_per_dim: true
+    emissions_cov_eps: 1e-2
+    base_subspace_type: "random"
+    initial_velocity_cov: 1e-4
+    init_tau: 1e-6
+    max_tau: 1e-4
 
-# Training parameters
-training:
-  num_iters: 200
-  run_velocity_smoother: false
-  print_ll: true
-  velocity_smoother_method: "ekf"
-  ekf_num_iters: 1
+  # Training parameters
+  training:
+    num_iters: 200
+    run_velocity_smoother: false
+    print_ll: true
+    velocity_smoother_method: "ekf"
+    ekf_num_iters: 1
 
-# Data parameters
-data:
-  path: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
-  block_size: 1
+  # Data parameters
+  data:
+    path: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
+    block_size: 1
 
 # Global parameters
-seed: 42
 use_wandb: true
 eval_only: false
 pretrained_model: null 
