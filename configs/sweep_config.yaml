@@ -5,15 +5,15 @@ command:
   - ${args}
 method: grid
 seed:
-  value: [0, 42, 667]
+  values: [0, 42, 667]
 parameters:
   # Sweep parameters
   model.state_dim:
     values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
   model.ekf_mode:
-    values: ["cov"]
+    value: "cov"
   model.tau_per_dim:
-    values: true
+    value: true
   training.num_iters:
     value: 200
     
@@ -27,15 +27,15 @@ parameters:
   model.emissions_cov_eps:
     value: 1e-2
   model.base_subspace_type:
-    values: ["pca", "random"]
+    values: ["random"]
   model.initial_velocity_cov:
-    values: [1e-4]
+    value: 1e-4
   model.init_tau:
-    values: [1e-6]
+    value: 1e-6
   model.fix_tau:
-    values: false
+    value: false
   model.max_tau:
-    values: [1e-4]
+    value: 1e-4
   
   # Training parameters
   training.run_velocity_smoother:
@@ -43,9 +43,9 @@ parameters:
   training.print_ll:
     value: true
   training.velocity_smoother_method:
-    values: "ekf"
+    value: "ekf"
   training.ekf_num_iters:
-    values: [1]
+    value: 1
 
   # Data parameters
   data.path:
