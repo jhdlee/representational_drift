@@ -68,6 +68,7 @@ def main(config: DictConfig):
     # Initialize model
     model_config = config.model
     training_config = config.training
+    seed = config.seed
 
     model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
     model_name = f"smds_model_{model_config.state_dim}_{model_config.ekf_mode}_{model_config.fix_tau}_{model_config.base_subspace_type}_{model_config.initial_velocity_cov}_{model_config.init_tau}_{model_config.max_tau}_{training_config.ekf_num_iters}"
@@ -91,7 +92,7 @@ def main(config: DictConfig):
     # Load data
     data_path = config.data.path
     block_size = config.data.block_size
-    seed = config.seed
+    
     emissions, conditions = load_data(data_path)
     (train_obs, test_obs, train_conditions, test_conditions, block_ids,
         trial_masks, block_masks, sequence_length,
