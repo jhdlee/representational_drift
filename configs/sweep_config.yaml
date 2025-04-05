@@ -11,7 +11,7 @@ parameters:
   model.state_dim:
     values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
   model.ekf_mode:
-    values: "cov"
+    values: ["cov"]
   model.tau_per_dim:
     values: true
   training.num_iters:
@@ -36,13 +36,8 @@ parameters:
     values: false
   model.max_tau:
     values: [1e-4]
-
-  model.model_dir:
-    value: "models"
-  model.model_name:
-    value: "smds_model"
   
-  # Training parameters (non-swept)
+  # Training parameters
   training.run_velocity_smoother:
     value: false
   training.print_ll:
@@ -54,11 +49,11 @@ parameters:
 
   # Data parameters
   data.path:
-    value: "data/train.npy"
+    value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
   data.block_size:
     value: 1
 
 # Wandb configuration
-program: scripts/train_smds.py
+program: /home/groups/swl1/hdlee/representational_drift/scripts/train_smds.py
 project: smds
 name: smds_sweep

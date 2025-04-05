@@ -151,12 +151,14 @@ def main():
             wandb_run=wandb_run if use_wandb else None,
         )
         
+        model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
+        model_name = f"smds_model_{config['model']['state_dim']}_{config['model']['ekf_mode']}_{config['model']['fix_tau']}_{config['model']['fix_initial_velocity']}_{config['model']['fix_emissions_cov']}_{config['model']['base_subspace_type']}_{config['model']['initial_velocity_cov']}_{config['model']['init_tau']}_{config['model']['max_tau']}_{config['model']['ekf_num_iters']}"
         # Save model
         if use_wandb:
-            save_model(wandb_run, best_params, config['model']['model_dir'], config['model']['model_name'])
+            save_model(wandb_run, best_params, model_dir, model_name)
         else:
-            os.makedirs(config['model']['model_dir'], exist_ok=True)
-            model_save_path = os.path.join(config['model']['model_dir'], f"{config['model']['model_name']}.pkl")
+            os.makedirs(model_dir, exist_ok=True)
+            model_save_path = os.path.join(model_dir, f"{model_name}.pkl")
             pkl.dump(best_params, open(model_save_path, 'wb'))
     
     # Evaluate on test data
