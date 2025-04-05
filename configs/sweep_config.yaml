@@ -26,8 +26,6 @@ parameters:
     value: 10
     
   # Default configuration parameters
-  model.num_conditions:
-    value: 1
   model.has_dynamics_bias:
     value: true
   model.has_emissions_bias:
