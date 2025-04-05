@@ -64,6 +64,10 @@ def main(config: DictConfig):
     """Main function to train and evaluate SMDS model"""
     # Print config if needed
     print(OmegaConf.to_yaml(config))
+
+    model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
+    model_name = f"smds_model_{model_config.state_dim}_{model_config.ekf_mode}_{model_config.fix_tau}_{model_config.fix_initial_velocity if hasattr(model_config, 'fix_initial_velocity') else False}_{model_config.fix_emissions_cov if hasattr(model_config, 'fix_emissions_cov') else False}_{model_config.base_subspace_type}_{model_config.initial_velocity_cov}_{model_config.init_tau}_{model_config.max_tau}_{training_config.ekf_num_iters}"
+    model_name = f"{model_name}_{seed}"
     
     # Check for evaluation-only mode
     eval_only = config.get('eval_only', False)
@@ -72,7 +76,11 @@ def main(config: DictConfig):
     # Initialize wandb
     use_wandb = config.get('use_wandb', True)
     if use_wandb:
-        wandb_run, _ = init_wandb(config)
+        # Convert the config to a dictionary
+        wandb_configs = OmegaConf.to_container(config)
+        wandb_configs['name'] = model_name  # Example of setting a name
+        wandb_configs['project'] = config.project  # Assuming you have a project name in your config
+        wandb_run, _ = init_wandb(**wandb_configs)  # Pass the dictionary unpacked
     else:
         wandb_run = None
     
@@ -152,9 +160,6 @@ def main(config: DictConfig):
             wandb_run=wandb_run if use_wandb else None,
         )
         
-        model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
-        model_name = f"smds_model_{model_config.state_dim}_{model_config.ekf_mode}_{model_config.fix_tau}_{model_config.fix_initial_velocity if hasattr(model_config, 'fix_initial_velocity') else False}_{model_config.fix_emissions_cov if hasattr(model_config, 'fix_emissions_cov') else False}_{model_config.base_subspace_type}_{model_config.initial_velocity_cov}_{model_config.init_tau}_{model_config.max_tau}_{training_config.ekf_num_iters}"
-        model_name = f"{model_name}_{seed}"
         # Save model
         if use_wandb:
             save_model(wandb_run, best_params, model_dir, model_name)
