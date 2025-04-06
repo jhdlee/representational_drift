@@ -23,7 +23,7 @@ def load_data(data_path):
     conditions_path = os.path.join(data_path, 'conditions.npy')
 
     emissions = jnp.load(emissions_path)
-    conditions = jnp.load(conditions_path)
+    conditions = jnp.load(conditions_path, allow_pickle=True)
 
     return emissions, conditions
 
