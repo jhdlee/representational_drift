@@ -54,7 +54,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed):
     trial_masks = jnp.ones(len(emissions), dtype=bool)
     num_test_blocks = num_blocks // 6
     key = jr.PRNGKey(seed)
-    test_idx = jr.choice(key, jnp.arange(5, num_blocks-5, dtype=int), shape=(num_test_blocks,), replace=False)
+    test_idx = jr.choice(key, jnp.arange(32, num_blocks-32, dtype=int), shape=(num_test_blocks,), replace=False)
     block_masks = block_masks.at[test_idx].set(False)
     num_train_blocks = block_masks.sum()
     block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)

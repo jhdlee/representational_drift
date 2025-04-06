@@ -19,7 +19,7 @@ parameters:
   model.type:
     values: ["smds", "lds"]
   model.state_dim:
-    values: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40]
+    values: [12, 16, 20, 24, 28]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -35,7 +35,7 @@ parameters:
   model.emissions_cov_eps:
     value: 1e-2
   model.base_subspace_type:
-    values: ["random"]
+    values: ["pca"]
   model.initial_velocity_cov:
     value: 1e-4
   model.init_tau:
