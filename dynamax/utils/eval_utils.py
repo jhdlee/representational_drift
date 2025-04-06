@@ -191,16 +191,18 @@ def evaluate_smds_model(
     velocity_smoother0 = model.smoother(params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
                                        conditions.reshape(num_blocks, block_size), jnp.ones(num_blocks, dtype=bool),
                                        method=0)
+    Ev0 = velocity_smoother0.smoothed_means
+    del velocity_smoother0
 
     velocity_smoother1 = model.smoother(params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
                                        conditions.reshape(num_blocks, block_size), jnp.ones(num_blocks, dtype=bool),
                                        method=1)
-    
-    Ev0 = velocity_smoother0.smoothed_means
+    Ev1 = velocity_smoother1.smoothed_means
+    del velocity_smoother1
+
     Hs0 = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, state_dim, Ev0)
     Hs0 = jnp.einsum('bij,bk->kij', Hs0, block_ids)[~trial_masks]
 
-    Ev1 = velocity_smoother1.smoothed_means
     Hs1 = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, state_dim, Ev1)
     Hs1 = jnp.einsum('bij,bk->kij', Hs1, block_ids)[~trial_masks]
 
