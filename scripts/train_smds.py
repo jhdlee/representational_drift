@@ -141,11 +141,11 @@ def main(config: DictConfig):
             base_subspace = gram_schmidt(jnp.concatenate([emission_weights, jr.normal(key_root, shape=(N, N-D))], axis=-1))
             emission_weights = jnp.tile(emission_weights[None], (len(train_obs), 1, 1))
 
-        params, props = smds.initialize(base_subspace=base_subspace, 
-                                        emission_weights=emission_weights,
-                                        tau=jnp.ones(ddof) * model_config.init_tau,
-                                        initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
-                                        key=key)
+        params, props, _ = smds.initialize(base_subspace=base_subspace, 
+                                           emission_weights=emission_weights,
+                                           tau=jnp.ones(ddof) * model_config.init_tau,
+                                           initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
+                                           key=key)
         
         # Train model
         best_params, train_lps = smds.fit_em(
