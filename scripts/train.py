@@ -199,13 +199,12 @@ def main(config: DictConfig):
                 emissions=train_obs[trial_masks],
                 conditions=train_conditions,
                 num_iters=training_config.num_iters,
+                use_wandb=use_wandb,
+                wandb_run=wandb_run if use_wandb else None,
             )
 
         if use_wandb:
             wandb.log({"train_log_posteriors_min_increase": jnp.diff(jnp.array(train_lps)).min()})
-        
-        # Save model
-        if use_wandb:
             save_model(wandb_run, best_params, model_dir, model_name)
         else:
             os.makedirs(model_dir, exist_ok=True)
