@@ -18,6 +18,15 @@ from dynamax.utils.wandb_utils import init_wandb, save_model
 from dynamax.utils.eval_utils import evaluate_smds_model
 from dynamax.utils.utils import gram_schmidt, rotate_subspace
 
+condition_to_n = {'top':0, 
+                  'top_left':1, 
+                  'left':2, 
+                  'bottom_left':3, 
+                  'bottom':4, 
+                  'bottom_right':5, 
+                  'right':6, 
+                  'top_right':7}
+
 def load_data(data_path):
     """Load data from npy file"""
     emissions_path = os.path.join(data_path, 'emissions.npy')
@@ -25,6 +34,9 @@ def load_data(data_path):
 
     emissions = jnp.load(emissions_path)
     conditions = jnp.load(conditions_path, allow_pickle=True)
+    for c in condition_to_n.keys():
+        conditions[np.where(conditions==c)] = condition_to_n[c]
+    conditions = jnp.array(conditions.astype(int))
 
     return emissions, conditions
 
