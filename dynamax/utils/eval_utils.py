@@ -180,12 +180,12 @@ def evaluate_smds_model(
 
     # Initialize metrics dictionary
     metrics = {
-        'test_log_likelihood_0': float(test_ll_sum_0),
-        'test_log_likelihood_1': float(test_ll_sum_1),
         'test_r2': float(test_r2),
         'test_cosmoothing': float(test_cosmoothing),
+        'test_log_likelihood_0': float(test_ll_sum_0),
         'test_r2_0': float(test_r2_0),
         'test_cosmoothing_0': float(test_cosmoothing_0),
+        'test_log_likelihood_1': float(test_ll_sum_1),
         'test_r2_1': float(test_r2_1),
         'test_cosmoothing_1': float(test_cosmoothing_1),
     }
