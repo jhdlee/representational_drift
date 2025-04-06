@@ -201,6 +201,7 @@ def main(config: DictConfig):
         block_size=block_size,
         sequence_length=sequence_length,
         emission_dim=emission_dim,
+        state_dim=model_config.state_dim,
         block_ids=block_ids,
         trial_masks=trial_masks,
         block_masks=block_masks,
