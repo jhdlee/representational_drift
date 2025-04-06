@@ -2,6 +2,7 @@
 
 import os
 import hydra
+import wandb
 from omegaconf import DictConfig, OmegaConf
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -152,7 +153,7 @@ def main(config: DictConfig):
             params=params,
             props=props,
             emissions=train_obs,
-            conditions=train_conditions,
+            conditions=conditions,
             trial_masks=trial_masks,
             block_ids=block_ids,
             block_masks=block_masks,
@@ -162,6 +163,9 @@ def main(config: DictConfig):
             use_wandb=use_wandb,
             wandb_run=wandb_run if use_wandb else None,
         )
+
+        if use_wandb:
+            wandb.log({"train_log_posteriors_min_increase": jnp.diff(jnp.array(train_lps)).min()})
         
         # Save model
         if use_wandb:
