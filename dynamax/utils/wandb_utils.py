@@ -87,7 +87,7 @@ def log_evaluation_metrics(run, metrics: Dict[str, Any]):
         else:
             metrics_np[k] = v
     
-    run.summary.update(metrics_np)
+    run.log(metrics_np)
 
 def get_best_run(project: str, metric: str, mode: str = "max", entity: Optional[str] = None) -> Tuple[str, float]:
     """Get the best run from a wandb project based on a metric.
