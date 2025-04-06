@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 from typing import Dict, Any, Optional, Union, List, Tuple
 
-def init_wandb(config: Dict[str, Any], mode: str = "online", project: str = "smds", entity: Optional[str] = None):
+def init_wandb(config, name, project, **kwargs):
     """Initialize wandb with configuration from a YAML file.
     
     Args:
@@ -20,9 +20,9 @@ def init_wandb(config: Dict[str, Any], mode: str = "online", project: str = "smd
     # Initialize wandb
     run = wandb.init(
         project=project,
-        entity=entity,
+        name=name,
         config=config,
-        mode=mode
+        mode="online"
     )
     
     return run, config
