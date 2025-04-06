@@ -192,7 +192,7 @@ def main(config: DictConfig):
             )
         elif model_config.type == 'lds':
             key = jr.PRNGKey(seed)
-            params = model.initialize(key=key)
+            params, props = model.initialize(key=key)
             best_params, train_lps = model.fit_em(
                 params=params,
                 props=props,
