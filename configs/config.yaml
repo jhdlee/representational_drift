@@ -2,6 +2,7 @@
 
 # Model parameters
 model:
+  type: "smds"
   state_dim: 10
   has_dynamics_bias: true
   has_emissions_bias: false
