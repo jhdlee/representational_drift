@@ -13,17 +13,17 @@ method: grid
 parameters:
   # Seed parameter
   seed:
-    values: [0, 42]
+    values: [16645]
   
   # Sweep parameters
   model.state_dim:
-    values: [5, 10, 15]
+    values: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
     value: true
   training.num_iters:
-    value: 10
+    value: 300
     
   # Default configuration parameters
   model.has_dynamics_bias:
