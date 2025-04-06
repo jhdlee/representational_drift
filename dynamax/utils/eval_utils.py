@@ -189,11 +189,11 @@ def evaluate_smds_model(
         Dictionary of evaluation metrics
     """
     velocity_smoother0 = model.smoother(params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
-                                       conditions.reshape(num_blocks, block_size), block_masks,
+                                       conditions.reshape(num_blocks, block_size), jnp.ones(num_blocks, dtype=bool),
                                        method=0)
 
     velocity_smoother1 = model.smoother(params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
-                                       conditions.reshape(num_blocks, block_size), block_masks,
+                                       conditions.reshape(num_blocks, block_size), jnp.ones(num_blocks, dtype=bool),
                                        method=1)
     
     Ev0 = velocity_smoother0.smoothed_means
