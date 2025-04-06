@@ -109,6 +109,48 @@ def compute_smds_test_cosmoothing(test_model, Hs, test_params, test_obs, test_co
 
     return r2_score(held_out_test_obs.flatten(), prediction.flatten())
 
+def evaluate_lds_model(
+    model,
+    params,
+    test_obs,
+    test_conditions,
+    cosmoothing_mask,
+    wandb_run=None
+):
+    """Evaluate an LDS model on test data.
+    
+    Args:
+        model: The LDS model
+        params: Model parameters
+        test_obs: Test observations
+        test_conditions: Conditions for test observations
+        cosmoothing_mask: Mask for held-in dimensions for co-smoothing
+        wandb_run: Optional wandb run for logging metrics
+        
+    Returns:
+        Dictionary of evaluation metrics
+    """
+    test_marginal_ll = compute_lds_test_marginal_ll(model, params, test_obs, test_conditions)
+    test_r2 = compute_lds_test_r2(model, params, test_obs, test_conditions)
+    test_cosmoothing = compute_lds_test_cosmoothing(model, params, test_obs, test_conditions, cosmoothing_mask)
+
+    metrics = {
+        'test_log_likelihood': float(test_marginal_ll),
+        'test_r2': float(test_r2),
+        'test_cosmoothing': float(test_cosmoothing),
+        'test_log_likelihood_0': float(test_marginal_ll),
+        'test_r2_0': float(test_r2),
+        'test_cosmoothing_0': float(test_cosmoothing),
+        'test_log_likelihood_1': float(test_marginal_ll),
+        'test_r2_1': float(test_r2),
+        'test_cosmoothing_1': float(test_cosmoothing),
+    }
+
+    if wandb_run is not None:
+        log_evaluation_metrics(wandb_run, metrics)
+    
+    return metrics
+
 def evaluate_smds_model(
     model,
     params,

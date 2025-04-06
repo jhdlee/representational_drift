@@ -5,9 +5,9 @@ command:
   - ${args_no_hyphens}
 
 # Wandb configuration
-program: /home/groups/swl1/hdlee/representational_drift/scripts/train_smds.py
+program: /home/groups/swl1/hdlee/representational_drift/scripts/train.py
 project: smds
-name: smds_sweep
+name: U201202_01_sweep
 method: grid
 
 parameters:
@@ -16,6 +16,8 @@ parameters:
     values: [16645]
   
   # Sweep parameters
+  model.type:
+    values: ["smds", "lds"]
   model.state_dim:
     values: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40]
   model.ekf_mode:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+os.environ['XLA_PYTHON_CLIENT_ALLOCATOR'] = 'platform'
 import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
@@ -13,9 +14,10 @@ import numpy as np
 import pickle as pkl
 from sklearn.decomposition import PCA
 from dynamax.nonlinear_gaussian_ssm.models import StiefelManifoldSSM
+from dynamax.linear_gaussian_ssm.models import LinearGaussianConjugateSSM
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.utils.wandb_utils import init_wandb, save_model
-from dynamax.utils.eval_utils import evaluate_smds_model
+from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
 from dynamax.utils.utils import gram_schmidt, rotate_subspace
 
 condition_to_n = {'top':0, 
@@ -72,7 +74,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed):
     return (train_obs, test_obs, train_conditions, test_conditions, block_ids, 
             trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks)
 
-@hydra.main(version_base=None, config_path="../configs", config_name="smds_config")
+@hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(config: DictConfig):
     """Main function to train and evaluate SMDS model"""
     # Print config if needed
@@ -84,8 +86,11 @@ def main(config: DictConfig):
     seed = config.seed
 
     model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
-    model_name = f"smds_model_{model_config.state_dim}_{model_config.ekf_mode}_{model_config.fix_tau}_{model_config.base_subspace_type}_{model_config.initial_velocity_cov}_{model_config.init_tau}_{model_config.max_tau}_{training_config.ekf_num_iters}"
-    model_name = f"{model_name}_{seed}"
+    model_name = f"{model_config.type}_D={model_config.state_dim}"
+    if model_config.type == 'smds':
+        model_name += f"_ekfmode={model_config.ekf_mode}_base={model_config.base_subspace_type}_ivc={model_config.initial_velocity_cov}"
+        model_name += f"_itau={model_config.init_tau}_mtau={model_config.max_tau}_ekf_num_iters={training_config.ekf_num_iters}"
+    model_name = f"{model_name}_seed={seed}"
     
     # Check for evaluation-only mode
     eval_only = config.get('eval_only', False)
@@ -117,9 +122,10 @@ def main(config: DictConfig):
     cosmoothing_mask = jnp.ones(emission_dim, dtype=bool)
     cosmoothing_mask = cosmoothing_mask.at[held_out_idx].set(False)
     
-    smds = StiefelManifoldSSM(
-        state_dim=model_config.state_dim,
-        emission_dim=emission_dim,
+    if model_config.type == 'smds':
+        model = StiefelManifoldSSM(
+            state_dim=model_config.state_dim,
+            emission_dim=emission_dim,
         num_trials=len(train_obs),
         num_conditions=num_conditions,
         has_dynamics_bias=model_config.has_dynamics_bias,
@@ -129,8 +135,15 @@ def main(config: DictConfig):
         velocity_smoother_method=training_config.velocity_smoother_method,
         ekf_mode=model_config.ekf_mode,
         max_tau=model_config.max_tau,
-        ekf_num_iters=training_config.ekf_num_iters,
-    )
+            ekf_num_iters=training_config.ekf_num_iters,
+        )
+    elif model_config.type == 'lds':
+        model = LinearGaussianConjugateSSM(
+            state_dim=model_config.state_dim,
+            emission_dim=emission_dim,
+            num_conditions=num_conditions,
+            has_dynamics_bias=model_config.has_dynamics_bias,
+        )
     
     if eval_only and pretrained_model:
         # Load pretrained model
@@ -140,41 +153,53 @@ def main(config: DictConfig):
         # Initialize parameters
         D = model_config.state_dim
         N = emission_dim
-        ddof = D * (N - D)
-        key = jr.PRNGKey(seed)
 
-        if model_config.base_subspace_type == 'pca':
-            base_subspace = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T
-            emission_weights = jnp.tile(base_subspace[:, :D][None], (len(train_obs), 1, 1))
-        else:
-            key, key_root = jr.split(key)
-            key, key_root = jr.split(key)
-            random_rotation_matrix = jr.orthogonal(key_root, D)
-            emission_weights = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T[:, :D] @ random_rotation_matrix
-            base_subspace = gram_schmidt(jnp.concatenate([emission_weights, jr.normal(key_root, shape=(N, N-D))], axis=-1))
-            emission_weights = jnp.tile(emission_weights[None], (len(train_obs), 1, 1))
+        if model_config.type == 'smds':
+            ddof = D * (N - D)
+            key = jr.PRNGKey(seed)
 
-        params, props, _ = smds.initialize(base_subspace=base_subspace, 
-                                           emission_weights=emission_weights,
-                                           tau=jnp.ones(ddof) * model_config.init_tau,
-                                           initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
-                                           key=key)
+            if model_config.base_subspace_type == 'pca':
+                base_subspace = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T
+                emission_weights = jnp.tile(base_subspace[:, :D][None], (len(train_obs), 1, 1))
+            else:
+                key, key_root = jr.split(key)
+                key, key_root = jr.split(key)
+                random_rotation_matrix = jr.orthogonal(key_root, D)
+                emission_weights = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T[:, :D] @ random_rotation_matrix
+                base_subspace = gram_schmidt(jnp.concatenate([emission_weights, jr.normal(key_root, shape=(N, N-D))], axis=-1))
+                emission_weights = jnp.tile(emission_weights[None], (len(train_obs), 1, 1))
+
+            params, props, _ = model.initialize(base_subspace=base_subspace, 
+                                            emission_weights=emission_weights,
+                                            tau=jnp.ones(ddof) * model_config.init_tau,
+                                            initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
+                                            key=key)
         
-        # Train model
-        best_params, train_lps = smds.fit_em(
-            params=params,
-            props=props,
-            emissions=train_obs,
-            conditions=conditions,
-            trial_masks=trial_masks,
-            block_ids=block_ids,
-            block_masks=block_masks,
-            num_iters=training_config.num_iters,
-            run_velocity_smoother=training_config.run_velocity_smoother,
-            print_ll=training_config.print_ll,
-            use_wandb=use_wandb,
-            wandb_run=wandb_run if use_wandb else None,
-        )
+            # Train model
+            best_params, train_lps = model.fit_em(
+                params=params,
+                props=props,
+                emissions=train_obs,
+                conditions=conditions,
+                trial_masks=trial_masks,
+                block_ids=block_ids,
+                block_masks=block_masks,
+                num_iters=training_config.num_iters,
+                run_velocity_smoother=training_config.run_velocity_smoother,
+                print_ll=training_config.print_ll,
+                use_wandb=use_wandb,
+                wandb_run=wandb_run if use_wandb else None,
+            )
+        elif model_config.type == 'lds':
+            key = jr.PRNGKey(seed)
+            params = model.initialize(key=key)
+            best_params, train_lps = model.fit_em(
+                params=params,
+                props=props,
+                emissions=train_obs[trial_masks],
+                conditions=train_conditions,
+                num_iters=training_config.num_iters,
+            )
 
         if use_wandb:
             wandb.log({"train_log_posteriors_min_increase": jnp.diff(jnp.array(train_lps)).min()})
@@ -189,25 +214,35 @@ def main(config: DictConfig):
     
     # Evaluate on test data
     print("Evaluating on test data...")
-    # Run evaluation
-    metrics = evaluate_smds_model(
-        model=smds,
-        params=params,
-        train_obs=train_obs,
-        test_obs=test_obs,
-        conditions=conditions,
-        test_conditions=test_conditions,
-        num_blocks=num_blocks,
-        block_size=block_size,
-        sequence_length=sequence_length,
-        emission_dim=emission_dim,
-        state_dim=model_config.state_dim,
-        block_ids=block_ids,
-        trial_masks=trial_masks,
-        block_masks=block_masks,
-        cosmoothing_mask=cosmoothing_mask,
-        wandb_run=wandb_run if use_wandb else None
-    )
+    if model_config.type == 'smds':
+        # Run evaluation
+        metrics = evaluate_smds_model(
+            model=model,
+            params=best_params,
+            train_obs=train_obs,
+            test_obs=test_obs,
+            conditions=conditions,
+            test_conditions=test_conditions,
+            num_blocks=num_blocks,
+            block_size=block_size,
+            sequence_length=sequence_length,
+            emission_dim=emission_dim,
+            state_dim=model_config.state_dim,
+            block_ids=block_ids,
+            trial_masks=trial_masks,
+            block_masks=block_masks,
+            cosmoothing_mask=cosmoothing_mask,
+            wandb_run=wandb_run if use_wandb else None
+        )
+    elif model_config.type == 'lds':
+        metrics = evaluate_lds_model(
+            model=model,
+            params=best_params,
+            test_obs=test_obs,
+            test_conditions=test_conditions,
+            cosmoothing_mask=cosmoothing_mask,
+            wandb_run=wandb_run if use_wandb else None
+        )
     
     # Print evaluation results
     print("\nEvaluation Results:")
