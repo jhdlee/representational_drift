@@ -828,6 +828,7 @@ class StiefelManifoldSSM(SSM):
         b = params.dynamics.bias
         Q = params.dynamics.cov
         R = params.emissions.cov
+        H = params.emissions.weights if H is None else H
         h_params = make_lgssm_params(initial_mean=mu_0, 
                                      initial_cov=Sigma_0,
                                      dynamics_weights=A,
