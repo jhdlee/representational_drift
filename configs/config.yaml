@@ -32,10 +32,10 @@ data:
   path: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
   block_size: 1
   standardize: true
-  
+
 # Global parameters
 seed: 42
-use_wandb: true
+use_wandb: false
 eval_only: false
 pretrained_model: null 
 
