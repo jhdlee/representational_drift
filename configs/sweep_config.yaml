@@ -19,7 +19,7 @@ parameters:
   model.type:
     values: ["smds", "lds"]
   model.state_dim:
-    values: [12, 16, 20, 24, 28]
+    values: [12, 16, 20]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:

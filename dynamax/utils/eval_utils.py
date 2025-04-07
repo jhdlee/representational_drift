@@ -44,8 +44,12 @@ def compute_lds_test_cosmoothing(test_model, test_params, test_obs, test_conditi
     return r2_score(held_out_test_obs.flatten(), prediction.flatten())
 
 def compute_smds_test_marginal_ll(test_model, test_params, obs, conditions, block_masks, method, num_iters):
-    xy_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, block_masks=jnp.ones(len(obs), dtype=bool), method=method, num_iters=num_iters)
-    y_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, block_masks=block_masks, method=method, num_iters=num_iters)
+    xy_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, 
+                                                      block_masks=jnp.ones(len(obs), dtype=bool), 
+                                                      method=method, num_iters=num_iters)
+    y_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, 
+                                                     block_masks=block_masks, 
+                                                     method=method, num_iters=num_iters)
     test_ekf_marginal_ll = xy_ekf_marginal_ll - y_ekf_marginal_ll
     return test_ekf_marginal_ll
 
