@@ -670,6 +670,7 @@ class StiefelManifoldSSM(SSM):
             conditions: jnp.array = None,
             block_masks: jnp.array = None,
             method: int = 0,
+            num_iters: int = 1,
     ):
         num_blocks = emissions.shape[0]
         if conditions is None:
@@ -680,10 +681,10 @@ class StiefelManifoldSSM(SSM):
         f = self.get_f()
         if method == 0:
             h = self.get_h_x_marginalized(params)
-            filtering_function = partial(extended_kalman_filter_x_marginalized, num_iters=self.ekf_num_iters)
+            filtering_function = partial(extended_kalman_filter_x_marginalized, num_iters=num_iters)
         elif method == 1:
             h = self.get_h_augmented(params.emissions.base_subspace)
-            filtering_function = partial(extended_kalman_filter_augmented_state, num_iters=self.ekf_num_iters)
+            filtering_function = partial(extended_kalman_filter_augmented_state, num_iters=num_iters)
 
         NLGSSM_params = ParamsNLGSSM(
             initial_mean=params.emissions.initial_velocity_mean,
