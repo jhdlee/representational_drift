@@ -5,7 +5,7 @@
 #SBATCH --time=5:59:59                 
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-gpu=4
-#SBATCH --constraint='(GPU_SKU_H100_SXM5&GPU_MEM_80GB)|(GPU_SKU_A100_SXM4&GPU_MEM_80GB)'
+#SBATCH --constraint='(GPU_SKU:H100_SXM5&GPU_MEM:80GB)|(GPU_SKU:A100_SXM4&GPU_MEM:80GB)'
 #SBATCH --mail-type=ALL
 #SBATCH --requeue
 
