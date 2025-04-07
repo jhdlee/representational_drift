@@ -44,6 +44,10 @@ parameters:
     value: false
   model.max_tau:
     value: 1e-4
+  model.tau_concentration:
+    values: [1e0, 1e1, 1e2]
+  model.tau_scale:
+    values: [1e-6, 1e-4]
   
   # Training parameters
   training.run_velocity_smoother:

@@ -19,6 +19,7 @@ from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.utils.wandb_utils import init_wandb, save_model
 from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
 from dynamax.utils.utils import gram_schmidt, rotate_subspace
+from dynamax.utils.distributions import IG
 
 condition_to_n = {'top':0, 
                   'top_left':1, 
@@ -142,6 +143,7 @@ def main(config: DictConfig):
             ekf_mode=model_config.ekf_mode,
             max_tau=model_config.max_tau,
             ekf_num_iters=training_config.ekf_num_iters,
+            tau_prior=IG(concentration=model_config.tau_concentration, scale=model_config.tau_scale),
         )
     elif model_config.type == 'lds':
         model = LinearGaussianConjugateSSM(
