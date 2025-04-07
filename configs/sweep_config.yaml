@@ -9,6 +9,7 @@ program: /home/groups/swl1/hdlee/representational_drift/scripts/train.py
 project: smds
 name: U201202_01_sweep
 method: grid
+use_wandb: true
 
 parameters:
   # Seed parameter
