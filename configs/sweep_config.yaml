@@ -37,7 +37,7 @@ parameters:
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
-    value: 1e-4
+    value: 1e-6
   model.init_tau:
     value: 1e-6
   model.fix_tau:
