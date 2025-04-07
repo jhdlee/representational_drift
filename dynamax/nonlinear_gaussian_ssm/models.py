@@ -828,7 +828,13 @@ class StiefelManifoldSSM(SSM):
         b = params.dynamics.bias
         Q = params.dynamics.cov
         R = params.emissions.cov
-        h_params = make_lgssm_params(mu_0, Sigma_0, A, Q, H, R, dynamics_bias=b)
+        h_params = make_lgssm_params(initial_mean=mu_0, 
+                                     initial_cov=Sigma_0,
+                                     dynamics_weights=A,
+                                     dynamics_cov=Q,
+                                     emissions_weights=H,
+                                     emissions_cov=R,
+                                     dynamics_bias=b)
 
         # Run the smoother to get posterior expectations
         posterior = lgssm_smoother(h_params, emissions, inputs, condition, trial_id)
