@@ -83,6 +83,7 @@ def main(config: DictConfig):
     # Initialize model
     model_config = config.model
     training_config = config.training
+    eval_config = config.eval
     seed = config.seed
 
     model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
@@ -231,6 +232,7 @@ def main(config: DictConfig):
             trial_masks=trial_masks,
             block_masks=block_masks,
             cosmoothing_mask=cosmoothing_mask,
+            ekf_num_iters=eval_config.ekf_num_iters,
             wandb_run=wandb_run if use_wandb else None
         )
     elif model_config.type == 'lds':

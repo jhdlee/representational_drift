@@ -43,9 +43,9 @@ def compute_lds_test_cosmoothing(test_model, test_params, test_obs, test_conditi
 
     return r2_score(held_out_test_obs.flatten(), prediction.flatten())
 
-def compute_smds_test_marginal_ll(test_model, test_params, obs, conditions, block_masks, method):
-    xy_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, block_masks=jnp.ones(len(obs), dtype=bool), method=method)
-    y_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, block_masks=block_masks, method=method)
+def compute_smds_test_marginal_ll(test_model, test_params, obs, conditions, block_masks, method, ekf_num_iters):
+    xy_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, block_masks=jnp.ones(len(obs), dtype=bool), method=method, ekf_num_iters=ekf_num_iters)
+    y_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, block_masks=block_masks, method=method, ekf_num_iters=ekf_num_iters)
     test_ekf_marginal_ll = xy_ekf_marginal_ll - y_ekf_marginal_ll
     return test_ekf_marginal_ll
 
@@ -170,6 +170,7 @@ def evaluate_smds_model(
     trial_masks,
     block_masks,
     cosmoothing_mask,
+    ekf_num_iters,
     wandb_run=None
 ):
     """Evaluate an SMDS model on test data.
@@ -196,13 +197,13 @@ def evaluate_smds_model(
 
     velocity_smoother0 = model.smoother(params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
                                        conditions.reshape(num_blocks, block_size), jnp.ones(num_blocks, dtype=bool),
-                                       method=0)
+                                       method=0, ekf_num_iters=ekf_num_iters)
     Ev0 = velocity_smoother0.smoothed_means
     del velocity_smoother0
 
     velocity_smoother1 = model.smoother(params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
                                        conditions.reshape(num_blocks, block_size), jnp.ones(num_blocks, dtype=bool),
-                                       method=1)
+                                       method=1, ekf_num_iters=ekf_num_iters)
     Ev1 = velocity_smoother1.smoothed_means
     del velocity_smoother1
 
@@ -215,9 +216,9 @@ def evaluate_smds_model(
     Hs = params.emissions.weights[~trial_masks]
 
     test_ll_sum_0 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
-                                                  conditions.reshape(num_blocks, block_size), block_masks, 0)
+                                                  conditions.reshape(num_blocks, block_size), block_masks, 0, ekf_num_iters)
     test_ll_sum_1 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
-                                                  conditions.reshape(num_blocks, block_size), block_masks, 1)
+                                                  conditions.reshape(num_blocks, block_size), block_masks, 1, ekf_num_iters)
     test_ll_sum_0 = test_ll_sum_0 / test_data_size
     test_ll_sum_1 = test_ll_sum_1 / test_data_size
 

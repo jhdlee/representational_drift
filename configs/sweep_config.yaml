@@ -55,6 +55,9 @@ parameters:
   training.ekf_num_iters:
     value: 2
 
+  eval.ekf_num_iters:
+    value: 2
+
   # Data parameters
   data.path:
     value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
