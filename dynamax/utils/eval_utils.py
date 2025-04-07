@@ -130,7 +130,10 @@ def evaluate_lds_model(
     Returns:
         Dictionary of evaluation metrics
     """
+    test_data_size = test_obs.shape[0] * test_obs.shape[1] * test_obs.shape[2]
+
     test_marginal_ll = compute_lds_test_marginal_ll(model, params, test_obs, test_conditions)
+    test_marginal_ll = test_marginal_ll / test_data_size
     test_r2 = compute_lds_test_r2(model, params, test_obs, test_conditions)
     test_cosmoothing = compute_lds_test_cosmoothing(model, params, test_obs, test_conditions, cosmoothing_mask)
 
@@ -188,6 +191,9 @@ def evaluate_smds_model(
     Returns:
         Dictionary of evaluation metrics
     """
+
+    test_data_size = test_obs.shape[0] * test_obs.shape[1] * test_obs.shape[2]
+
     velocity_smoother0 = model.smoother(params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
                                        conditions.reshape(num_blocks, block_size), jnp.ones(num_blocks, dtype=bool),
                                        method=0)
@@ -212,6 +218,8 @@ def evaluate_smds_model(
                                                   conditions.reshape(num_blocks, block_size), block_masks, 0)
     test_ll_sum_1 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
                                                   conditions.reshape(num_blocks, block_size), block_masks, 1)
+    test_ll_sum_0 = test_ll_sum_0 / test_data_size
+    test_ll_sum_1 = test_ll_sum_1 / test_data_size
 
     test_r2 = compute_smds_test_r2(model, Hs, params, test_obs, test_conditions)
     test_cosmoothing = compute_smds_test_cosmoothing(model, Hs, params, test_obs, test_conditions, cosmoothing_mask)
