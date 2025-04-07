@@ -96,6 +96,7 @@ def main(config: DictConfig):
     if model_config.type == 'smds':
         model_name += f"_ekfmode.{model_config.ekf_mode}_base.{model_config.base_subspace_type}_ivc.{model_config.initial_velocity_cov}"
         model_name += f"_itau.{model_config.init_tau}_mtau.{model_config.max_tau}_ekf_num_iters.{training_config.ekf_num_iters}"
+        model_name += f"_tau_concentration.{model_config.tau_concentration}_tau_scale.{model_config.tau_scale}"
     model_name = f"{model_name}_seed.{seed}"
     
     # Check for evaluation-only mode
