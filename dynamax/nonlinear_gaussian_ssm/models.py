@@ -296,7 +296,7 @@ class StiefelManifoldSSM(SSM):
         self.initial_velocity_prior = default_prior(
             'initial_velocity_prior',
             MVN(loc=jnp.zeros(self.dof),
-                covariance_matrix=1e4 * jnp.eye(self.dof)))
+                covariance_matrix=1e6 * jnp.eye(self.dof)))
         # self.initial_velocity_covariance_prior = default_prior(
         #     'initial_velocity_covariance_prior',
         #     IG(concentration=1e-4, scale=1e-4)
@@ -304,7 +304,7 @@ class StiefelManifoldSSM(SSM):
 
         self.tau_prior = default_prior(
             'tau_prior',
-            IG(concentration=1e-9, scale=1e-9)
+            IG(concentration=1e-6, scale=1e-6)
         )
 
         self.emission_covariance_prior = default_prior(

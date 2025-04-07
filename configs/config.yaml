@@ -9,15 +9,15 @@ model:
   ekf_mode: "cov"
   fix_tau: false
   tau_per_dim: true
-  emissions_cov_eps: 1e-2
+  emissions_cov_eps: 1e-1
   base_subspace_type: "random"
-  initial_velocity_cov: 1e-4
-  init_tau: 1e-6
+  initial_velocity_cov: 1e-6
+  init_tau: 1e-5
   max_tau: 1e-4
 
 # Training parameters
 training:
-  num_iters: 10
+  num_iters: 2
   run_velocity_smoother: false
   print_ll: true
   velocity_smoother_method: "ekf"
@@ -32,7 +32,7 @@ data:
   path: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
   block_size: 1
   standardize: true
-
+  
 # Global parameters
 seed: 42
 use_wandb: true
