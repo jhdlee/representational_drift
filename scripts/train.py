@@ -42,7 +42,7 @@ def load_data(data_path):
 
     return emissions, conditions
 
-def split_and_standardize_data(emissions, conditions, block_size, seed):
+def split_and_standardize_data(emissions, conditions, block_size, seed, standardize=True):
     """Split data into train/test sets and standardize"""
     num_conditions = len(np.unique(conditions))
     num_blocks = len(emissions) // block_size
@@ -58,15 +58,19 @@ def split_and_standardize_data(emissions, conditions, block_size, seed):
     block_masks = block_masks.at[test_idx].set(False)
     num_train_blocks = block_masks.sum()
     block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
-
     trial_masks = jnp.repeat(block_masks, block_size)
 
-    train_obs_ = emissions[trial_masks]
-    train_obs_mean = jnp.mean(train_obs_, axis=(0, 1), keepdims=True)
-    train_obs_std = jnp.std(train_obs_, axis=(0, 1), keepdims=True)
-    train_obs = (emissions - train_obs_mean) / train_obs_std
-    _, sequence_length, emission_dim = train_obs.shape
-    test_obs = train_obs[~trial_masks]
+    if standardize:
+        train_obs_ = emissions[trial_masks]
+        train_obs_mean = jnp.mean(train_obs_, axis=(0, 1), keepdims=True)
+        train_obs_std = jnp.std(train_obs_, axis=(0, 1), keepdims=True)
+        train_obs = (emissions - train_obs_mean) / train_obs_std
+        _, sequence_length, emission_dim = train_obs.shape
+        test_obs = train_obs[~trial_masks]
+    else:
+        train_obs = emissions
+        _, sequence_length, emission_dim = train_obs.shape
+        test_obs = train_obs[~trial_masks]
 
     train_conditions = conditions[trial_masks]
     test_conditions = conditions[~trial_masks]
@@ -111,13 +115,14 @@ def main(config: DictConfig):
         wandb_run = None
     
     # Load data
-    data_path = config.data.path
-    block_size = config.data.block_size
-    
+    data_config = config.data
+    data_path = data_config.path
+    block_size = data_config.block_size
+    standardize = data_config.standardize
     emissions, conditions = load_data(data_path)
     (train_obs, test_obs, train_conditions, test_conditions, block_ids,
         trial_masks, block_masks, sequence_length,
-        emission_dim, num_conditions, num_blocks) = split_and_standardize_data(emissions, conditions, block_size, seed)
+        emission_dim, num_conditions, num_blocks) = split_and_standardize_data(emissions, conditions, block_size, seed, standardize=standardize)
     sorted_var_idx = jnp.argsort(train_obs[~trial_masks].var(axis=(0, 1)))[::-1]
     held_out_idx = sorted_var_idx[:5]
     cosmoothing_mask = jnp.ones(emission_dim, dtype=bool)
@@ -127,15 +132,15 @@ def main(config: DictConfig):
         model = StiefelManifoldSSM(
             state_dim=model_config.state_dim,
             emission_dim=emission_dim,
-        num_trials=len(train_obs),
-        num_conditions=num_conditions,
-        has_dynamics_bias=model_config.has_dynamics_bias,
-        tau_per_dim=model_config.tau_per_dim,
-        fix_tau=model_config.fix_tau,
-        emissions_cov_eps=model_config.emissions_cov_eps,
-        velocity_smoother_method=training_config.velocity_smoother_method,
-        ekf_mode=model_config.ekf_mode,
-        max_tau=model_config.max_tau,
+            num_trials=len(train_obs),
+            num_conditions=num_conditions,
+            has_dynamics_bias=model_config.has_dynamics_bias,
+            tau_per_dim=model_config.tau_per_dim,
+            fix_tau=model_config.fix_tau,
+            emissions_cov_eps=model_config.emissions_cov_eps,
+            velocity_smoother_method=training_config.velocity_smoother_method,
+            ekf_mode=model_config.ekf_mode,
+            max_tau=model_config.max_tau,
             ekf_num_iters=training_config.ekf_num_iters,
         )
     elif model_config.type == 'lds':

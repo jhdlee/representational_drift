@@ -17,6 +17,7 @@ from typing_extensions import Protocol
 
 from dynamax.ssm import SSM
 from dynamax.linear_gaussian_ssm.inference import lgssm_filter, lgssm_smoother
+from dynamax.linear_gaussian_ssm.inference import make_lgssm_params
 from dynamax.linear_gaussian_ssm.inference import ParamsLGSSMInitial, ParamsLGSSMDynamics
 from dynamax.linear_gaussian_ssm.inference import PosteriorGSSMFiltered, PosteriorGSSMSmoothed
 
@@ -296,11 +297,10 @@ class StiefelManifoldSSM(SSM):
             'initial_velocity_prior',
             MVN(loc=jnp.zeros(self.dof),
                 covariance_matrix=1e4 * jnp.eye(self.dof)))
-        
-        self.initial_velocity_covariance_prior = default_prior(
-            'initial_velocity_covariance_prior',
-            IG(concentration=1e-4, scale=1e-4)
-        )
+        # self.initial_velocity_covariance_prior = default_prior(
+        #     'initial_velocity_covariance_prior',
+        #     IG(concentration=1e-4, scale=1e-4)
+        # )
 
         self.tau_prior = default_prior(
             'tau_prior',
@@ -336,7 +336,7 @@ class StiefelManifoldSSM(SSM):
         # lp += self.initial_velocity_prior.log_prob((params.emissions.initial_velocity_cov,
         #                                             params.emissions.initial_velocity_mean))
         lp += self.initial_velocity_prior.log_prob(params.emissions.initial_velocity_mean)
-        lp += self.initial_velocity_covariance_prior.log_prob(jnp.diag(params.emissions.initial_velocity_cov)).sum()
+        # lp += self.initial_velocity_covariance_prior.log_prob(jnp.diag(params.emissions.initial_velocity_cov)).sum()
 
         if not self.fix_tau:
             if self.tau_per_dim:
@@ -399,7 +399,7 @@ class StiefelManifoldSSM(SSM):
         _dynamics_covariance = 0.1 * jnp.eye(self.state_dim)
 
         _initial_velocity_mean = jnp.zeros(self.dof)
-        _initial_velocity_cov = jnp.eye(self.dof)
+        _initial_velocity_cov = 1e-6 * jnp.eye(self.dof)
         if velocity is None:
             keys = jr.split(key, self.num_trials)
             key = keys[-1]
@@ -828,28 +828,7 @@ class StiefelManifoldSSM(SSM):
         b = params.dynamics.bias
         Q = params.dynamics.cov
         R = params.emissions.cov
-        mu_v_0 = params.emissions.initial_velocity_mean
-        Sigma_v_0 = params.emissions.initial_velocity_cov
-        tau = params.emissions.tau
-        h_params = ParamsSMDS(
-            initial=ParamsLGSSMInitial(
-                mean=mu_0,
-                cov=Sigma_0),
-            dynamics=ParamsLGSSMDynamics(
-                weights=A,
-                bias=b,
-                input_weights=jnp.zeros((self.state_dim, 0)),
-                cov=Q),
-            emissions=ParamsSMDSEmissions(
-                weights=params.emissions.weights if H is None else H,
-                bias=None,
-                input_weights=jnp.zeros((self.emission_dim, 0)),
-                cov=R,
-                base_subspace=params.emissions.base_subspace,
-                tau=tau,
-                initial_velocity_mean=mu_v_0,
-                initial_velocity_cov=Sigma_v_0)
-        )
+        h_params = make_lgssm_params(mu_0, Sigma_0, A, Q, H, R, dynamics_bias=b)
 
         # Run the smoother to get posterior expectations
         posterior = lgssm_smoother(h_params, emissions, inputs, condition, trial_id)
@@ -901,9 +880,9 @@ class StiefelManifoldSSM(SSM):
         Rinv_d = 1.0/jnp.diag(h_params.emissions.cov)
         emissions_stats_1 = jnp.einsum('ti,tj->ij', Ex, Ex)
         emissions_stats_1 += jnp.einsum('tij->ij', Vx)
-        emissions_stats_1 = jnp.einsum('ij,k->kij', emissions_stats_1, Rinv_d)
-        emissions_stats_2 = jnp.einsum('ti,tj->ij', Ex, y)
-        emissions_stats_2 = jnp.einsum('ij,j->ji', emissions_stats_2, Rinv_d)
+        emissions_stats_1 = jnp.einsum('ij,n->nij', emissions_stats_1, Rinv_d)
+        emissions_stats_2 = jnp.einsum('ti,tn->in', Ex, y)
+        emissions_stats_2 = jnp.einsum('in,n->ni', emissions_stats_2, Rinv_d)
         emission_stats = (emissions_stats_1, emissions_stats_2)
 
         return (init_stats, dynamics_stats, emission_stats), trial_mask * posterior.marginal_loglik, posterior
@@ -952,12 +931,12 @@ class StiefelManifoldSSM(SSM):
             emission_stats_1 = jnp.einsum('bkij,lb->lkij', emission_stats_1, block_ids)
             if self.ekf_mode == 'cov':
                 dim1, dim2, dim3, dim4 = emission_stats_1.shape
-                # emission_stats_1 = vmap(inv_via_cholesky)(emission_stats_1.reshape(dim1 * dim2, dim3, dim4))
-                emission_stats_1 = jnp.linalg.inv(emission_stats_1.reshape(dim1 * dim2, dim3, dim4))
+                emission_stats_1 = vmap(inv_via_cholesky)(emission_stats_1.reshape(dim1 * dim2, dim3, dim4))
                 emission_stats_1 = emission_stats_1.reshape(dim1, dim2, dim3, dim4)
-            emission_stats_2 = jnp.einsum('bki,lb->lki', emission_stats_2, block_ids)
+                # emission_stats_1 = jnp.linalg.inv(emission_stats_1)
+            emission_stats_2 = jnp.einsum('bni,lb->lni', emission_stats_2, block_ids)
             if self.ekf_mode == 'cov':
-                emission_stats_2 = jnp.einsum('lkij,lkj->lki', emission_stats_1, emission_stats_2)
+                emission_stats_2 = jnp.einsum('lnji,lni->lnj', emission_stats_1, emission_stats_2)
             velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats_2, block_masks)
         Ev = velocity_smoother.smoothed_means
         H = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
@@ -977,19 +956,18 @@ class StiefelManifoldSSM(SSM):
         initial_velocity_posterior = mvn_posterior_update(self.initial_velocity_prior, init_velocity_stats)
         initial_velocity_mean = initial_velocity_posterior.mode()
 
-        # MAP estimation for the initial velocity variance
-        initial_velocity_cov_stats_1 = 0.5
-        initial_velocity_cov_stats_2 = jnp.diag(velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0))
-        initial_velocity_cov_stats_2 -= 2 * initial_velocity_mean * Ev0
-        initial_velocity_cov_stats_2 += initial_velocity_mean ** 2
-
-        def update_initial_velocity_cov(s2):
-            initial_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior, 
-                                                                 (initial_velocity_cov_stats_1, s2))
-            initial_velocity_cov = initial_velocity_cov_posterior.mode()
-            return initial_velocity_cov
-        initial_velocity_cov = vmap(update_initial_velocity_cov)(initial_velocity_cov_stats_2)
-        initial_velocity_cov = jnp.diag(initial_velocity_cov)
+        # # MAP estimation for the initial velocity variance
+        # initial_velocity_cov_stats_1 = 0.5
+        # initial_velocity_cov_stats_2 = jnp.diag(velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0))
+        # initial_velocity_cov_stats_2 -= 2 * initial_velocity_mean * Ev0
+        # initial_velocity_cov_stats_2 += initial_velocity_mean ** 2
+        # def update_initial_velocity_cov(s2):
+        #     initial_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior, 
+        #                                                          (initial_velocity_cov_stats_1, s2))
+        #     initial_velocity_cov = initial_velocity_cov_posterior.mode()
+        #     return initial_velocity_cov
+        # initial_velocity_cov = vmap(update_initial_velocity_cov)(initial_velocity_cov_stats_2)
+        # initial_velocity_cov = jnp.diag(initial_velocity_cov)
 
         if self.fix_tau:
             tau = params.emissions.tau
@@ -1033,7 +1011,7 @@ class StiefelManifoldSSM(SSM):
             tau = jnp.clip(tau, max=self.max_tau)
 
         Ex, Vx = posteriors.smoothed_means, posteriors.smoothed_covariances
-        emission_cov_stats_1 = (trial_masks.sum() * Ex.shape[1]) / 2
+        emission_cov_stats_1 = (trial_masks.sum() * Ex.shape[-2]) / 2
         Ey = jnp.einsum('...tx,...yx->...ty', Ex, H)
         emission_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * trial_masks_aa, axis=(0, 1))
         emission_cov_stats_2 += jnp.diag(jnp.einsum('...,...ix,...txz,...jz->ij', trial_masks, H, Vx, H))

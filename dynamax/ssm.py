@@ -474,15 +474,13 @@ class SSM(ABC):
                     'log_likelihood': float(ll),
                 }
                 
-                if run_velocity_smoother:
-                    metrics['velocity_smoother_log_likelihood'] = float(vel_ll)
-                    if hasattr(params.emissions, 'tau'):
-                        metrics['tau_min'] = float(params.emissions.tau.min())
-                        metrics['tau_max'] = float(params.emissions.tau.max())
-                    if hasattr(params.emissions, 'initial_velocity_cov'):
-                        metrics['initial_velocity_cov_max'] = float(jnp.diag(params.emissions.initial_velocity_cov).max())
-                    if hasattr(params.emissions, 'cov'):
-                        metrics['emissions_cov_min'] = float(jnp.diag(params.emissions.cov).min())
+                if hasattr(params.emissions, 'tau'):
+                    metrics['tau_min'] = float(params.emissions.tau.min())
+                    metrics['tau_max'] = float(params.emissions.tau.max())
+                if hasattr(params.emissions, 'initial_velocity_cov'):
+                    metrics['initial_velocity_cov_max'] = float(jnp.diag(params.emissions.initial_velocity_cov).max())
+                if hasattr(params.emissions, 'cov'):
+                    metrics['emissions_cov_min'] = float(jnp.diag(params.emissions.cov).min())
                 
                 log_training_step(wandb_run, metrics, iter_num)
         

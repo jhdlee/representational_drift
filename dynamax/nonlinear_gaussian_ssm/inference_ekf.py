@@ -459,8 +459,6 @@ def extended_kalman_filter_augmented_state(
 
     """
 
-    threshold = 1e-4
-
     num_blocks, num_trials_per_block, num_timesteps, emissions_dim = emissions.shape
     dim_x = model_params.initial.mean.shape[-1]
     dim_v = params.initial_mean.shape[-1]
@@ -543,16 +541,7 @@ def extended_kalman_filter_augmented_state(
                 pred_mean = filtered_mean.at[:dim_x].set(A @ filtered_mean[:dim_x] + b)
                 pred_cov = filtered_cov.at[:dim_x].set(A @ filtered_cov[:dim_x])
                 pred_cov = pred_cov.at[:, :dim_x].set(pred_cov[:, :dim_x] @ A.T)
-                pred_cov = pred_cov.at[:dim_x, :dim_x].set(pred_cov[:dim_x, :dim_x] + Q)
-
-                # # normalize the eigenvalues of the predicted covariance by their maximum
-                # # L, U = jnp.linalg.eigh(filtered_cov)
-                # lambda_max, _ = power_iteration(pred_cov)
-                # should_normalize = lambda_max > threshold
-                # # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
-                # pred_cov = jnp.where(should_normalize, 
-                #                         threshold * pred_cov / lambda_max, 
-                #                         pred_cov)
+                pred_cov = pred_cov.at[:dim_x, :dim_x].add(Q)
 
                 return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
@@ -567,15 +556,6 @@ def extended_kalman_filter_augmented_state(
             pred_cov = filtered_cov.at[:dim_x].set(0.0)
             pred_cov = pred_cov.at[:,:dim_x].set(0.0)
             pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_trial_condition])
-
-            # # normalize the eigenvalues of the predicted covariance by their maximum
-            # # L, U = jnp.linalg.eigh(filtered_cov)
-            # lambda_max, _ = power_iteration(pred_cov)
-            # should_normalize = lambda_max > threshold
-            # # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
-            # pred_cov = jnp.where(should_normalize, 
-            #                         threshold * pred_cov / lambda_max, 
-            #                         pred_cov)
 
             return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
@@ -595,16 +575,7 @@ def extended_kalman_filter_augmented_state(
         pred_cov = filtered_cov.at[:dim_x].set(0.0)
         pred_cov = pred_cov.at[:,:dim_x].set(0.0)
         pred_cov = pred_cov.at[:dim_x, :dim_x].set(initial_state_covs[next_block_condition])
-        pred_cov = pred_cov.at[dim_x:, dim_x:].set(pred_cov[dim_x:, dim_x:] + tau)
-
-        # # normalize the eigenvalues of the predicted covariance by their maximum
-        # # L, U = jnp.linalg.eigh(filtered_cov)
-        # lambda_max, _ = power_iteration(pred_cov)
-        # should_normalize = lambda_max > threshold
-        # # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
-        # pred_cov = jnp.where(should_normalize, 
-        #                         threshold * pred_cov / lambda_max, 
-        #                         pred_cov)
+        pred_cov = pred_cov.at[dim_x:, dim_x:].add(tau)
 
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
@@ -867,11 +838,11 @@ def extended_kalman_filter_x_marginalized(
         y_pred = y_pred.reshape(-1, N)
 
         residuals = y_true.reshape(-1, N) - y_pred
-        R_inv = jnp.linalg.inv(R)
-        P_inv = jnp.linalg.inv(P)
+        R_inv = vmap(inv_via_cholesky)(R)
+        P_inv = inv_via_cholesky(P)
 
         U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-        U_inv = jnp.linalg.inv(U)
+        U_inv = inv_via_cholesky(U)
 
         q = jnp.einsum('tiv,tij,tj->v', H_x, R_inv, residuals)
         quad_term = jnp.einsum('ti,tij,tj->', residuals, R_inv, residuals) - q @ U_inv @ q
@@ -899,11 +870,11 @@ def extended_kalman_filter_x_marginalized(
             y_pred = y_pred.reshape(-1, N)
 
             residuals = y_true.reshape(-1, N) - y_pred
-            R_inv = jnp.linalg.inv(R)
-            P_inv = jnp.linalg.inv(prior_cov)
+            R_inv = vmap(inv_via_cholesky)(R)
+            P_inv = inv_via_cholesky(prior_cov)
 
             U = P_inv + jnp.einsum('tiv,tij,tju->vu', H_x, R_inv, H_x)
-            U_inv = jnp.linalg.inv(U)
+            U_inv = inv_via_cholesky(U)
 
             R_inv_H_x = jnp.einsum('tij,tjv->tiv', R_inv, H_x)
             L = jnp.einsum('tjv,tju,uk->vk', H_x, R_inv_H_x, P)
@@ -1159,7 +1130,8 @@ def extended_kalman_smoother(
 
     # Get filtered posterior
     if filtered_posterior is None:
-        filtered_posterior = extended_kalman_filter(params, emissions, trial_masks=trial_masks, mode=mode, num_iters=num_iters)
+        filtered_posterior = extended_kalman_filter(params, emissions, trial_masks=trial_masks, 
+                                                    mode=mode, num_iters=num_iters)
     ll = filtered_posterior.marginal_loglik
     filtered_means = filtered_posterior.filtered_means
     filtered_covs = filtered_posterior.filtered_covariances
