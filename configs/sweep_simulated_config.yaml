@@ -24,8 +24,6 @@ parameters:
     value: "cov"
   model.tau_per_dim:
     value: true
-  training.num_iters:
-    value: 300
     
   # Default configuration parameters
   model.has_dynamics_bias:
@@ -45,7 +43,7 @@ parameters:
   model.max_tau:
     value: 1e-3
   model.tau_concentration:
-    values: [1e1]
+    values: [1e0]
   model.tau_scale:
     values: [1e-6]
   
@@ -58,6 +56,10 @@ parameters:
     value: "ekf"
   training.ekf_num_iters:
     value: 1
+  training.num_iters:
+    value: 300
+  training.smds_test_state_dim_bound:
+    value: 4
 
   eval.ekf_num_iters:
     value: 1

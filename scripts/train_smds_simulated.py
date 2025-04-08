@@ -74,6 +74,7 @@ def main(config: DictConfig):
     if (model_config.type == 'smds' 
         and model_config.state_dim > training_config.smds_test_state_dim_bound):
         print(f"Skipping {model_config.state_dim} because state dim is too large")
+        # Skip the rest of the function
         return
 
     data_dir = model_dir = f'/oak/stanford/groups/swl1/hdlee/smds/simulated_{true_state_dim}x{emission_dim}/'
@@ -140,8 +141,8 @@ def main(config: DictConfig):
                                                                         key=key, 
                                                                         initial_mean=jnp.sqrt(emission_dim/true_state_dim)*jr.normal(key_root, shape=(num_conditions, true_state_dim)),
                                                                         dynamics_weights=dynamics,
-                                                                        dynamics_covariance=jnp.eye(true_state_dim)*1e-2,
-                                                                        emission_covariance=jnp.eye(emission_dim)*1e-2,
+                                                                        dynamics_covariance=jnp.eye(true_state_dim)*1e-1,
+                                                                        emission_covariance=jnp.eye(emission_dim)*1e-1,
                                                                         velocity=_velocity,
                                                                         )
 
