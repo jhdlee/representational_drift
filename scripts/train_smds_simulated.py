@@ -72,6 +72,7 @@ def main(config: DictConfig):
     dof_shape = (true_state_dim, emission_dim - true_state_dim)
 
     data_dir = model_dir = f'/oak/stanford/groups/swl1/hdlee/smds/simulated_{true_state_dim}x{emission_dim}/'
+    os.makedirs(data_dir, exist_ok=True)
     model_name = f"{model_config.type}_D.{model_config.state_dim}"
     if model_config.type == 'smds':
         model_name += f"_ekfmode.{model_config.ekf_mode}_base.{model_config.base_subspace_type}_ivc.{model_config.initial_velocity_cov}"
