@@ -139,6 +139,7 @@ def main(config: DictConfig):
             num_conditions=num_conditions,
             has_dynamics_bias=model_config.has_dynamics_bias,
             tau_per_dim=model_config.tau_per_dim,
+            tau_per_axis=model_config.tau_per_axis,
             fix_tau=model_config.fix_tau,
             emissions_cov_eps=model_config.emissions_cov_eps,
             velocity_smoother_method=training_config.velocity_smoother_method,

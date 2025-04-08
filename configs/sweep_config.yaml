@@ -24,6 +24,8 @@ parameters:
     value: "cov"
   model.tau_per_dim:
     value: true
+  model.tau_per_axis:
+    value: true
   training.num_iters:
     value: 300
     

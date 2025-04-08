@@ -9,6 +9,7 @@ model:
   ekf_mode: "cov"
   fix_tau: false
   tau_per_dim: true
+  tau_per_axis: true
   emissions_cov_eps: 1e-1
   base_subspace_type: "random"
   initial_velocity_cov: 1e-6
