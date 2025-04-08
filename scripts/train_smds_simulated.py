@@ -49,7 +49,7 @@ def split_data(emissions, conditions, block_size, seed):
     return (emissions, conditions,train_obs, test_obs, train_conditions, test_conditions, block_ids, 
             trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks)
 
-@hydra.main(version_base=None, config_path="../configs", config_name="config")
+@hydra.main(version_base=None, config_path="../configs", config_name="simulated_config")
 def main(config: DictConfig):
     """Main function to train and evaluate SMDS model"""
     # Print config if needed
@@ -151,7 +151,7 @@ def main(config: DictConfig):
         conditions = jnp.load(os.path.join(data_dir, condition_name))
         true_states = jnp.load(os.path.join(data_dir, states_name))
         true_params = pkl.load(open(os.path.join(data_dir, params_name), 'rb'))
-        
+
     (emissions, conditions, train_obs, test_obs, 
         train_conditions, test_conditions, block_ids,
         trial_masks, block_masks, sequence_length,
