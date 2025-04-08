@@ -76,7 +76,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
     train_conditions = conditions[trial_masks]
     test_conditions = conditions[~trial_masks]
 
-    return (train_obs, test_obs, train_conditions, test_conditions, block_ids, 
+    return (emissions, conditions,train_obs, test_obs, train_conditions, test_conditions, block_ids, 
             trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks)
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
@@ -122,7 +122,8 @@ def main(config: DictConfig):
     block_size = data_config.block_size
     standardize = data_config.standardize
     emissions, conditions = load_data(data_path)
-    (train_obs, test_obs, train_conditions, test_conditions, block_ids,
+    (emissions, conditions, train_obs, test_obs, 
+        train_conditions, test_conditions, block_ids,
         trial_masks, block_masks, sequence_length,
         emission_dim, num_conditions, num_blocks) = split_and_standardize_data(emissions, conditions, block_size, seed, standardize=standardize)
     sorted_var_idx = jnp.argsort(train_obs[~trial_masks].var(axis=(0, 1)))[::-1]
