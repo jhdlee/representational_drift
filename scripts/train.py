@@ -174,7 +174,6 @@ def main(config: DictConfig):
                 emission_weights = jnp.tile(base_subspace[:, :D][None], (len(train_obs), 1, 1))
             else:
                 key, key_root = jr.split(key)
-                key, key_root = jr.split(key)
                 random_rotation_matrix = jr.orthogonal(key_root, D)
                 emission_weights = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T[:, :D] @ random_rotation_matrix
                 base_subspace = gram_schmidt(jnp.concatenate([emission_weights, jr.normal(key_root, shape=(N, N-D))], axis=-1))

@@ -68,6 +68,6 @@ parameters:
   data.path:
     value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
   data.block_size:
-    value: 8
+    value: 1
   data.standardize:
     value: true
