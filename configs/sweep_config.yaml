@@ -17,9 +17,9 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["smds"]
+    values: ["lds", "smds"]
   model.state_dim:
-    values: [12]
+    values: [12, 16, 20, 24]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -39,15 +39,15 @@ parameters:
   model.initial_velocity_cov:
     value: 1e-6
   model.init_tau:
-    values: [1e-5]
+    values: [5e-6]
   model.fix_tau:
     value: false
   model.max_tau:
     value: 1e-4
   model.tau_concentration:
-    values: [1e0, 1e1, 1e2]
+    values: [1e-6]
   model.tau_scale:
-    values: [1e-6, 1e-4]
+    values: [1e-6]
   
   # Training parameters
   training.run_velocity_smoother:
@@ -66,6 +66,6 @@ parameters:
   data.path:
     value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
   data.block_size:
-    value: 1
+    value: 8
   data.standardize:
     value: true
