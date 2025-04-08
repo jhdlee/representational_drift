@@ -132,7 +132,7 @@ def main(config: DictConfig):
         true_params, param_props, true_velocity = true_model.initialize(tau=true_tau,
                                                                         base_subspace=true_base_subspace,
                                                                         key=key, 
-                                                                        initial_mean=jnp.sqrt(N/D)*jr.normal(key_root, shape=(num_conditions, true_state_dim)),
+                                                                        initial_mean=jnp.sqrt(emission_dim/true_state_dim)*jr.normal(key_root, shape=(num_conditions, true_state_dim)),
                                                                         dynamics_weights=dynamics,
                                                                         dynamics_covariance=jnp.eye(true_state_dim)*1e-2,
                                                                         emission_covariance=jnp.eye(emission_dim)*1e-2,
