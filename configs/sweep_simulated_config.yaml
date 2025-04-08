@@ -39,13 +39,13 @@ parameters:
   model.initial_velocity_cov:
     value: 1e-6
   model.init_tau:
-    values: [1e-5]
+    values: [1e-6]
   model.fix_tau:
     value: false
   model.max_tau:
     value: 1e-3
   model.tau_concentration:
-    values: [1e-6]
+    values: [1e0]
   model.tau_scale:
     values: [1e-6]
   
