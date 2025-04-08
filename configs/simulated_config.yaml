@@ -1,0 +1,48 @@
+# SMDS model configuration
+
+# Model parameters
+model:
+  type: "smds"
+  state_dim: 10
+  has_dynamics_bias: true
+  has_emissions_bias: false
+  ekf_mode: "cov"
+  fix_tau: false
+  tau_per_dim: true
+  emissions_cov_eps: 1e-1
+  base_subspace_type: "random"
+  initial_velocity_cov: 1e-6
+  init_tau: 1e-5
+  max_tau: 1e-4
+  tau_concentration: 1e-6
+  tau_scale: 1e-6
+
+# Training parameters
+training:
+  num_iters: 2
+  run_velocity_smoother: false
+  print_ll: true
+  velocity_smoother_method: "ekf"
+  ekf_num_iters: 1
+
+# Evaluation parameters
+eval:
+  ekf_num_iters: 1
+
+# Data parameters
+data:
+  state_dim: 2
+  emission_dim: 10
+  num_trials: 750
+  num_conditions: 4
+  num_timesteps: 30
+  block_size: 1
+  
+# Global parameters
+seed: 42
+use_wandb: true
+eval_only: false
+pretrained_model: null 
+
+project: smds
+name: smds_simulated
