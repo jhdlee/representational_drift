@@ -24,7 +24,7 @@ training:
   print_ll: true
   velocity_smoother_method: "ekf"
   ekf_num_iters: 1
-
+  smds_test_state_dim_bound: 100
 # Evaluation parameters
 eval:
   ekf_num_iters: 1
