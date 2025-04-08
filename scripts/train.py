@@ -214,7 +214,7 @@ def main(config: DictConfig):
             )
 
         if use_wandb:
-            wandb.log({"train_log_posteriors_min_increase": jnp.diff(jnp.array(train_lps)[1:]).min()})
+            wandb.log({"train_log_posteriors_min_increase": jnp.diff(jnp.array(train_lps))[1:].min()})
             save_model(wandb_run, best_params, model_dir, model_name)
         else:
             os.makedirs(model_dir, exist_ok=True)
