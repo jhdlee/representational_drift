@@ -102,7 +102,7 @@ def main(config: DictConfig):
     condition_name = f'conditions_seed.{seed}.npy'
     states_name = f'states_seed.{seed}.npy'
     params_name = f'params_seed.{seed}.pkl'
-    if not os.path.exists(os.path.join(data_dir, data_name)):
+    if not os.path.exists(os.path.join(data_dir, data_name)) or config.data.regenerate_data:
         key = jr.PRNGKey(seed)
         dynamics = random_rotation(seed=key, n=true_state_dim, theta=jnp.pi / 5)
         true_model = StiefelManifoldSSM(state_dim=true_state_dim, 
