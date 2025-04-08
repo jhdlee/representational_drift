@@ -37,6 +37,7 @@ data:
   num_conditions: 4
   num_timesteps: 30
   block_size: 1
+  regenerate_data: false
   
 # Global parameters
 seed: 42

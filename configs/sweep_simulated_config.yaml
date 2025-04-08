@@ -33,17 +33,17 @@ parameters:
   model.has_emissions_bias:
     value: false
   model.emissions_cov_eps:
-    value: 1e-1
+    value: 1e-9
   model.base_subspace_type:
     values: ["random"]
   model.initial_velocity_cov:
     value: 1e-6
   model.init_tau:
-    values: [5e-6]
+    values: [1e-5]
   model.fix_tau:
     value: false
   model.max_tau:
-    value: 1e-4
+    value: 1e-3
   model.tau_concentration:
     values: [1e-6]
   model.tau_scale:
@@ -73,3 +73,5 @@ parameters:
     value: 750
   data.num_conditions:
     value: 4
+  data.regenerate_data:
+    value: false
