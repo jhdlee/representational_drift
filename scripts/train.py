@@ -32,7 +32,7 @@ condition_to_n = {'top':0,
 
 def load_data(data_path):
     """Load data from npy file"""
-    emissions_path = os.path.join(data_path, 'emissions_v3.npy')
+    emissions_path = os.path.join(data_path, 'emissions_v4.npy')
     conditions_path = os.path.join(data_path, 'conditions.npy')
 
     emissions = jnp.load(emissions_path)
@@ -55,7 +55,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
     trial_masks = jnp.ones(len(emissions), dtype=bool)
     num_test_blocks = num_blocks // 6
     key = jr.PRNGKey(seed)
-    test_idx = jr.choice(key, jnp.arange(8, num_blocks-8, dtype=int), shape=(num_test_blocks,), replace=False)
+    test_idx = jr.choice(key, jnp.arange(30, num_blocks-30, dtype=int), shape=(num_test_blocks,), replace=False)
     block_masks = block_masks.at[test_idx].set(False)
     num_train_blocks = block_masks.sum()
     block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)

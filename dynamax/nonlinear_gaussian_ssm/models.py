@@ -296,11 +296,11 @@ class StiefelManifoldSSM(SSM):
         self.initial_velocity_prior = default_prior(
             'initial_velocity_prior',
             MVN(loc=jnp.zeros(self.dof),
-                covariance_matrix=1e6 * jnp.eye(self.dof)))
-        # self.initial_velocity_covariance_prior = default_prior(
-        #     'initial_velocity_covariance_prior',
-        #     IG(concentration=1e-4, scale=1e-4)
-        # )
+                covariance_matrix=1e4 * jnp.eye(self.dof)))
+        self.initial_velocity_covariance_prior = default_prior(
+            'initial_velocity_covariance_prior',
+            IG(concentration=1e-4, scale=1e-4)
+        )
 
         self.tau_prior = default_prior(
             'tau_prior',
@@ -336,7 +336,7 @@ class StiefelManifoldSSM(SSM):
         # lp += self.initial_velocity_prior.log_prob((params.emissions.initial_velocity_cov,
         #                                             params.emissions.initial_velocity_mean))
         lp += self.initial_velocity_prior.log_prob(params.emissions.initial_velocity_mean)
-        # lp += self.initial_velocity_covariance_prior.log_prob(jnp.diag(params.emissions.initial_velocity_cov)).sum()
+        lp += self.initial_velocity_covariance_prior.log_prob(jnp.diag(params.emissions.initial_velocity_cov)).sum()
 
         if not self.fix_tau:
             if self.tau_per_dim:
@@ -937,10 +937,10 @@ class StiefelManifoldSSM(SSM):
         if velocity_smoother is None:
             emission_stats_1 = jnp.einsum('bkij,lb->lkij', emission_stats_1, block_ids)
             if self.ekf_mode == 'cov':
-                dim1, dim2, dim3, dim4 = emission_stats_1.shape
-                emission_stats_1 = vmap(inv_via_cholesky)(emission_stats_1.reshape(dim1 * dim2, dim3, dim4))
-                emission_stats_1 = emission_stats_1.reshape(dim1, dim2, dim3, dim4)
-                # emission_stats_1 = jnp.linalg.inv(emission_stats_1)
+                # dim1, dim2, dim3, dim4 = emission_stats_1.shape
+                # emission_stats_1 = vmap(inv_via_cholesky)(emission_stats_1.reshape(dim1 * dim2, dim3, dim4))
+                # emission_stats_1 = emission_stats_1.reshape(dim1, dim2, dim3, dim4)
+                emission_stats_1 = jnp.linalg.inv(emission_stats_1)
             emission_stats_2 = jnp.einsum('bni,lb->lni', emission_stats_2, block_ids)
             if self.ekf_mode == 'cov':
                 emission_stats_2 = jnp.einsum('lnji,lni->lnj', emission_stats_1, emission_stats_2)
@@ -963,18 +963,18 @@ class StiefelManifoldSSM(SSM):
         initial_velocity_posterior = mvn_posterior_update(self.initial_velocity_prior, init_velocity_stats)
         initial_velocity_mean = initial_velocity_posterior.mode()
 
-        # # MAP estimation for the initial velocity variance
-        # initial_velocity_cov_stats_1 = 0.5
-        # initial_velocity_cov_stats_2 = jnp.diag(velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0))
-        # initial_velocity_cov_stats_2 -= 2 * initial_velocity_mean * Ev0
-        # initial_velocity_cov_stats_2 += initial_velocity_mean ** 2
-        # def update_initial_velocity_cov(s2):
-        #     initial_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior, 
-        #                                                          (initial_velocity_cov_stats_1, s2))
-        #     initial_velocity_cov = initial_velocity_cov_posterior.mode()
-        #     return initial_velocity_cov
-        # initial_velocity_cov = vmap(update_initial_velocity_cov)(initial_velocity_cov_stats_2)
-        # initial_velocity_cov = jnp.diag(initial_velocity_cov)
+        # MAP estimation for the initial velocity variance
+        initial_velocity_cov_stats_1 = 0.5
+        initial_velocity_cov_stats_2 = jnp.diag(velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0))
+        initial_velocity_cov_stats_2 -= 2 * initial_velocity_mean * Ev0
+        initial_velocity_cov_stats_2 += initial_velocity_mean ** 2
+        def update_initial_velocity_cov(s2):
+            initial_velocity_cov_posterior = ig_posterior_update(self.initial_velocity_covariance_prior, 
+                                                                 (initial_velocity_cov_stats_1, s2))
+            initial_velocity_cov = initial_velocity_cov_posterior.mode()
+            return initial_velocity_cov
+        initial_velocity_cov = vmap(update_initial_velocity_cov)(initial_velocity_cov_stats_2)
+        initial_velocity_cov = jnp.diag(initial_velocity_cov)
 
         if self.fix_tau:
             tau = params.emissions.tau
