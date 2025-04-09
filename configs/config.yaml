@@ -3,24 +3,24 @@
 # Model parameters
 model:
   type: "smds"
-  state_dim: 10
+  state_dim: 5
   has_dynamics_bias: true
   has_emissions_bias: false
   ekf_mode: "cov"
   fix_tau: false
   tau_per_dim: true
-  tau_per_axis: true
-  emissions_cov_eps: 1e-1
-  base_subspace_type: "random"
-  initial_velocity_cov: 1e-6
-  init_tau: 1e-5
+  tau_per_axis: false
+  emissions_cov_eps: 1e-2
+  base_subspace_type: "pca"
+  initial_velocity_cov: 1e-4
+  init_tau: 1e-6
   max_tau: 1e-4
   tau_concentration: 1e-6
   tau_scale: 1e-6
 
 # Training parameters
 training:
-  num_iters: 2
+  num_iters: 300
   run_velocity_smoother: false
   print_ll: true
   velocity_smoother_method: "ekf"
@@ -37,7 +37,7 @@ data:
   standardize: true
   
 # Global parameters
-seed: 42
+seed: 781899
 use_wandb: true
 eval_only: false
 pretrained_model: null 
