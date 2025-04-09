@@ -17,9 +17,9 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["lds", "smds"]
+    values: ["lds"]
   model.state_dim:
-    values: [12, 16, 20, 24]
+    values: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
