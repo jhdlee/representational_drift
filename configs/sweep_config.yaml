@@ -19,7 +19,7 @@ parameters:
   model.type:
     values: ["smds"]
   model.state_dim:
-    values: [5, 10, 15, 20, 25, 30, 35, 40]
+    values: [15, 20, 25, 30]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -37,7 +37,7 @@ parameters:
   model.emissions_cov_eps:
     value: 1e-2
   model.base_subspace_type:
-    values: ["pca", "random"]
+    values: ["pca"]
   model.initial_velocity_cov:
     value: 1e-4
   model.init_tau:
@@ -47,9 +47,9 @@ parameters:
   model.max_tau:
     value: 1e-4
   model.tau_concentration:
-    values: [1e-9]
+    values: [1e0]
   model.tau_scale:
-    values: [1e-9]
+    values: [1e-6]
   
   # Training parameters
   training.run_velocity_smoother:
