@@ -15,8 +15,8 @@ model:
   initial_velocity_cov: 1e-4
   init_tau: 1e-6
   max_tau: 1e-4
-  tau_concentration: 1e-6
-  tau_scale: 1e-6
+  tau_concentration: 1e-9
+  tau_scale: 1e-9
 
 # Training parameters
 training:
