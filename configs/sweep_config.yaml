@@ -25,7 +25,7 @@ parameters:
   model.tau_per_dim:
     value: true
   model.tau_per_axis:
-    value: true
+    value: false
   training.num_iters:
     value: 300
     
@@ -43,13 +43,13 @@ parameters:
   model.init_tau:
     values: [1e-7]
   model.fix_tau:
-    value: true
+    value: false
   model.max_tau:
     value: 1e-4
   model.tau_concentration:
     values: [1e1]
   model.tau_scale:
-    values: [1e-6]
+    values: [1e-9]
   
   # Training parameters
   training.run_velocity_smoother:
