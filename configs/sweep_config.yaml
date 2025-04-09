@@ -17,9 +17,9 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["lds"]
+    values: ["smds"]
   model.state_dim:
-    values: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60]
+    values: [4, 8, 12, 16, 20, 24, 28, 32]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -39,15 +39,15 @@ parameters:
   model.base_subspace_type:
     values: ["random"]
   model.initial_velocity_cov:
-    value: 1e-6
+    value: 5e-5
   model.init_tau:
-    values: [1e-6]
+    values: [5e-6, 1e-6]
   model.fix_tau:
     value: false
   model.max_tau:
     value: 5e-5
   model.tau_concentration:
-    values: [1e0]
+    values: [1e0, 1e-3, 1e-6]
   model.tau_scale:
     values: [1e-6]
   
