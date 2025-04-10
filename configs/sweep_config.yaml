@@ -43,7 +43,7 @@ parameters:
   model.fix_initial_velocity_cov:
     value: true
   model.init_tau:
-    values: [1e-6]
+    values: [1e-7]
   model.fix_tau:
     value: false
   model.max_tau:
@@ -61,10 +61,10 @@ parameters:
   training.velocity_smoother_method:
     value: "ekf"
   training.ekf_num_iters:
-    value: 1
+    value: 2
 
   eval.ekf_num_iters:
-    value: 1
+    value: 2
 
   # Data parameters
   data.path:
