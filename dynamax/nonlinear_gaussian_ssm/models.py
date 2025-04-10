@@ -1031,7 +1031,8 @@ class StiefelManifoldSSM(SSM):
             return emissions_cov
         # R = vmap(update_emissions_cov)(emission_cov_stats_2) + self.emissions_cov_eps
         R = vmap(update_emissions_cov)(emission_cov_stats_2)
-        R = jnp.clip(R, min=self.emissions_cov_eps)
+        # R = jnp.clip(R, min=self.emissions_cov_eps)
+        R += self.emissions_cov_eps
         R = jnp.diag(R)
 
         # H, R = params.emissions.weights, params.emissions.cov
