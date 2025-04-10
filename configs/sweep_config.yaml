@@ -47,7 +47,7 @@ parameters:
   model.fix_tau:
     value: false
   model.max_tau:
-    value: 5e-4
+    value: 1e-4
   model.tau_concentration:
     values: [1e-6]
   model.tau_scale:
