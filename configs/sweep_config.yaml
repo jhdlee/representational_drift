@@ -35,7 +35,7 @@ parameters:
   model.has_emissions_bias:
     value: false
   model.emissions_cov_eps:
-    value: 1e-3
+    value: 1e-2
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
@@ -45,11 +45,11 @@ parameters:
   model.fix_tau:
     value: false
   model.max_tau:
-    value: 1e-4
+    value: 5e-5
   model.tau_concentration:
-    values: [1e-9]
+    values: [1e-6]
   model.tau_scale:
-    values: [1e-9]
+    values: [1e-6]
   
   # Training parameters
   training.run_velocity_smoother:
