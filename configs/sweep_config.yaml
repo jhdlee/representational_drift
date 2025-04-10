@@ -35,7 +35,7 @@ parameters:
   model.has_emissions_bias:
     value: false
   model.emissions_cov_eps:
-    value: 1e-1
+    value: 1e-3
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
