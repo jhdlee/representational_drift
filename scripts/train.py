@@ -141,6 +141,7 @@ def main(config: DictConfig):
             tau_per_dim=model_config.tau_per_dim,
             tau_per_axis=model_config.tau_per_axis,
             fix_tau=model_config.fix_tau,
+            fix_initial_velocity_cov=model_config.fix_initial_velocity_cov,
             emissions_cov_eps=model_config.emissions_cov_eps,
             velocity_smoother_method=training_config.velocity_smoother_method,
             ekf_mode=model_config.ekf_mode,

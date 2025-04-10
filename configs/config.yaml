@@ -13,6 +13,7 @@ model:
   emissions_cov_eps: 1e-2
   base_subspace_type: "pca"
   initial_velocity_cov: 1e-4
+  fix_initial_velocity_cov: false
   init_tau: 1e-6
   max_tau: 1e-4
   tau_concentration: 1e-9
