@@ -4,6 +4,7 @@ import os
 os.environ['XLA_PYTHON_CLIENT_ALLOCATOR'] = 'platform'
 import hydra
 import wandb
+import random
 from omegaconf import DictConfig, OmegaConf
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -90,6 +91,10 @@ def main(config: DictConfig):
     training_config = config.training
     eval_config = config.eval
     seed = config.seed
+
+    jr.seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
     model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
     model_name = f"{model_config.type}_D.{model_config.state_dim}"
