@@ -84,4 +84,4 @@ parameters:
   data.velocity_type:
     values: ["sine"]
   data.regenerate_data:
-    value: false
+    value: true
