@@ -130,7 +130,7 @@ def main(config: DictConfig):
         key, key_root = jr.split(key)
 
         if data_config.velocity_type == 'sine':
-            _velocity_cov = jnp.zeros((num_trials,) + dof_shape)
+            _velocity = jnp.zeros((num_trials,) + dof_shape)
             sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
             _velocity = _velocity.at[:, 0, 0].set(sine_wave)
             # set true tau to the MLE of the sine wave
