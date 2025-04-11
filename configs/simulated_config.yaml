@@ -21,7 +21,7 @@ model:
 
 # Training parameters
 training:
-  num_iters: 2
+  num_iters: 5
   run_velocity_smoother: false
   print_ll: true
   velocity_smoother_method: "ekf"
