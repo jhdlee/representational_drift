@@ -226,7 +226,7 @@ def main(config: DictConfig):
 
         # log true test r2
         true_test_r2 = compute_smds_test_r2(true_model, true_params.emissions.weights[~trial_masks],
-                                             test_obs, test_conditions)
+                                            true_params, test_obs, test_conditions)
         wandb.log({"true_test_r2": true_test_r2})
     
     if model_config.type == 'smds':
