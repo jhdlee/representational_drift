@@ -4,6 +4,7 @@ import os
 os.environ['XLA_PYTHON_CLIENT_ALLOCATOR'] = 'platform'
 import hydra
 import wandb
+import random
 from omegaconf import DictConfig, OmegaConf
 import jax
 jax.config.update("jax_enable_x64", True)
@@ -11,6 +12,8 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax import vmap
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pickle as pkl
 from sklearn.decomposition import PCA
 from dynamax.nonlinear_gaussian_ssm.models import StiefelManifoldSSM
@@ -20,6 +23,8 @@ from dynamax.utils.wandb_utils import init_wandb, save_model
 from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
 from dynamax.utils.utils import gram_schmidt, rotate_subspace, random_rotation
 from dynamax.utils.distributions import IG, MVN
+
+from dynamax.utils.eval_utils import compute_smds_test_marginal_ll
 
 def split_data(emissions, conditions, block_size, seed):
     """Split data into train/test sets"""
@@ -61,6 +66,9 @@ def main(config: DictConfig):
     eval_config = config.eval
     seed = config.seed
 
+    np.random.seed(seed)
+    random.seed(seed)
+
     data_config = config.data
     true_state_dim = data_config.state_dim
     emission_dim = data_config.emission_dim
@@ -82,8 +90,9 @@ def main(config: DictConfig):
     model_name = f"{model_config.type}_D.{model_config.state_dim}"
     if model_config.type == 'smds':
         model_name += f"_ekfmode.{model_config.ekf_mode}_base.{model_config.base_subspace_type}_ivc.{model_config.initial_velocity_cov}"
-        model_name += f"_itau.{model_config.init_tau}_mtau.{model_config.max_tau}_ekf_num_iters.{training_config.ekf_num_iters}"
-        model_name += f"_tau_concentration.{model_config.tau_concentration}_tau_scale.{model_config.tau_scale}"
+        model_name += f"_itau.{model_config.init_tau}_mtau.{model_config.max_tau}_eni.{training_config.ekf_num_iters}"
+        model_name += f"_tc.{model_config.tau_concentration}_ts.{model_config.tau_scale}"
+        model_name += f"_ece.{model_config.emissions_cov_eps}"
     model_name = f"{model_name}_seed.{seed}"
     
     # Check for evaluation-only mode
@@ -119,21 +128,30 @@ def main(config: DictConfig):
         key, key_root = jr.split(key)
         true_base_subspace = jr.orthogonal(key_root, emission_dim)
         key, key_root = jr.split(key)
-        true_tau = jr.uniform(key_root, shape=(dof,), minval=1e-10, maxval=1e-4)
 
-        _velocity_cov = jnp.diag(true_tau)
-        def _get_velocity(prev_velocity, current_key):
-            current_velocity_dist = MVN(loc=prev_velocity, covariance_matrix=_velocity_cov)
-            current_velocity = current_velocity_dist.sample(seed=current_key)
-            return current_velocity, current_velocity
+        if data_config.velocity_type == 'sine':
+            _velocity_cov = jnp.zeros((num_trials,) + dof_shape)
+            sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
+            _velocity = _velocity.at[:, 0, 0].set(sine_wave)
+            # set true tau to the MLE of the sine wave
+            true_tau = jnp.ones(dof) * 1e-32
+            true_tau = true_tau.at[0].set(jnp.var(jnp.diff(sine_wave)))
+        elif data_config.velocity_type == 'random':
+            true_tau = jr.uniform(key_root, shape=(dof,), minval=1e-10, maxval=1e-4)
 
-        keys = jr.split(key, num_trials)
-        key = keys[-1]
-        key, key_root = jr.split(key)
-        _initial_velocity = jnp.zeros(dof)
-        _, _velocity = jax.lax.scan(_get_velocity, _initial_velocity, keys[:-1])
-        _velocity = jnp.concatenate([_initial_velocity[None], _velocity])
-        _velocity = _velocity.reshape((num_trials,) + dof_shape)
+            _velocity_cov = jnp.diag(true_tau)
+            def _get_velocity(prev_velocity, current_key):
+                current_velocity_dist = MVN(loc=prev_velocity, covariance_matrix=_velocity_cov)
+                current_velocity = current_velocity_dist.sample(seed=current_key)
+                return current_velocity, current_velocity
+
+            keys = jr.split(key, num_trials)
+            key = keys[-1]
+            key, key_root = jr.split(key)
+            _initial_velocity = jnp.zeros(dof)
+            _, _velocity = jax.lax.scan(_get_velocity, _initial_velocity, keys[:-1])
+            _velocity = jnp.concatenate([_initial_velocity[None], _velocity])
+            _velocity = _velocity.reshape((num_trials,) + dof_shape)
 
         key, key_root = jr.split(key)
         true_params, param_props, true_velocity = true_model.initialize(tau=true_tau,
@@ -153,6 +171,32 @@ def main(config: DictConfig):
         jnp.save(os.path.join(data_dir, condition_name), conditions)
         jnp.save(os.path.join(data_dir, states_name), true_states)
         pkl.dump(true_params, open(os.path.join(data_dir, params_name), 'wb'))
+
+        # log true tau, example trials, and true test log likelihood to wandb
+        if use_wandb:
+            wandb.log({"true_tau": true_tau})
+            fig, ax = plt.subplots(figsize=(3, 4))
+            ax.plot(emissions[-1, :, :10] + 1 * jnp.arange(10))
+            ax.set_ylabel("data")
+            ax.set_xlabel("time")
+            ax.set_xlim(0, num_timesteps - 1)
+            wandb.log({"example_trials": wandb.Image(fig)})
+            plt.close(fig)
+
+            true_emissions_weights = true_params.emissions.weights
+            true_corrcoef = jnp.corrcoef(true_emissions_weights.reshape(len(emissions), -1))
+            fig, ax = plt.subplots(figsize=(3,2.5))
+            im = ax.imshow(true_corrcoef, aspect='auto', interpolation='none')
+            ax.set_ylabel('Trials')
+            ax.set_xlabel('Trials')
+            ax.set_title('SMDS\nGround truth drift')
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.1)
+            cbar = fig.colorbar(im, cax=cax)
+            cbar.ax.set_ylabel('correlation')
+            wandb.log({"true_corrcoef": wandb.Image(fig)})
+            plt.close(fig)
+
     else:
         emissions = jnp.load(os.path.join(data_dir, data_name))
         conditions = jnp.load(os.path.join(data_dir, condition_name))
@@ -167,6 +211,13 @@ def main(config: DictConfig):
     held_out_idx = sorted_var_idx[:5]
     cosmoothing_mask = jnp.ones(emission_dim, dtype=bool)
     cosmoothing_mask = cosmoothing_mask.at[held_out_idx].set(False)
+
+    if use_wandb:
+        # log true test log likelihood to wandb
+        true_test_log_likelihood = compute_smds_test_marginal_ll(true_model, true_params, emissions, 
+                                                                    conditions, block_masks,
+                                                                    method=1, num_iters=eval_config.ekf_num_iters)
+        wandb.log({"true_test_log_likelihood": true_test_log_likelihood})
     
     if model_config.type == 'smds':
         model = StiefelManifoldSSM(
@@ -176,13 +227,16 @@ def main(config: DictConfig):
             num_conditions=num_conditions,
             has_dynamics_bias=model_config.has_dynamics_bias,
             tau_per_dim=model_config.tau_per_dim,
+            tau_per_axis=model_config.tau_per_axis,
             fix_tau=model_config.fix_tau,
+            fix_initial_velocity_cov=model_config.fix_initial_velocity_cov,
             emissions_cov_eps=model_config.emissions_cov_eps,
             velocity_smoother_method=training_config.velocity_smoother_method,
             ekf_mode=model_config.ekf_mode,
             max_tau=model_config.max_tau,
             ekf_num_iters=training_config.ekf_num_iters,
-            tau_prior=IG(concentration=model_config.tau_concentration, scale=model_config.tau_scale),
+            tau_prior=IG(concentration=model_config.tau_concentration, 
+                         scale=model_config.tau_scale),
         )
     elif model_config.type == 'lds':
         model = LinearGaussianConjugateSSM(
@@ -251,7 +305,7 @@ def main(config: DictConfig):
             )
 
         if use_wandb:
-            wandb.log({"train_log_posteriors_min_increase": jnp.diff(jnp.array(train_lps)[1:]).min()})
+            wandb.log({"train_log_posteriors_min_increase": jnp.diff(jnp.array(train_lps))[2:].min()})
             save_model(wandb_run, best_params, model_dir, model_name)
         else:
             os.makedirs(model_dir, exist_ok=True)

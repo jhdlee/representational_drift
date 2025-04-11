@@ -9,9 +9,11 @@ model:
   ekf_mode: "cov"
   fix_tau: false
   tau_per_dim: true
+  tau_per_axis: false
   emissions_cov_eps: 1e-1
-  base_subspace_type: "random"
+  base_subspace_type: "pca"
   initial_velocity_cov: 1e-6
+  fix_initial_velocity_cov: false
   init_tau: 1e-5
   max_tau: 1e-4
   tau_concentration: 1e-6
@@ -19,7 +21,7 @@ model:
 
 # Training parameters
 training:
-  num_iters: 2
+  num_iters: 200
   run_velocity_smoother: false
   print_ll: true
   velocity_smoother_method: "ekf"
@@ -37,6 +39,7 @@ data:
   num_conditions: 4
   num_timesteps: 30
   block_size: 1
+  velocity_type: "sine"
   regenerate_data: false
   
 # Global parameters
