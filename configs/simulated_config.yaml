@@ -21,7 +21,7 @@ model:
 
 # Training parameters
 training:
-  num_iters: 200
+  num_iters: 2
   run_velocity_smoother: false
   print_ll: true
   velocity_smoother_method: "ekf"
@@ -40,7 +40,7 @@ data:
   num_timesteps: 30
   block_size: 1
   velocity_type: "sine"
-  regenerate_data: false
+  regenerate_data: true
   
 # Global parameters
 seed: 42
