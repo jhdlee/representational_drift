@@ -24,7 +24,7 @@ from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
 from dynamax.utils.utils import gram_schmidt, rotate_subspace, random_rotation, random_dynamics_weights
 from dynamax.utils.distributions import IG, MVN
 
-from dynamax.utils.eval_utils import compute_smds_test_marginal_ll
+from dynamax.utils.eval_utils import compute_smds_test_marginal_ll, compute_smds_test_r2
 
 def split_data(emissions, conditions, block_size, seed):
     """Split data into train/test sets"""
@@ -134,7 +134,7 @@ def main(config: DictConfig):
         if data_config.velocity_type == 'sine':
             _velocity = jnp.zeros((num_trials,) + dof_shape)
             # sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
-            sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
+            sine_wave = 0.5*jnp.sin(jnp.linspace(-2*jnp.pi, 2*jnp.pi, num_trials))
             _velocity = _velocity.at[:, 0, 0].set(sine_wave)
             # set true tau to the MLE of the sine wave
             true_tau = jnp.ones(dof) * 1e-32
@@ -223,6 +223,11 @@ def main(config: DictConfig):
                                                                  conditions.reshape(num_blocks, block_size),
                                                                  block_masks, method=1, num_iters=eval_config.ekf_num_iters)
         wandb.log({"true_test_log_likelihood": true_test_log_likelihood})
+
+        # log true test r2
+        true_test_r2 = compute_smds_test_r2(true_model, true_params.emissions.weights[~trial_masks],
+                                             test_obs, test_conditions)
+        wandb.log({"true_test_r2": true_test_r2})
     
     if model_config.type == 'smds':
         model = StiefelManifoldSSM(
