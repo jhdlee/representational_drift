@@ -117,18 +117,19 @@ def main(config: DictConfig):
     condition_name = f'conditions_seed.{seed}.npy'
     states_name = f'states_seed.{seed}.npy'
     params_name = f'params_seed.{seed}.pkl'
+
+    true_model = StiefelManifoldSSM(state_dim=true_state_dim, 
+                                    emission_dim=emission_dim,
+                                    num_trials=num_trials,
+                                    num_conditions=num_conditions)
+
     if not os.path.exists(os.path.join(data_dir, data_name)) or config.data.regenerate_data:
         key = jr.PRNGKey(seed)
         dynamics = random_rotation(seed=key, n=true_state_dim, theta=jnp.pi / 5)
-        true_model = StiefelManifoldSSM(state_dim=true_state_dim, 
-                                        emission_dim=emission_dim,
-                                        num_trials=num_trials,
-                                        num_conditions=num_conditions)
 
         key, key_root = jr.split(key)
         true_base_subspace = jr.orthogonal(key_root, emission_dim)
-        key, key_root = jr.split(key)
-
+        
         if data_config.velocity_type == 'sine':
             _velocity = jnp.zeros((num_trials,) + dof_shape)
             # sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
@@ -138,6 +139,7 @@ def main(config: DictConfig):
             true_tau = jnp.ones(dof) * 1e-32
             true_tau = true_tau.at[0].set(jnp.var(jnp.diff(sine_wave)))
         elif data_config.velocity_type == 'random':
+            key, key_root = jr.split(key)
             true_tau = jr.uniform(key_root, shape=(dof,), minval=1e-10, maxval=1e-4)
 
             _velocity_cov = jnp.diag(true_tau)
