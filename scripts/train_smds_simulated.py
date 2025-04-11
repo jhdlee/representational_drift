@@ -240,6 +240,8 @@ def main(config: DictConfig):
             ekf_mode=model_config.ekf_mode,
             max_tau=model_config.max_tau,
             ekf_num_iters=training_config.ekf_num_iters,
+            initial_velocity_covariance_prior=IG(concentration=model_config.initial_velocity_covariance_concentration, 
+                                                scale=model_config.initial_velocity_covariance_scale),
             tau_prior=IG(concentration=model_config.tau_concentration, 
                          scale=model_config.tau_scale),
         )
@@ -269,11 +271,11 @@ def main(config: DictConfig):
                 emission_weights = jnp.tile(base_subspace[:, :D][None], (len(train_obs), 1, 1))
             else:
                 key, key_root = jr.split(key)
-                key, key_root = jr.split(key)
                 random_rotation_matrix = jr.orthogonal(key_root, D)
-                emission_weights = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T[:, :D] @ random_rotation_matrix
-                base_subspace = gram_schmidt(jnp.concatenate([emission_weights, jr.normal(key_root, shape=(N, N-D))], axis=-1))
-                emission_weights = jnp.tile(emission_weights[None], (len(train_obs), 1, 1))
+                rotate_pca_components = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T[:, :D] @ random_rotation_matrix
+                base_subspace = gram_schmidt(jnp.concatenate([rotate_pca_components, jr.normal(key_root, shape=(N, N-D))], axis=-1))
+                base_subspace = gram_schmidt(base_subspace)
+                emission_weights = jnp.tile(base_subspace[:, :D][None], (len(train_obs), 1, 1))
 
             params, props, _ = model.initialize(base_subspace=base_subspace, 
                                                 emission_weights=emission_weights,
