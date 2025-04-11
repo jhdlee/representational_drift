@@ -3,7 +3,7 @@
 # Model parameters
 model:
   type: "smds"
-  state_dim: 10
+  state_dim: 2
   has_dynamics_bias: true
   has_emissions_bias: false
   ekf_mode: "cov"
