@@ -131,7 +131,8 @@ def main(config: DictConfig):
 
         if data_config.velocity_type == 'sine':
             _velocity = jnp.zeros((num_trials,) + dof_shape)
-            sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
+            # sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
+            sine_wave = jnp.sin(jnp.linspace(-2*jnp.pi, 2*jnp.pi, num_trials))
             _velocity = _velocity.at[:, 0, 0].set(sine_wave)
             # set true tau to the MLE of the sine wave
             true_tau = jnp.ones(dof) * 1e-32
@@ -174,7 +175,7 @@ def main(config: DictConfig):
 
         # log true tau, example trials, and true test log likelihood to wandb
         if use_wandb:
-            wandb.log({"true_tau": true_tau})
+            wandb.log({"true_tau_0": true_tau[0]})
             fig, ax = plt.subplots(figsize=(3, 4))
             ax.plot(emissions[-1, :, :10] + 1 * jnp.arange(10))
             ax.set_ylabel("data")
