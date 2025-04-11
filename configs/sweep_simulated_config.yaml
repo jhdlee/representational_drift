@@ -17,9 +17,9 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["lds"]
+    values: ["smds"]
   model.state_dim:
-    values: [5, 10, 15, 20, 25, 30, 35, 40]
+    values: [5, 10, 15, 20, 25]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -35,7 +35,7 @@ parameters:
   model.emissions_cov_eps:
     value: 1e-9
   model.base_subspace_type:
-    values: ["random"]
+    values: ["pca"]
   model.initial_velocity_cov:
     value: 1e-6
   model.fix_initial_velocity_cov:
@@ -84,4 +84,4 @@ parameters:
   data.velocity_type:
     values: ["sine"]
   data.regenerate_data:
-    value: true
+    value: false
