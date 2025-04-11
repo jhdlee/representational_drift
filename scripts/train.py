@@ -92,7 +92,6 @@ def main(config: DictConfig):
     eval_config = config.eval
     seed = config.seed
 
-    jr.seed(seed)
     np.random.seed(seed)
     random.seed(seed)
 
