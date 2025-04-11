@@ -27,7 +27,7 @@ parameters:
   model.tau_per_axis:
     value: false
   training.num_iters:
-    value: 300
+    value: 700
     
   # Default configuration parameters
   model.has_dynamics_bias:
