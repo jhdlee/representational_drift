@@ -125,7 +125,7 @@ def main(config: DictConfig):
 
     if not os.path.exists(os.path.join(data_dir, data_name)) or config.data.regenerate_data:
         key = jr.PRNGKey(seed)
-        dynamics = random_dynamics_weights(seed=key, n=true_state_dim, num_rotations=2*true_state_dim, 
+        dynamics = random_dynamics_weights(key=key, n=true_state_dim, num_rotations=2*true_state_dim, 
                                            min_theta=jnp.pi / 10, max_theta=jnp.pi / 5)
 
         key, key_root = jr.split(key)
