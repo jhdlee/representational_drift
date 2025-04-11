@@ -21,7 +21,7 @@ from dynamax.linear_gaussian_ssm.models import LinearGaussianConjugateSSM
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.utils.wandb_utils import init_wandb, save_model
 from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
-from dynamax.utils.utils import gram_schmidt, rotate_subspace, random_rotation
+from dynamax.utils.utils import gram_schmidt, rotate_subspace, random_rotation, random_dynamics_weights
 from dynamax.utils.distributions import IG, MVN
 
 from dynamax.utils.eval_utils import compute_smds_test_marginal_ll
@@ -125,7 +125,8 @@ def main(config: DictConfig):
 
     if not os.path.exists(os.path.join(data_dir, data_name)) or config.data.regenerate_data:
         key = jr.PRNGKey(seed)
-        dynamics = random_rotation(seed=key, n=true_state_dim, theta=jnp.pi / 5)
+        dynamics = random_dynamics_weights(seed=key, n=true_state_dim, num_rotations=2*true_state_dim, 
+                                           min_theta=jnp.pi / 10, max_theta=jnp.pi / 5)
 
         key, key_root = jr.split(key)
         true_base_subspace = jr.orthogonal(key_root, emission_dim)
@@ -275,10 +276,10 @@ def main(config: DictConfig):
                 emission_weights = jnp.tile(emission_weights[None], (len(train_obs), 1, 1))
 
             params, props, _ = model.initialize(base_subspace=base_subspace, 
-                                            emission_weights=emission_weights,
-                                            tau=jnp.ones(ddof) * model_config.init_tau,
-                                            initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
-                                            key=key)
+                                                emission_weights=emission_weights,
+                                                tau=jnp.ones(ddof) * model_config.init_tau,
+                                                initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
+                                                key=key)
         
             # Train model
             best_params, train_lps = model.fit_em(

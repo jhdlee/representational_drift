@@ -97,6 +97,23 @@ def random_rotation(seed, n, theta=None):
     q = jnp.linalg.qr(jr.uniform(key2, shape=(n, n)))[0]
     return q.dot(out).dot(q.T)
 
+def random_dynamics_weights(seed, n, num_rotations, min_theta=None, max_theta=None):
+    if min_theta is None:
+        min_theta = -jnp.pi / 2
+    if max_theta is None:
+        max_theta = jnp.pi / 2
+
+    key = jr.PRNGKey(seed)
+    key, key_root = jr.split(key)
+    thetas = jr.uniform(key_root, shape=(num_rotations,), minval=min_theta, maxval=max_theta)
+
+    key, key_root = jr.split(key)
+    dynamics_weights = vmap(random_rotation, in_axes=(0, None, 0))(jr.split(key_root, num_rotations), n, thetas)
+    dynamics = jnp.eye(n)
+    for i in range(len(dynamics_weights)):
+        dynamics = dynamics @ dynamics_weights[i]
+    return dynamics
+
 
 def ensure_array_has_batch_dim(tree, instance_shapes):
     """Add a batch dimension to a PyTree, if necessary.
