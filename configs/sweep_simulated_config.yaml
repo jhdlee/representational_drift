@@ -13,7 +13,7 @@ method: grid
 parameters:
   # Seed parameter
   seed:
-    values: [16645]
+    values: [3468]
   
   # Sweep parameters
   model.type:
