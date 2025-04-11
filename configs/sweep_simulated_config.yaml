@@ -13,7 +13,7 @@ method: grid
 parameters:
   # Seed parameter
   seed:
-    values: [3468]
+    values: [3467]
   
   # Sweep parameters
   model.type:
@@ -35,13 +35,13 @@ parameters:
   model.emissions_cov_eps:
     value: 1e-9
   model.base_subspace_type:
-    values: ["pca", "random"]
+    values: ["pca"]
   model.initial_velocity_cov:
     value: 1e-6
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [1e-6]
+    values: [1e-7]
   model.fix_tau:
     value: false
   model.max_tau:
