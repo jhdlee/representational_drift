@@ -97,13 +97,12 @@ def random_rotation(seed, n, theta=None):
     q = jnp.linalg.qr(jr.uniform(key2, shape=(n, n)))[0]
     return q.dot(out).dot(q.T)
 
-def random_dynamics_weights(seed, n, num_rotations, min_theta=None, max_theta=None):
+def random_dynamics_weights(key, n, num_rotations, min_theta=None, max_theta=None):
     if min_theta is None:
         min_theta = -jnp.pi / 2
     if max_theta is None:
         max_theta = jnp.pi / 2
 
-    key = jr.PRNGKey(seed)
     key, key_root = jr.split(key)
     thetas = jr.uniform(key_root, shape=(num_rotations,), minval=min_theta, maxval=max_theta)
 
