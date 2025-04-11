@@ -214,9 +214,10 @@ def main(config: DictConfig):
 
     if use_wandb:
         # log true test log likelihood to wandb
-        true_test_log_likelihood = compute_smds_test_marginal_ll(true_model, true_params, emissions, 
-                                                                    conditions, block_masks,
-                                                                    method=1, num_iters=eval_config.ekf_num_iters)
+        true_test_log_likelihood = compute_smds_test_marginal_ll(true_model, true_params, 
+                                                                 emissions.reshape(num_blocks, block_size, sequence_length, emission_dim), 
+                                                                 conditions.reshape(num_blocks, block_size, sequence_length, emission_dim),
+                                                                 block_masks, method=1, num_iters=eval_config.ekf_num_iters)
         wandb.log({"true_test_log_likelihood": true_test_log_likelihood})
     
     if model_config.type == 'smds':
