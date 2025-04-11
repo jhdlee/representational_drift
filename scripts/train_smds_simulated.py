@@ -79,11 +79,11 @@ def main(config: DictConfig):
     dof = true_state_dim * (emission_dim - true_state_dim)
     dof_shape = (true_state_dim, emission_dim - true_state_dim)
 
-    if (model_config.type == 'smds' 
-        and model_config.state_dim > training_config.smds_test_state_dim_bound):
-        print(f"Skipping {model_config.state_dim} because state dim is too large")
-        # Skip the rest of the function
-        return
+    # if (model_config.type == 'smds' 
+    #     and model_config.state_dim > training_config.smds_test_state_dim_bound):
+    #     print(f"Skipping {model_config.state_dim} because state dim is too large")
+    #     # Skip the rest of the function
+    #     return
 
     data_dir = model_dir = f'/oak/stanford/groups/swl1/hdlee/smds/simulated_{true_state_dim}x{emission_dim}/'
     os.makedirs(data_dir, exist_ok=True)
