@@ -135,7 +135,7 @@ def main(config: DictConfig):
             _velocity = jnp.zeros((num_trials,) + dof_shape)
             # sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
             # sine_wave = 0.5*jnp.pi*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
-            sine_wave = jnp.sin(jnp.linspace(-2*jnp.pi, 2*jnp.pi, num_trials)) + jnp.linspace(0, 2, num_trials)
+            sine_wave = 0.5*jnp.sin(jnp.linspace(-2*jnp.pi, 2*jnp.pi, num_trials))
             _velocity = _velocity.at[:, 0, 0].set(sine_wave)
             # set true tau to the MLE of the sine wave
             true_tau = jnp.ones(dof) * 1e-32
