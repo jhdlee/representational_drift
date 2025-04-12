@@ -17,9 +17,9 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["lds"]
+    values: ["lds", "smds"]
   model.state_dim:
-    values: [9, 12, 15, 18, 21, 24, 27, 30]
+    values: [9, 12, 15, 18, 21]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -51,7 +51,7 @@ parameters:
   model.initial_velocity_covariance_scale:
     values: [1e-9]
   model.tau_concentration:
-    values: [1e0]
+    values: [1e2]
   model.tau_scale:
     values: [1e-9]
   
