@@ -125,8 +125,7 @@ def main(config: DictConfig):
 
     if not os.path.exists(os.path.join(data_dir, data_name)) or config.data.regenerate_data:
         key = jr.PRNGKey(seed)
-        dynamics = random_dynamics_weights(key=key, n=true_state_dim, num_rotations=2*true_state_dim, 
-                                           min_theta=jnp.pi / 10, max_theta=jnp.pi / 5)
+        dynamics = random_dynamics_weights(key=key, n=true_state_dim, num_rotations=128)
 
         key, key_root = jr.split(key)
         true_base_subspace = jr.orthogonal(key_root, emission_dim)
@@ -164,8 +163,8 @@ def main(config: DictConfig):
                                                                         key=key, 
                                                                         initial_mean=jnp.sqrt(emission_dim/true_state_dim)*jr.normal(key_root, shape=(num_conditions, true_state_dim)),
                                                                         dynamics_weights=dynamics,
-                                                                        dynamics_covariance=jnp.eye(true_state_dim)*1e-1,
-                                                                        emission_covariance=jnp.eye(emission_dim)*1e-1,
+                                                                        dynamics_covariance=jnp.eye(true_state_dim)*1e-2,
+                                                                        emission_covariance=jnp.eye(emission_dim)*1e-2,
                                                                         velocity=_velocity,
                                                                         )
 

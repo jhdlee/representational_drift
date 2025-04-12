@@ -17,7 +17,7 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["lds", "smds"]
+    values: ["lds"]
   model.state_dim:
     values: [9, 12, 15, 18, 21]
   model.ekf_mode:
