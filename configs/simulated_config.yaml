@@ -2,15 +2,15 @@
 
 # Model parameters
 model:
-  type: "smds"
-  state_dim: 2
+  type: "lds"
+  state_dim: 15
   has_dynamics_bias: true
   has_emissions_bias: false
   ekf_mode: "cov"
   fix_tau: false
   tau_per_dim: true
   tau_per_axis: false
-  emissions_cov_eps: 1e-1
+  emissions_cov_eps: 1e-9
   base_subspace_type: "pca"
   initial_velocity_cov: 1e-6
   fix_initial_velocity_cov: false
@@ -29,14 +29,15 @@ training:
   velocity_smoother_method: "ekf"
   ekf_num_iters: 1
   smds_test_state_dim_bound: 100
+  
 # Evaluation parameters
 eval:
   ekf_num_iters: 1
 
 # Data parameters
 data:
-  state_dim: 2
-  emission_dim: 10
+  state_dim: 8
+  emission_dim: 24
   num_trials: 750
   num_conditions: 4
   num_timesteps: 30
@@ -45,8 +46,8 @@ data:
   regenerate_data: true
   
 # Global parameters
-seed: 42
-use_wandb: true
+seed: 1414
+use_wandb: false
 eval_only: false
 pretrained_model: null 
 

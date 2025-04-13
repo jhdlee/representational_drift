@@ -132,10 +132,12 @@ def main(config: DictConfig):
         
         if data_config.velocity_type == 'sine':
             _velocity = jnp.zeros((num_trials,) + dof_shape)
-            # sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
-            # sine_wave = 0.5*jnp.pi*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
             sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
+            # offset = jnp.linspace(0, 0.2, num_trials)
+            # sine_wave = 0.5*jnp.pi*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
             _velocity = _velocity.at[:, 0, 0].set(sine_wave)
+            # _velocity = _velocity.at[:, 0, 1:].set(offset[:, None])
+            # _velocity = _velocity.at[:, 1, 0].set(offset)
             # set true tau to the MLE of the sine wave
             true_tau = jnp.ones(dof) * 1e-32
             true_tau = true_tau.at[0].set(jnp.var(jnp.diff(sine_wave)))
@@ -163,8 +165,8 @@ def main(config: DictConfig):
                                                                         key=key, 
                                                                         initial_mean=jnp.sqrt(emission_dim/true_state_dim)*jr.normal(key_root, shape=(num_conditions, true_state_dim)),
                                                                         dynamics_weights=dynamics,
-                                                                        dynamics_covariance=jnp.eye(true_state_dim)*1e-2,
-                                                                        emission_covariance=jnp.eye(emission_dim)*1e-2,
+                                                                        dynamics_covariance=jnp.eye(true_state_dim)*1e-1,
+                                                                        emission_covariance=jnp.eye(emission_dim)*1e-1,
                                                                         velocity=_velocity,
                                                                         )
 

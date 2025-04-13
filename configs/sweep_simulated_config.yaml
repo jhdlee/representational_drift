@@ -13,13 +13,13 @@ method: grid
 parameters:
   # Seed parameter
   seed:
-    values: [3467]
+    values: [1414]
   
   # Sweep parameters
   model.type:
-    values: ["lds"]
+    values: ["lds", "smds"]
   model.state_dim:
-    values: [9, 12, 15, 18, 21]
+    values: [4, 6, 8, 20, 12]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -37,19 +37,19 @@ parameters:
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
-    value: 1e-6
+    value: 1e-4
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [1e-7]
+    values: [1e-6]
   model.fix_tau:
     value: false
   model.max_tau:
     value: 1e-4
   model.initial_velocity_covariance_concentration:
-    values: [1e0]
+    values: [1e-4]
   model.initial_velocity_covariance_scale:
-    values: [1e-9]
+    values: [1e-4]
   model.tau_concentration:
     values: [1e2]
   model.tau_scale:
@@ -65,7 +65,7 @@ parameters:
   training.ekf_num_iters:
     value: 1
   training.num_iters:
-    value: 400
+    value: 200
   training.smds_test_state_dim_bound:
     value: 4
 
@@ -76,9 +76,9 @@ parameters:
   data.block_size:
     value: 1
   data.state_dim:
-    value: 15
+    value: 8
   data.emission_dim:
-    value: 50
+    value: 24
   data.num_trials:
     value: 750
   data.num_conditions:
