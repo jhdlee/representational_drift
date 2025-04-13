@@ -1050,16 +1050,6 @@ def extended_kalman_filter(
             # Predict the next state
             pred_mean, pred_cov = _predict(filtered_mean, filtered_cov, Q)
 
-            # # normalize the eigenvalues of the predicted covariance by their maximum
-            # # L, U = jnp.linalg.eigh(filtered_cov)
-            # lambda_max, _ = power_iteration(pred_cov)
-            # threshold = 1e-4
-            # should_normalize = lambda_max > threshold
-            # # jax.debug.print('max_eigval: {max_eigval}', max_eigval=jnp.max(L))
-            # pred_cov = jnp.where(should_normalize, 
-            #                      threshold * pred_cov / lambda_max, 
-            #                      pred_cov)
-
         # Build carry and output states
         carry = (ll, pred_mean, pred_cov)
         outputs = {

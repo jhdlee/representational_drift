@@ -152,6 +152,8 @@ def main(config: DictConfig):
             ekf_mode=model_config.ekf_mode,
             max_tau=model_config.max_tau,
             ekf_num_iters=training_config.ekf_num_iters,
+            initial_velocity_covariance_prior=IG(concentration=model_config.initial_velocity_covariance_concentration, 
+                                                 scale=model_config.initial_velocity_covariance_scale),
             tau_prior=IG(concentration=model_config.tau_concentration, scale=model_config.tau_scale),
         )
     elif model_config.type == 'lds':
