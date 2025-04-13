@@ -47,7 +47,7 @@ data:
   
 # Global parameters
 seed: 1414
-use_wandb: false
+use_wandb: true
 eval_only: false
 pretrained_model: null 
 
