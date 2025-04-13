@@ -16,6 +16,8 @@ model:
   fix_initial_velocity_cov: false
   init_tau: 1e-6
   max_tau: 1e-4
+  initial_velocity_covariance_concentration: 1e-4
+  initial_velocity_covariance_scale: 1e-4
   tau_concentration: 1e-9
   tau_scale: 1e-9
 
