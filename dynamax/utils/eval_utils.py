@@ -102,7 +102,12 @@ def compute_smds_test_r2(test_model, Hs, test_params, test_obs, test_conditions)
     r2_score_5 = r2_score(test_obs.swapaxes(0, 1).reshape(test_obs.shape[1], -1), 
                           prediction.swapaxes(0, 1).reshape(prediction.shape[1], -1),
                           multioutput='variance_weighted')
-    return r2_score_1, r2_score_2, r2_score_3, r2_score_4, r2_score_5
+    
+    # compute per channel r2 score
+    r2_score_6 = jnp.array([r2_score(test_obs[:, :, i].flatten(), prediction[:, :, i].flatten()) 
+                            for i in range(test_obs.shape[-1])])
+
+    return r2_score_1, r2_score_2, r2_score_3, r2_score_4, r2_score_5, r2_score_6
 
 def compute_smds_test_cosmoothing(test_model, Hs, test_params, test_obs, test_conditions, cosmoothing_mask):
     mu_0 = test_params.initial.mean
@@ -260,7 +265,8 @@ def evaluate_smds_model(
     # test_r2_0 = compute_smds_test_r2(model, Hs0, params, test_obs, test_conditions)
     # test_cosmoothing_0 = compute_smds_test_cosmoothing(model, Hs0, params, test_obs, test_conditions, cosmoothing_mask)
 
-    test_r2_1, test_r2_2, test_r2_3, test_r2_4, test_r2_5 = compute_smds_test_r2(model, Hs1, params, test_obs, test_conditions)
+    (test_r2_1, test_r2_2, test_r2_3, 
+     test_r2_4, test_r2_5, test_r2_6) = compute_smds_test_r2(model, Hs1, params, test_obs, test_conditions)
     # test_cosmoothing_1 = compute_smds_test_cosmoothing(model, Hs1, params, test_obs, test_conditions, cosmoothing_mask)
 
     # Initialize metrics dictionary
@@ -278,6 +284,9 @@ def evaluate_smds_model(
         'test_r2_5': float(test_r2_5),
         # 'test_cosmoothing_1': float(test_cosmoothing_1),
     }
+
+    for i in range(test_obs.shape[-1]):
+        metrics[f'test_r2_channel_{i}'] = float(test_r2_6[i])
     
     # Log metrics to wandb if provided
     if wandb_run is not None:
