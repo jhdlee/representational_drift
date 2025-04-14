@@ -17,6 +17,7 @@ from sklearn.decomposition import PCA
 from dynamax.nonlinear_gaussian_ssm.models import StiefelManifoldSSM
 from dynamax.linear_gaussian_ssm.models import LinearGaussianConjugateSSM
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
+from dynamax.linear_gaussian_ssm.inference import make_lgssm_params
 from dynamax.utils.wandb_utils import init_wandb, save_model
 from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
 from dynamax.utils.utils import gram_schmidt, rotate_subspace
@@ -31,9 +32,37 @@ condition_to_n = {'top':0,
                   'right':6, 
                   'top_right':7}
 
+def transform_lds_to_smds(lds_model, lds_params):
+    """Transform LDS parameters to SMDS parameters"""
+    mu = lds_params.initial.mean
+    Sigma = lds_params.initial.cov
+    A = lds_params.dynamics.weights
+    b = lds_params.dynamics.bias
+    Q = lds_params.dynamics.cov
+    R = lds_params.emissions.cov
+    C = lds_params.emissions.weights
+
+    # orthogonalize C
+    C, W = jnp.linalg.qr(C)
+
+    # transform the rest of the parameters
+    A = W.T @ A
+    Q = W.T @ Q @ W
+    mu = W.T @ mu
+    Sigma = W.T @ Sigma @ W
+
+    h_params = make_lgssm_params(initial_mean=mu, 
+                                    initial_cov=Sigma,
+                                    dynamics_weights=A,
+                                    dynamics_cov=Q,
+                                    emissions_weights=H,
+                                    emissions_cov=R,
+                                    dynamics_bias=b)
+    
+
 def load_data(data_path):
     """Load data from npy file"""
-    emissions_path = os.path.join(data_path, 'emissions_v6.npy')
+    emissions_path = os.path.join(data_path, 'emissions_v4.npy')
     conditions_path = os.path.join(data_path, 'conditions.npy')
 
     emissions = jnp.load(emissions_path)
@@ -91,6 +120,7 @@ def main(config: DictConfig):
     training_config = config.training
     eval_config = config.eval
     seed = config.seed
+    model_seed = config.model_seed
 
     np.random.seed(seed)
     random.seed(seed)
@@ -156,6 +186,13 @@ def main(config: DictConfig):
                                                  scale=model_config.initial_velocity_covariance_scale),
             tau_prior=IG(concentration=model_config.tau_concentration, scale=model_config.tau_scale),
         )
+        if model_config.initialize_with_lds:
+            lds_model = LinearGaussianConjugateSSM(
+                state_dim=model_config.state_dim,
+                emission_dim=emission_dim,
+                num_conditions=num_conditions,
+                has_dynamics_bias=model_config.has_dynamics_bias,
+            )
     elif model_config.type == 'lds':
         model = LinearGaussianConjugateSSM(
             state_dim=model_config.state_dim,
@@ -175,24 +212,38 @@ def main(config: DictConfig):
 
         if model_config.type == 'smds':
             ddof = D * (N - D)
-            key = jr.PRNGKey(seed)
+            key = jr.PRNGKey(model_seed)
+            if model_config.initialize_with_lds:
+                lds_params, props = lds_model.initialize(key=key)
+                best_lds_params, train_lps = lds_model.fit_em(
+                    params=lds_params,
+                    props=props,
+                    emissions=train_obs[trial_masks],
+                    conditions=train_conditions,
+                    num_iters=training_config.num_iters_smds_init_with_lds,
+                    use_wandb=use_wandb,
+                    wandb_run=wandb_run if use_wandb else None,
+                )
 
-            if model_config.base_subspace_type == 'pca':
-                base_subspace = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T
-                emission_weights = jnp.tile(base_subspace[:, :D][None], (len(train_obs), 1, 1))
+                # transform lds params to smds params
+                params, props = transform_lds_to_smds(lds_model, best_lds_params)
             else:
-                key, key_root = jr.split(key)
-                random_rotation_matrix = jr.orthogonal(key_root, D)
-                emission_weights = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T[:, :D] @ random_rotation_matrix
-                base_subspace = gram_schmidt(jnp.concatenate([emission_weights, jr.normal(key_root, shape=(N, N-D))], axis=-1))
-                emission_weights = jnp.tile(emission_weights[None], (len(train_obs), 1, 1))
+                if model_config.base_subspace_type == 'pca':
+                    base_subspace = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T
+                    emission_weights = jnp.tile(base_subspace[:, :D][None], (len(train_obs), 1, 1))
+                else:
+                    key, key_root = jr.split(key)
+                    random_rotation_matrix = jr.orthogonal(key_root, D)
+                    emission_weights = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T[:, :D] @ random_rotation_matrix
+                    base_subspace = gram_schmidt(jnp.concatenate([emission_weights, jr.normal(key_root, shape=(N, N-D))], axis=-1))
+                    emission_weights = jnp.tile(emission_weights[None], (len(train_obs), 1, 1))
 
-            params, props, _ = model.initialize(base_subspace=base_subspace, 
-                                            emission_weights=emission_weights,
-                                            tau=jnp.ones(ddof) * model_config.init_tau,
-                                            initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
-                                            key=key)
-        
+                params, props, _ = model.initialize(base_subspace=base_subspace, 
+                                                emission_weights=emission_weights,
+                                                tau=jnp.ones(ddof) * model_config.init_tau,
+                                                initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov,
+                                                key=key)
+            
             # Train model
             best_params, train_lps = model.fit_em(
                 params=params,
@@ -209,7 +260,7 @@ def main(config: DictConfig):
                 wandb_run=wandb_run if use_wandb else None,
             )
         elif model_config.type == 'lds':
-            key = jr.PRNGKey(seed)
+            key = jr.PRNGKey(model_seed)
             params, props = model.initialize(key=key)
             best_params, train_lps = model.fit_em(
                 params=params,
