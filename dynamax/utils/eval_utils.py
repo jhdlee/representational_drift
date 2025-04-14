@@ -14,7 +14,18 @@ def compute_lds_test_r2(test_model, test_params, test_obs, test_conditions):
     smoothed_states = smoother.smoothed_means
 
     prediction = jnp.einsum('bti,ji->btj', smoothed_states, C)
-    return r2_score(test_obs.flatten(), prediction.flatten())
+    r2_score_1 = r2_score(test_obs.flatten(), prediction.flatten())
+    r2_score_2 = r2_score(test_obs.reshape(-1, test_obs.shape[-1]), prediction.reshape(-1, prediction.shape[-1]),
+                          multioutput='uniform_average')
+    r2_score_3 = r2_score(test_obs.reshape(-1, test_obs.shape[-1]), prediction.reshape(-1, prediction.shape[-1]), 
+                          multioutput='variance_weighted')
+    r2_score_4 = r2_score(test_obs.swapaxes(0, 1).reshape(test_obs.shape[1], -1), 
+                          prediction.swapaxes(0, 1).reshape(prediction.shape[1], -1),
+                          multioutput='uniform_average')
+    r2_score_5 = r2_score(test_obs.swapaxes(0, 1).reshape(test_obs.shape[1], -1), 
+                          prediction.swapaxes(0, 1).reshape(prediction.shape[1], -1),
+                          multioutput='variance_weighted')
+    return r2_score_1, r2_score_2, r2_score_3, r2_score_4, r2_score_5
 
 def compute_lds_test_cosmoothing(test_model, test_params, test_obs, test_conditions, cosmoothing_mask):
     mu_0 = test_params.initial.mean
@@ -78,7 +89,20 @@ def compute_smds_test_r2(test_model, Hs, test_params, test_obs, test_conditions)
                                       test_conditions)
 
     prediction = jnp.einsum('bti,bji->btj', smds_xs, Hs)
-    return r2_score(test_obs.flatten(), prediction.flatten())
+
+    # enumerate all possible r2 scores
+    r2_score_1 = r2_score(test_obs.flatten(), prediction.flatten())
+    r2_score_2 = r2_score(test_obs.reshape(-1, test_obs.shape[-1]), prediction.reshape(-1, prediction.shape[-1]),
+                          multioutput='uniform_average')
+    r2_score_3 = r2_score(test_obs.reshape(-1, test_obs.shape[-1]), prediction.reshape(-1, prediction.shape[-1]), 
+                          multioutput='variance_weighted')
+    r2_score_4 = r2_score(test_obs.swapaxes(0, 1).reshape(test_obs.shape[1], -1), 
+                          prediction.swapaxes(0, 1).reshape(prediction.shape[1], -1),
+                          multioutput='uniform_average')
+    r2_score_5 = r2_score(test_obs.swapaxes(0, 1).reshape(test_obs.shape[1], -1), 
+                          prediction.swapaxes(0, 1).reshape(prediction.shape[1], -1),
+                          multioutput='variance_weighted')
+    return r2_score_1, r2_score_2, r2_score_3, r2_score_4, r2_score_5
 
 def compute_smds_test_cosmoothing(test_model, Hs, test_params, test_obs, test_conditions, cosmoothing_mask):
     mu_0 = test_params.initial.mean
@@ -138,19 +162,23 @@ def evaluate_lds_model(
 
     test_marginal_ll = compute_lds_test_marginal_ll(model, params, test_obs, test_conditions)
     # test_marginal_ll = test_marginal_ll / test_data_size
-    test_r2 = compute_lds_test_r2(model, params, test_obs, test_conditions)
-    test_cosmoothing = compute_lds_test_cosmoothing(model, params, test_obs, test_conditions, cosmoothing_mask)
+    test_r2_1, test_r2_2, test_r2_3, test_r2_4, test_r2_5 = compute_lds_test_r2(model, params, test_obs, test_conditions)
+    # test_cosmoothing = compute_lds_test_cosmoothing(model, params, test_obs, test_conditions, cosmoothing_mask)
 
     metrics = {
         'test_log_likelihood': float(test_marginal_ll),
-        'test_r2': float(test_r2),
-        'test_cosmoothing': float(test_cosmoothing),
+        'test_r2_1': float(test_r2_1),
+        'test_r2_2': float(test_r2_2),
+        'test_r2_3': float(test_r2_3),
+        'test_r2_4': float(test_r2_4),
+        'test_r2_5': float(test_r2_5),
+        # 'test_cosmoothing': float(test_cosmoothing),
         # 'test_log_likelihood_0': float(test_marginal_ll),
         # 'test_r2_0': float(test_r2),
         # 'test_cosmoothing_0': float(test_cosmoothing),
-        'test_log_likelihood_1': float(test_marginal_ll),
-        'test_r2_1': float(test_r2),
-        'test_cosmoothing_1': float(test_cosmoothing),
+        # 'test_log_likelihood_1': float(test_marginal_ll),
+        # 'test_r2_1': float(test_r2),
+        # 'test_cosmoothing_1': float(test_cosmoothing),
     }
 
     if wandb_run is not None:
@@ -226,25 +254,29 @@ def evaluate_smds_model(
     # test_ll_sum_0 = test_ll_sum_0 / test_data_size
     # test_ll_sum_1 = test_ll_sum_1 / test_data_size
 
-    test_r2 = compute_smds_test_r2(model, Hs, params, test_obs, test_conditions)
-    test_cosmoothing = compute_smds_test_cosmoothing(model, Hs, params, test_obs, test_conditions, cosmoothing_mask)
+    # test_r2 = compute_smds_test_r2(model, Hs, params, test_obs, test_conditions)
+    # test_cosmoothing = compute_smds_test_cosmoothing(model, Hs, params, test_obs, test_conditions, cosmoothing_mask)
 
     # test_r2_0 = compute_smds_test_r2(model, Hs0, params, test_obs, test_conditions)
     # test_cosmoothing_0 = compute_smds_test_cosmoothing(model, Hs0, params, test_obs, test_conditions, cosmoothing_mask)
 
-    test_r2_1 = compute_smds_test_r2(model, Hs1, params, test_obs, test_conditions)
-    test_cosmoothing_1 = compute_smds_test_cosmoothing(model, Hs1, params, test_obs, test_conditions, cosmoothing_mask)
+    test_r2_1, test_r2_2, test_r2_3, test_r2_4, test_r2_5 = compute_smds_test_r2(model, Hs1, params, test_obs, test_conditions)
+    # test_cosmoothing_1 = compute_smds_test_cosmoothing(model, Hs1, params, test_obs, test_conditions, cosmoothing_mask)
 
     # Initialize metrics dictionary
     metrics = {
-        'test_r2': float(test_r2),
-        'test_cosmoothing': float(test_cosmoothing),
+        # 'test_r2': float(test_r2),
+        # 'test_cosmoothing': float(test_cosmoothing),
         # 'test_log_likelihood_0': float(test_ll_sum_0),
         # 'test_r2_0': float(test_r2_0),
         # 'test_cosmoothing_0': float(test_cosmoothing_0),
-        'test_log_likelihood_1': float(test_ll_sum_1),
+        'test_log_likelihood': float(test_ll_sum_1),
         'test_r2_1': float(test_r2_1),
-        'test_cosmoothing_1': float(test_cosmoothing_1),
+        'test_r2_2': float(test_r2_2),
+        'test_r2_3': float(test_r2_3),
+        'test_r2_4': float(test_r2_4),
+        'test_r2_5': float(test_r2_5),
+        # 'test_cosmoothing_1': float(test_cosmoothing_1),
     }
     
     # Log metrics to wandb if provided
