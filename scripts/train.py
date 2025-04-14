@@ -33,7 +33,7 @@ condition_to_n = {'top':0,
 
 def load_data(data_path):
     """Load data from npy file"""
-    emissions_path = os.path.join(data_path, 'emissions_v5.npy')
+    emissions_path = os.path.join(data_path, 'emissions_v4.npy')
     conditions_path = os.path.join(data_path, 'conditions.npy')
 
     emissions = jnp.load(emissions_path)

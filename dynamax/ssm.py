@@ -468,7 +468,7 @@ class SSM(ABC):
             # Log metrics to wandb
             if use_wandb:
                 metrics = {
-                    'iteration': iter_num,
+                    # 'iteration': iter_num,
                     'total_log_prob': float(total_lp),
                     'log_prior': float(lp),
                     'log_likelihood': float(ll),
