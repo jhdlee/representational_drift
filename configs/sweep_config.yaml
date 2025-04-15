@@ -16,7 +16,7 @@ parameters:
     values: [781899]
 
   model_seed:
-    values: [1234]
+    values: [1234, 667, 999]
   
   # Sweep parameters
   model.type:
@@ -44,15 +44,15 @@ parameters:
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
-    values: [2e-4, 1e-4, 5e-5]
+    values: [1e-4]
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [1e-5, 9e-6, 7e-6, 5e-6, 3e-6]
+    values: [1e-5, 5e-6, 1e-6]
   model.fix_tau:
     value: false
   model.max_tau:
-    values: [1e-4, 2e-4, 3e-4]
+    values: [1e-4, 2e-4]
   model.initial_velocity_covariance_concentration:
     values: [1e-4]
   model.initial_velocity_covariance_scale:
