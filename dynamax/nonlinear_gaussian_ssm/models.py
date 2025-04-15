@@ -119,9 +119,9 @@ def make_smds_params(initial_mean,
     input_dim = 0
 
     smds_params = ParamsSMDS(initial=ParamsLGSSMInitial(mean=initial_mean, 
-                                                        covariance=initial_cov),
+                                                        cov=initial_cov),
                             dynamics=ParamsLGSSMDynamics(weights=dynamics_weights, 
-                                                        covariance=dynamics_cov,
+                                                        cov=dynamics_cov,
                                                         bias=_zeros_if_none(dynamics_bias, state_dim)),
                             emissions=ParamsSMDSEmissions(weights=emissions_weights, 
                                                           cov=emissions_cov, 
