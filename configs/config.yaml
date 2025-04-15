@@ -2,6 +2,7 @@
 
 # Model parameters
 model:
+  model_seed: 1234
   type: "smds"
   state_dim: 5
   initialize_with_lds: true
