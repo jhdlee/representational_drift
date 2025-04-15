@@ -246,8 +246,8 @@ def main(config: DictConfig):
                     emissions=train_obs[trial_masks],
                     conditions=train_conditions,
                     num_iters=training_config.num_iters_smds_init_with_lds,
-                    use_wandb=use_wandb,
-                    wandb_run=wandb_run if use_wandb else None,
+                    use_wandb=False,
+                    wandb_run=None,
                 )
 
                 # transform lds params to smds params
