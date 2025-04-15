@@ -156,6 +156,7 @@ def main(config: DictConfig):
         model_name += f"_itau.{model_config.init_tau}_mtau.{model_config.max_tau}_eni.{training_config.ekf_num_iters}"
         model_name += f"_tc.{model_config.tau_concentration}_ts.{model_config.tau_scale}"
         model_name += f"_ece.{model_config.emissions_cov_eps}"
+        model_name += f"_iwlds.{model_config.initialize_with_lds}"
     model_name = f"{model_name}_seed.{seed}"
     
     # Check for evaluation-only mode
