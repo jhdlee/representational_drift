@@ -356,8 +356,8 @@ def evaluate_smds_model(
         # 'test_cosmoothing_1': float(test_cosmoothing_1),
     }
 
-    for i in range(test_obs.shape[-1]):
-        metrics[f'test_r2_channel_{i}'] = float(test_r2_6[i])
+    # for i in range(test_obs.shape[-1]):
+    #     metrics[f'test_r2_channel_{i}'] = float(test_r2_6[i])
     
     # Log metrics to wandb if provided
     if wandb_run is not None:
