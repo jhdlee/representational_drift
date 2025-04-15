@@ -2,7 +2,6 @@
 
 # Model parameters
 model:
-  model_seed: 1234
   type: "smds"
   state_dim: 5
   initialize_with_lds: true
@@ -42,6 +41,7 @@ data:
   standardize: true
   
 # Global parameters
+model_seed: 1234
 seed: 781899
 use_wandb: true
 eval_only: false

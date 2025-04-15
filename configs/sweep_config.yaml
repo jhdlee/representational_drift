@@ -15,7 +15,7 @@ parameters:
   seed:
     values: [781899]
 
-  model.model_seed:
+  model_seed:
     values: [1234]
   
   # Sweep parameters
