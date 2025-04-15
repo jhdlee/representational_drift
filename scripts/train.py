@@ -51,8 +51,8 @@ def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_condition
     transformed_A = W @ A @ W_inv
     transformed_b = W @ b
     transformed_Q = W @ Q @ W.T
-    transformed_mu = W @ mu
-    transformed_Sigma = W @ Sigma @ W.T
+    transformed_mu = jnp.einsum('ij,cj->ci', W, mu)
+    transformed_Sigma = jnp.einsum('ij,cjk,lk->cil', W, Sigma, W)
 
     transformed_params = make_lgssm_params(initial_mean=transformed_mu, 
                                            initial_cov=transformed_Sigma,
