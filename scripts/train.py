@@ -16,7 +16,7 @@ import pickle as pkl
 from sklearn.decomposition import PCA
 from dynamax.nonlinear_gaussian_ssm.models import StiefelManifoldSSM, make_smds_params
 from dynamax.linear_gaussian_ssm.models import LinearGaussianConjugateSSM
-from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM, make_smds_params
+from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.linear_gaussian_ssm.inference import make_lgssm_params
 from dynamax.utils.wandb_utils import init_wandb, save_model
 from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
@@ -32,7 +32,8 @@ condition_to_n = {'top':0,
                   'right':6, 
                   'top_right':7}
 
-def transform_lds_to_smds(lds_model, lds_params, train_obs, train_conditions):
+def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_conditions, 
+                          trial_masks, model_config, ddof):
     """Transform LDS parameters to SMDS parameters"""
     mu = lds_params.initial.mean
     Sigma = lds_params.initial.cov
@@ -62,13 +63,26 @@ def transform_lds_to_smds(lds_model, lds_params, train_obs, train_conditions):
                                            dynamics_bias=transformed_b)
     
     # assert that the transformed params and params lead to the same marginal log likelihood
-    assert jnp.allclose(lds_model.batch_marginal_log_prob(lds_params, train_obs, train_conditions), 
-                       lds_model.batch_marginal_log_prob(transformed_params, train_obs, train_conditions))
+    assert jnp.allclose(lds_model.batch_marginal_log_prob(lds_params, train_obs[trial_masks], train_conditions), 
+                        lds_model.batch_marginal_log_prob(transformed_params, train_obs[trial_masks], train_conditions))
     
+    N, D = H.shape
+    base_subspace = gram_schmidt(jnp.concatenate([H, jr.normal(key, shape=(N, N-D))], axis=-1))
     # make smds params
-    smds_params = 
+    smds_params, smds_props = make_smds_params(initial_mean=transformed_mu, 
+                                               initial_cov=transformed_Sigma,
+                                               dynamics_weights=transformed_A,
+                                               dynamics_bias=transformed_b,
+                                               dynamics_cov=transformed_Q,
+                                               emissions_weights=jnp.tile(H[None], (len(train_obs), 1, 1)),
+                                               emissions_bias=jnp.zeros(N),
+                                               emissions_cov=R,
+                                               base_subspace=base_subspace,
+                                               tau=jnp.ones(ddof) * model_config.init_tau,
+                                               initial_velocity_mean=jnp.zeros(ddof),
+                                               initial_velocity_cov=jnp.eye(ddof) * model_config.initial_velocity_cov)
 
-    return smds_params
+    return smds_params, smds_props
 
 def load_data(data_path):
     """Load data from npy file"""
@@ -236,7 +250,9 @@ def main(config: DictConfig):
                 )
 
                 # transform lds params to smds params
-                params, props = transform_lds_to_smds(lds_model, best_lds_params, train_obs[trial_masks], train_conditions)
+                params, props = transform_lds_to_smds(key, lds_model, best_lds_params, 
+                                                      train_obs, train_conditions, trial_masks, 
+                                                      model_config, ddof)
             else:
                 if model_config.base_subspace_type == 'pca':
                     base_subspace = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T

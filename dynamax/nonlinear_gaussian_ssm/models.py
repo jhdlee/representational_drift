@@ -119,19 +119,40 @@ def make_smds_params(initial_mean,
     input_dim = 0
 
     smds_params = ParamsSMDS(initial=ParamsLGSSMInitial(mean=initial_mean, 
-                                                 covariance=initial_cov),
+                                                        covariance=initial_cov),
                             dynamics=ParamsLGSSMDynamics(weights=dynamics_weights, 
                                                         covariance=dynamics_cov,
                                                         bias=_zeros_if_none(dynamics_bias, state_dim)),
                             emissions=ParamsSMDSEmissions(weights=emissions_weights, 
-                                                            cov=emissions_cov, 
-                                                            bias=_zeros_if_none(emissions_bias, emission_dim),
-                                                            input_weights=_zeros_if_none(emissions_input_weights, input_dim),
-                                                            base_subspace=base_subspace,
-                                                            tau=tau,
-                                                            initial_velocity_mean=initial_velocity_mean,
-                                                            initial_velocity_cov=initial_velocity_cov))
-    return smds_params
+                                                          cov=emissions_cov, 
+                                                          bias=_zeros_if_none(emissions_bias, emission_dim),
+                                                          input_weights=_zeros_if_none(emissions_input_weights, input_dim),
+                                                          base_subspace=base_subspace,
+                                                          tau=tau,
+                                                          initial_velocity_mean=initial_velocity_mean,
+                                                          initial_velocity_cov=initial_velocity_cov))
+    
+    smds_props = ParamsSMDS(
+            initial=ParamsLGSSMInitial(
+                mean=ParameterProperties(),
+                cov=ParameterProperties(constrainer=RealToPSDBijector())),
+            dynamics=ParamsLGSSMDynamics(
+                weights=ParameterProperties(),
+                bias=ParameterProperties(),
+                input_weights=ParameterProperties(),
+                cov=ParameterProperties(constrainer=RealToPSDBijector())),
+            emissions=ParamsSMDSEmissions(
+                weights=ParameterProperties(),
+                bias=ParameterProperties(),
+                input_weights=ParameterProperties(),
+                cov=ParameterProperties(constrainer=RealToPSDBijector()),
+                base_subspace=ParameterProperties(),
+                tau=ParameterProperties(),
+                initial_velocity_mean=ParameterProperties(),
+                initial_velocity_cov=ParameterProperties(constrainer=RealToPSDBijector())),
+        )
+
+    return smds_params, smds_props
 
 class NonlinearGaussianSSM(SSM):
     """

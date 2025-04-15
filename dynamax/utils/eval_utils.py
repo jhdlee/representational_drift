@@ -54,6 +54,27 @@ def compute_lds_test_cosmoothing(test_model, test_params, test_obs, test_conditi
 
     return r2_score(held_out_test_obs.flatten(), prediction.flatten())
 
+def compute_lds_test_condition_averaged_r2(test_model, Hs, test_params, test_obs, test_conditions):
+    C = test_params.emissions.weights
+    smoother = test_model.batch_smoother(test_params, test_obs, conditions=test_conditions)
+    smoothed_states = smoother.smoothed_means
+
+    prediction = jnp.einsum('bti,ji->btj', smoothed_states, C)
+
+    conditions = jnp.unique(test_conditions)
+    condition_averaged_true_psths = []
+    condition_averaged_pred_psths = []
+    for i, condition in enumerate(conditions):
+        condition_averaged_true_psth = jnp.mean(test_obs[test_conditions == condition], axis=0)
+        condition_averaged_pred_psth = jnp.mean(prediction[test_conditions == condition], axis=0)
+        condition_averaged_true_psths.append(condition_averaged_true_psth)
+        condition_averaged_pred_psths.append(condition_averaged_pred_psth)
+
+    condition_averaged_true_psths = jnp.concatenate(condition_averaged_true_psths, axis=0).flatten()
+    condition_averaged_pred_psths = jnp.concatenate(condition_averaged_pred_psths, axis=0).flatten()
+
+    return jnp.corrcoef(condition_averaged_true_psths, condition_averaged_pred_psths)[0, 1]
+
 def compute_smds_test_marginal_ll(test_model, test_params, obs, conditions, block_masks, method, num_iters):
     xy_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, 
                                                       block_masks=jnp.ones(len(obs), dtype=bool), 
@@ -142,6 +163,48 @@ def compute_smds_test_cosmoothing(test_model, Hs, test_params, test_obs, test_co
 
     return r2_score(held_out_test_obs.flatten(), prediction.flatten())
 
+def compute_smds_test_condition_averaged_r2(test_model, Hs, test_params, test_obs, test_conditions):
+    mu_0 = test_params.initial.mean
+    Sigma_0 = test_params.initial.cov
+    A = test_params.dynamics.weights
+    b = test_params.dynamics.bias
+    Q = test_params.dynamics.cov
+    R = test_params.emissions.cov
+
+    def batch_smoothed_xs(H, ys, condition):
+        trial_test_params = make_lgssm_params(mu_0,
+                                              Sigma_0,
+                                              A,
+                                              Q,
+                                              H,
+                                              R,
+                                              dynamics_bias=b)
+    
+        posterior = lgssm_smoother(trial_test_params, ys, None, condition)
+        return posterior.smoothed_means
+
+    smds_xs = vmap(batch_smoothed_xs)(Hs,
+                                      test_obs,
+                                      test_conditions)
+
+    prediction = jnp.einsum('bti,bji->btj', smds_xs, Hs)
+
+    conditions = jnp.unique(test_conditions)
+    condition_averaged_true_psths = []
+    condition_averaged_pred_psths = []
+    for i, condition in enumerate(conditions):
+        condition_averaged_true_psth = jnp.mean(test_obs[test_conditions == condition], axis=0)
+        condition_averaged_pred_psth = jnp.mean(prediction[test_conditions == condition], axis=0)
+        condition_averaged_true_psths.append(condition_averaged_true_psth)
+        condition_averaged_pred_psths.append(condition_averaged_pred_psth)
+
+    condition_averaged_true_psths = jnp.concatenate(condition_averaged_true_psths, axis=0).flatten()
+    condition_averaged_pred_psths = jnp.concatenate(condition_averaged_pred_psths, axis=0).flatten()
+
+    condition_averaged_r2 = jnp.corrcoef(condition_averaged_true_psths, condition_averaged_pred_psths)[0, 1]
+
+    return condition_averaged_r2
+
 def evaluate_lds_model(
     model,
     params,
@@ -170,6 +233,8 @@ def evaluate_lds_model(
     test_r2_1, test_r2_2, test_r2_3, test_r2_4, test_r2_5 = compute_lds_test_r2(model, params, test_obs, test_conditions)
     # test_cosmoothing = compute_lds_test_cosmoothing(model, params, test_obs, test_conditions, cosmoothing_mask)
 
+    condition_averaged_r2 = compute_lds_test_condition_averaged_r2(model, params, test_obs, test_conditions)
+
     metrics = {
         'test_log_likelihood': float(test_marginal_ll),
         'test_r2_1': float(test_r2_1),
@@ -177,6 +242,7 @@ def evaluate_lds_model(
         'test_r2_3': float(test_r2_3),
         'test_r2_4': float(test_r2_4),
         'test_r2_5': float(test_r2_5),
+        'test_condition_averaged_r2': float(condition_averaged_r2),
         # 'test_cosmoothing': float(test_cosmoothing),
         # 'test_log_likelihood_0': float(test_marginal_ll),
         # 'test_r2_0': float(test_r2),
@@ -252,8 +318,8 @@ def evaluate_smds_model(
 
     Hs = params.emissions.weights[~trial_masks]
 
-    test_ll_sum_0 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
-                                                  conditions.reshape(num_blocks, block_size), block_masks, 0, ekf_num_iters)
+    # test_ll_sum_0 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
+    #                                               conditions.reshape(num_blocks, block_size), block_masks, 0, ekf_num_iters)
     test_ll_sum_1 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
                                                   conditions.reshape(num_blocks, block_size), block_masks, 1, ekf_num_iters)
     # test_ll_sum_0 = test_ll_sum_0 / test_data_size
@@ -269,6 +335,9 @@ def evaluate_smds_model(
      test_r2_4, test_r2_5, test_r2_6) = compute_smds_test_r2(model, Hs1, params, test_obs, test_conditions)
     # test_cosmoothing_1 = compute_smds_test_cosmoothing(model, Hs1, params, test_obs, test_conditions, cosmoothing_mask)
 
+    # compute condition averaged pearson r2
+    condition_averaged_r2 = compute_smds_test_condition_averaged_r2(model, Hs1, params, test_obs, test_conditions)
+
     # Initialize metrics dictionary
     metrics = {
         # 'test_r2': float(test_r2),
@@ -276,13 +345,14 @@ def evaluate_smds_model(
         # 'test_log_likelihood_0': float(test_ll_sum_0),
         # 'test_r2_0': float(test_r2_0),
         # 'test_cosmoothing_0': float(test_cosmoothing_0),
-        'test_log_likelihood_0': float(test_ll_sum_0),
-        'test_log_likelihood_1': float(test_ll_sum_1),
+        # 'test_log_likelihood_0': float(test_ll_sum_0),
+        'test_log_likelihood': float(test_ll_sum_1),
         'test_r2_1': float(test_r2_1),
         'test_r2_2': float(test_r2_2),
         'test_r2_3': float(test_r2_3),
         'test_r2_4': float(test_r2_4),
         'test_r2_5': float(test_r2_5),
+        'test_condition_averaged_r2': float(condition_averaged_r2),
         # 'test_cosmoothing_1': float(test_cosmoothing_1),
     }
 
