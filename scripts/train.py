@@ -63,8 +63,8 @@ def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_condition
                                            dynamics_bias=transformed_b)
     
     # assert that the transformed params and params lead to the same marginal log likelihood
-    assert jnp.allclose(lds_model.batch_marginal_log_prob(lds_params, train_obs[trial_masks], train_conditions), 
-                        lds_model.batch_marginal_log_prob(transformed_params, train_obs[trial_masks], train_conditions))
+    assert jnp.allclose(lds_model.batch_marginal_log_prob(lds_params, train_obs[trial_masks], conditions=train_conditions), 
+                        lds_model.batch_marginal_log_prob(transformed_params, train_obs[trial_masks], conditions=train_conditions))
     
     N, D = H.shape
     base_subspace = gram_schmidt(jnp.concatenate([H, jr.normal(key, shape=(N, N-D))], axis=-1))
