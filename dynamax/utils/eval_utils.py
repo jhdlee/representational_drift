@@ -252,8 +252,8 @@ def evaluate_smds_model(
 
     Hs = params.emissions.weights[~trial_masks]
 
-    # test_ll_sum_0 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
-    #                                               conditions.reshape(num_blocks, block_size), block_masks, 0, ekf_num_iters)
+    test_ll_sum_0 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
+                                                  conditions.reshape(num_blocks, block_size), block_masks, 0, ekf_num_iters)
     test_ll_sum_1 = compute_smds_test_marginal_ll(model, params, train_obs.reshape(num_blocks, block_size, sequence_length, emission_dim), 
                                                   conditions.reshape(num_blocks, block_size), block_masks, 1, ekf_num_iters)
     # test_ll_sum_0 = test_ll_sum_0 / test_data_size
@@ -276,7 +276,8 @@ def evaluate_smds_model(
         # 'test_log_likelihood_0': float(test_ll_sum_0),
         # 'test_r2_0': float(test_r2_0),
         # 'test_cosmoothing_0': float(test_cosmoothing_0),
-        'test_log_likelihood': float(test_ll_sum_1),
+        'test_log_likelihood_0': float(test_ll_sum_0),
+        'test_log_likelihood_1': float(test_ll_sum_1),
         'test_r2_1': float(test_r2_1),
         'test_r2_2': float(test_r2_2),
         'test_r2_3': float(test_r2_3),

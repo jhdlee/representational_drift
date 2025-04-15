@@ -44,6 +44,8 @@ from dynamax.utils.utils import pytree_stack, psd_solve, symmetrize, rotate_subs
 tfd = tfp.distributions
 tfb = tfp.bijectors
 
+_zeros_if_none = lambda x, shape: x if x is not None else jnp.zeros(shape)
+
 class SuffStatsLGSSM(Protocol):
     """A :class:`NamedTuple` with sufficient statistics for LGSSM parameter estimation."""
     pass
@@ -98,6 +100,38 @@ class ParamsSMDS(NamedTuple):
     initial: ParamsLGSSMInitial
     dynamics: ParamsLGSSMDynamics
     emissions: ParamsSMDSEmissions
+
+def make_smds_params(initial_mean, 
+                     initial_cov, 
+                     dynamics_weights, 
+                     dynamics_cov, 
+                     emissions_weights, 
+                     emissions_cov,
+                     base_subspace,
+                     tau,
+                     initial_velocity_mean,
+                     initial_velocity_cov,
+                     dynamics_bias=None,
+                     emissions_bias=None,
+                     emissions_input_weights=None):
+    state_dim = initial_mean.shape[-1]
+    emission_dim = emissions_cov.shape[-1]
+    input_dim = 0
+
+    smds_params = ParamsSMDS(initial=ParamsLGSSMInitial(mean=initial_mean, 
+                                                 covariance=initial_cov),
+                            dynamics=ParamsLGSSMDynamics(weights=dynamics_weights, 
+                                                        covariance=dynamics_cov,
+                                                        bias=_zeros_if_none(dynamics_bias, state_dim)),
+                            emissions=ParamsSMDSEmissions(weights=emissions_weights, 
+                                                            cov=emissions_cov, 
+                                                            bias=_zeros_if_none(emissions_bias, emission_dim),
+                                                            input_weights=_zeros_if_none(emissions_input_weights, input_dim),
+                                                            base_subspace=base_subspace,
+                                                            tau=tau,
+                                                            initial_velocity_mean=initial_velocity_mean,
+                                                            initial_velocity_cov=initial_velocity_cov))
+    return smds_params
 
 class NonlinearGaussianSSM(SSM):
     """
