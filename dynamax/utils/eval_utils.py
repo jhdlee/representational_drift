@@ -54,7 +54,7 @@ def compute_lds_test_cosmoothing(test_model, test_params, test_obs, test_conditi
 
     return r2_score(held_out_test_obs.flatten(), prediction.flatten())
 
-def compute_lds_test_condition_averaged_r2(test_model, Hs, test_params, test_obs, test_conditions):
+def compute_lds_test_condition_averaged_r2(test_model, test_params, test_obs, test_conditions):
     C = test_params.emissions.weights
     smoother = test_model.batch_smoother(test_params, test_obs, conditions=test_conditions)
     smoothed_states = smoother.smoothed_means
