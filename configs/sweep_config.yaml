@@ -22,7 +22,7 @@ parameters:
   model.type:
     values: ["smds"]
   model.state_dim:
-    values: [20, 25, 30]
+    values: [20, 25]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -30,29 +30,29 @@ parameters:
   model.tau_per_axis:
     value: false
   training.num_iters:
-    value: 300
+    value: 100
     
   # Default configuration parameters
   model.initialize_with_lds:
-    values: [true, false]
+    values: [true]
   model.has_dynamics_bias:
     value: true
   model.has_emissions_bias:
     value: false
   model.emissions_cov_eps:
-    values: [7e-3, 5e-3, 3e-3]
+    values: [1e-2, 7e-3, 5e-3, 3e-3]
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
-    value: 1e-4
+    values: [2e-4, 1e-4, 5e-5]
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [9e-6, 7e-6, 5e-6, 3e-6]
+    values: [1e-5, 9e-6, 7e-6, 5e-6, 3e-6]
   model.fix_tau:
     value: false
   model.max_tau:
-    values: [1e-4, 2e-4]
+    values: [1e-4, 2e-4, 3e-4]
   model.initial_velocity_covariance_concentration:
     values: [1e-4]
   model.initial_velocity_covariance_scale:

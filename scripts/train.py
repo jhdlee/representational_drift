@@ -68,6 +68,9 @@ def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_condition
     
     N, D = H.shape
     base_subspace = gram_schmidt(jnp.concatenate([H, jr.normal(key, shape=(N, N-D))], axis=-1))
+
+    assert jnp.allclose(base_subspace @ base_subspace.T, jnp.eye(N))
+
     # make smds params
     smds_params, smds_props = make_smds_params(initial_mean=transformed_mu, 
                                                initial_cov=transformed_Sigma,
