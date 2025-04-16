@@ -20,9 +20,9 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["smds"]
+    values: ["lds"]
   model.state_dim:
-    values: [20, 25, 30]
+    values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -30,27 +30,27 @@ parameters:
   model.tau_per_axis:
     value: false
   training.num_iters:
-    value: 100
+    value: 300
     
   # Default configuration parameters
   model.initialize_with_lds:
-    values: [true]
+    values: [false]
   model.has_dynamics_bias:
     value: true
   model.has_emissions_bias:
     value: false
   model.emissions_cov_eps:
-    values: [1e-2, 7.5e-3, 5e-3]
+    values: [1e-2]
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
-    values: [1e-4, 1e-5, 1e-6, 1e-7]
+    values: [1e-4]
   model.fix_initial_velocity_cov:
-    value: true
+    value: false
   model.init_tau:
-    values: [1e-5, 5e-6, 1e-6, 5e-7, 1e-7]
+    values: [1e-5]
   model.fix_tau:
-    value: true
+    value: false
   model.max_tau:
     values: [1e-4]
   model.initial_velocity_covariance_concentration:
@@ -81,6 +81,6 @@ parameters:
   data.path:
     value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
   data.block_size:
-    value: 1
+    value: 8
   data.standardize:
     value: true
