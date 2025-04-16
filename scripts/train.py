@@ -45,9 +45,9 @@ def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_condition
 
     # orthogonalize C
     H, W = jnp.linalg.qr(C)
-    rotation, _ = compute_rotation(train_obs[trial_masks], H)
-    H = jnp.einsum('ij,jk->ik', H, rotation)
-    W = jnp.einsum('ij,jk->ik', jnp.linalg.inv(rotation), W)
+    # rotation, _ = compute_rotation(train_obs[trial_masks], H)
+    # H = jnp.einsum('ij,jk->ik', H, rotation)
+    # W = jnp.einsum('ij,jk->ik', jnp.linalg.inv(rotation), W)
 
     W_inv = jnp.linalg.inv(W)
 
