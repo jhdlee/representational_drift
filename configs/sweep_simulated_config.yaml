@@ -17,9 +17,9 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["lds"]
+    values: ["smds"]
   model.state_dim:
-    values: [4, 6, 8, 10, 12, 14, 16]
+    values: [2, 4, 6]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -41,17 +41,17 @@ parameters:
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [1e-7]
+    values: [6e-6, 1e-6, 5e-7, 1e-7, 5e-8, 1e-8]
   model.fix_tau:
     value: false
   model.max_tau:
-    values: [1e-4]
+    values: [1e-4, 5e-4, 1e-3]
   model.initial_velocity_covariance_concentration:
     values: [1e-4]
   model.initial_velocity_covariance_scale:
     values: [1e-4]
   model.tau_concentration:
-    values: [1e-9]
+    values: [1e-9, 1e-2, 1e0, 1e1, 1e2]
   model.tau_scale:
     values: [1e-9]
   
@@ -76,9 +76,9 @@ parameters:
   data.block_size:
     value: 1
   data.state_dim:
-    value: 8
+    value: 4
   data.emission_dim:
-    value: 24
+    value: 10
   data.num_trials:
     value: 750
   data.num_conditions:
@@ -86,6 +86,6 @@ parameters:
   data.num_timesteps:
     value: 30
   data.velocity_type:
-    values: ["sine"]
+    values: ["random"]
   data.regenerate_data:
     value: true
