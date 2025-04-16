@@ -30,11 +30,11 @@ parameters:
   model.tau_per_axis:
     value: false
   training.num_iters:
-    value: 100
+    value: 300
     
   # Default configuration parameters
   model.initialize_with_lds:
-    values: [true]
+    values: [false]
   model.has_dynamics_bias:
     value: true
   model.has_emissions_bias:
