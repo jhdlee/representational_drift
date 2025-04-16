@@ -16,7 +16,7 @@ parameters:
     values: [781899]
 
   model_seed:
-    values: [1234, 667, 999]
+    values: [1234]
   
   # Sweep parameters
   model.type:
@@ -40,7 +40,7 @@ parameters:
   model.has_emissions_bias:
     value: false
   model.emissions_cov_eps:
-    values: [1e-2, 7e-3, 5e-3, 3e-3]
+    values: [1e-2, 5e-3, 1e-3]
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
@@ -48,19 +48,19 @@ parameters:
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [1e-5, 5e-6, 1e-6]
+    values: [1e-6, 1e-7, 1e-8]
   model.fix_tau:
     value: false
   model.max_tau:
-    values: [1e-4, 2e-4]
+    values: [1e-5]
   model.initial_velocity_covariance_concentration:
-    values: [1e-4]
+    values: [1e0]
   model.initial_velocity_covariance_scale:
     values: [1e-4]
   model.tau_concentration:
-    values: [1e-6, 1e0]
+    values: [1e0]
   model.tau_scale:
-    values: [1e-6]
+    values: [1e-9]
   
   # Training parameters
   training.run_velocity_smoother:
@@ -72,7 +72,7 @@ parameters:
   training.ekf_num_iters:
     value: 1
   training.num_iters_smds_init_with_lds:
-    value: 200
+    value: 300
 
   eval.ekf_num_iters:
     value: 1
