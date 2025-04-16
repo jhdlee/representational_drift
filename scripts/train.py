@@ -20,7 +20,7 @@ from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.linear_gaussian_ssm.inference import make_lgssm_params
 from dynamax.utils.wandb_utils import init_wandb, save_model
 from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
-from dynamax.utils.utils import gram_schmidt, rotate_subspace
+from dynamax.utils.utils import gram_schmidt, rotate_subspace, compute_rotation
 from dynamax.utils.distributions import IG
 
 condition_to_n = {'top':0, 
@@ -45,6 +45,10 @@ def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_condition
 
     # orthogonalize C
     H, W = jnp.linalg.qr(C)
+    rotation, _ = compute_rotation(train_obs[trial_masks], H)
+    H = jnp.einsum('ij,jk->ik', H, rotation)
+    W = jnp.einsum('ij,jk->ik', jnp.linalg.inv(rotation), W)
+
     W_inv = jnp.linalg.inv(W)
 
     # transform the rest of the parameters

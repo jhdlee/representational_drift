@@ -298,3 +298,42 @@ def power_iteration(M, num_iters=1000):
     # Rayleigh quotient as approximate largest eigenvalue
     lambda_max = jnp.dot(v_final, M @ v_final)
     return lambda_max, v_final
+
+def compute_rotation(observations, emissions):
+    """
+    Given:
+      observations: jnp.ndarray of shape (num_trials, num_timesteps, emission_dim)
+      emissions:    jnp.ndarray of shape (num_trials, emission_dim, latent_dim)
+    Returns:
+      R: jnp.ndarray of shape (latent_dim, latent_dim)
+         A rotation matrix such that rotating each trial's emission matrix (i.e. computing O_i @ R)
+         orders the latent columns in descending order of explained variance.
+      explained_variances: jnp.ndarray of shape (latent_dim,)
+         Variances explained by the rotated latent dimensions.
+    """
+    # Compute latent factors per trial: shape (num_trials, num_timesteps, latent_dim)
+    # Using the fact that the emission matrices are orthogonal.
+    latent_factors = jnp.einsum('...te,...el->...tl', observations, emissions)
+    
+    # Stack trials and timesteps together, so we have all latent factors in one 2D array.
+    if latent_factors.ndim == 3:
+        num_trials, num_timesteps, latent_dim = latent_factors.shape
+    else:
+        num_timesteps, latent_dim = latent_factors.shape
+        num_trials = 1
+
+    latent_factors_stacked = latent_factors.reshape(num_trials * num_timesteps, latent_dim)
+    
+    # Perform SVD on the aggregated latent factors.
+    # latent_factors_stacked = U @ diag(S) @ Vt, with singular values S in descending order.
+    U, S, Vt = jnp.linalg.svd(latent_factors_stacked, full_matrices=False)
+    
+    # The rotation matrix that aligns with the principal directions is given by V = Vt.T.
+    # Rotating the latent factors as L_rot = latent_factors_stacked @ V will yield columns
+    # with decreasing variance (S^2 are proportional to the variances).
+    R = Vt.T
+    
+    # Compute the explained variances for each rotated latent dimension.
+    explained_variances = (S ** 2) / (latent_factors_stacked.shape[0] - 1)
+    
+    return R, explained_variances
