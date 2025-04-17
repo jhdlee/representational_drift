@@ -20,9 +20,9 @@ parameters:
   
   # Sweep parameters
   model.type:
-    values: ["lds"]
+    values: ["smds"]
   model.state_dim:
-    values: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
+    values: [17, 18, 19, 20, 21, 22, 23, 24]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -30,7 +30,7 @@ parameters:
   model.tau_per_axis:
     value: false
   training.num_iters:
-    value: 600
+    value: 300
     
   # Default configuration parameters
   model.initialize_with_lds:
@@ -40,7 +40,7 @@ parameters:
   model.has_emissions_bias:
     value: false
   model.emissions_cov_eps:
-    values: [6e-3]
+    values: [5e-3]
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
@@ -48,7 +48,7 @@ parameters:
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [2e-5]
+    values: [2e-5, 1e-5, 7e-6, 5e-6]
   model.fix_tau:
     value: false
   model.max_tau:
@@ -58,7 +58,7 @@ parameters:
   model.initial_velocity_covariance_scale:
     values: [1e-4]
   model.tau_concentration:
-    values: [1e-3]
+    values: [1e-3, 1e-2, 1e-1]
   model.tau_scale:
     values: [1e-6]
   
