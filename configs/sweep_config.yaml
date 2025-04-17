@@ -13,7 +13,7 @@ method: grid
 parameters:
   # Seed parameter
   seed:
-    values: [10796]
+    values: [10796, 16441]
 
   model_seed:
     values: [1234]
