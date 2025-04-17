@@ -22,7 +22,7 @@ parameters:
   model.type:
     values: ["smds"]
   model.state_dim:
-    values: [17, 18, 19, 20, 21, 22, 23, 24]
+    values: [10, 11, 12, 13, 14, 15, 16, 25]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
