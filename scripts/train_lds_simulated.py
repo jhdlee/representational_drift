@@ -24,7 +24,7 @@ from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
 from dynamax.utils.utils import gram_schmidt, rotate_subspace, random_rotation, random_dynamics_weights
 from dynamax.utils.distributions import IG, MVN
 
-from dynamax.utils.eval_utils import compute_smds_test_marginal_ll, compute_smds_test_r2
+from dynamax.utils.eval_utils import compute_lds_test_marginal_ll, compute_lds_test_r2
 
 def split_data(emissions, conditions, block_size, seed):
     """Split data into train/test sets"""
@@ -132,7 +132,7 @@ def main(config: DictConfig):
 
         conditions = jnp.tile(jnp.arange(num_conditions), num_trials)[:num_trials]
         key, key_root = jr.split(key)
-        true_states, emissions, _ = true_model.sample(true_params, key, num_timesteps, conditions=conditions)
+        true_states, emissions, _ = true_model.batch_sample(true_params, key, num_timesteps, conditions=conditions)
         jnp.save(os.path.join(data_dir, data_name), emissions)
         jnp.save(os.path.join(data_dir, condition_name), conditions)
         jnp.save(os.path.join(data_dir, states_name), true_states)
@@ -165,15 +165,11 @@ def main(config: DictConfig):
 
     if use_wandb:
         # log true test log likelihood to wandb
-        true_test_log_likelihood = compute_smds_test_marginal_ll(true_model, true_params, 
-                                                                 emissions.reshape(num_blocks, block_size, sequence_length, emission_dim), 
-                                                                 conditions.reshape(num_blocks, block_size),
-                                                                 block_masks, method=1, num_iters=eval_config.ekf_num_iters)
+        true_test_log_likelihood = compute_lds_test_marginal_ll(true_model, true_params, test_obs, test_conditions)
         wandb.log({"true_test_log_likelihood": true_test_log_likelihood})
 
         # log true test r2
-        true_test_r2 = compute_smds_test_r2(true_model, true_params.emissions.weights[~trial_masks],
-                                            true_params, test_obs, test_conditions)
+        true_test_r2 = compute_lds_test_r2(true_model, true_params, test_obs, test_conditions)
         wandb.log({"true_test_r2": true_test_r2})
     
     if model_config.type == 'smds':
