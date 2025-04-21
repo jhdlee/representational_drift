@@ -121,7 +121,7 @@ def main(config: DictConfig):
         key = jr.PRNGKey(seed)
         # dynamics = random_dynamics_weights(key=key, n=true_state_dim, num_rotations=128)
         # dynamics = random_dynamics_weights(key=key, n=true_state_dim, num_rotations=1)
-        dynamics = random_rotation(key=key, n=true_state_dim)
+        dynamics = random_rotation(seed=key, n=true_state_dim, theta=jnp.pi/5)
 
         key, key_root = jr.split(key)
         true_params, param_props = true_model.initialize(key=key, 
