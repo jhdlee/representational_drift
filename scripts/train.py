@@ -300,6 +300,7 @@ def main(config: DictConfig):
             else:
                 key, key_root = jr.split(key)
                 emission_weights = jr.normal(key_root, shape=(N, D))
+            key, key_root = jr.split(key)
             params, props = model.initialize(key=key, emission_weights=emission_weights)
             best_params, train_lps = model.fit_em(
                 params=params,
