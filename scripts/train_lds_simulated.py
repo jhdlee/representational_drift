@@ -127,9 +127,9 @@ def main(config: DictConfig):
         true_params, param_props = true_model.initialize(key=key, 
                                                          initial_mean=jr.normal(key_root, shape=(num_conditions, true_state_dim)),
                                                          dynamics_weights=dynamics,
-                                                         dynamics_covariance=jnp.eye(true_state_dim)*1e-4,
+                                                         dynamics_covariance=jnp.eye(true_state_dim)*1e-1,
                                                         #  dynamics_bias=jr.normal(key_root, shape=(true_state_dim,)),
-                                                         emission_covariance=jnp.eye(emission_dim)*1e-4,
+                                                         emission_covariance=jnp.eye(emission_dim)*1e-1,
                                                          )
 
         conditions = jnp.tile(jnp.arange(num_conditions), num_trials)[:num_trials]

@@ -80,7 +80,7 @@ parameters:
   data.emission_dim:
     value: 24
   data.num_trials:
-    value: 800
+    value: 753
   data.num_conditions:
     value: 4
   data.num_timesteps:

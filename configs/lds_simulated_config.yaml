@@ -36,7 +36,7 @@ eval:
 data:
   state_dim: 8
   emission_dim: 24
-  num_trials: 800
+  num_trials: 753
   num_conditions: 4
   num_timesteps: 30
   block_size: 1
