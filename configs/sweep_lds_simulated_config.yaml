@@ -5,7 +5,7 @@ command:
   - ${args_no_hyphens}
 
 # Wandb configuration
-program: /home/groups/swl1/hdlee/representational_drift/scripts/train_smds_simulated.py
+program: /home/groups/swl1/hdlee/representational_drift/scripts/train_lds_simulated.py
 project: smds
 name: simulated_sweep
 method: grid
