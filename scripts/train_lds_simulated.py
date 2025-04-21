@@ -132,7 +132,7 @@ def main(config: DictConfig):
 
         conditions = jnp.tile(jnp.arange(num_conditions), num_trials)[:num_trials]
         key, key_root = jr.split(key)
-        true_states, emissions, _ = true_model.batch_sample(true_params, key, num_timesteps, conditions=conditions)
+        true_states, emissions = true_model.batch_sample(true_params, key, num_timesteps, conditions=conditions)
         jnp.save(os.path.join(data_dir, data_name), emissions)
         jnp.save(os.path.join(data_dir, condition_name), conditions)
         jnp.save(os.path.join(data_dir, states_name), true_states)
