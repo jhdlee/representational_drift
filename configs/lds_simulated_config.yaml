@@ -1,0 +1,52 @@
+# Model parameters
+model:
+  type: "lds"
+  state_dim: 15
+  has_dynamics_bias: true
+  has_emissions_bias: false
+  ekf_mode: "cov"
+  fix_tau: false
+  tau_per_dim: true
+  tau_per_axis: false
+  emissions_cov_eps: 1e-9
+  base_subspace_type: "pca"
+  initial_velocity_cov: 1e-6
+  fix_initial_velocity_cov: false
+  init_tau: 1e-5
+  max_tau: 1e-4
+  initial_velocity_covariance_concentration: 1e-4
+  initial_velocity_covariance_scale: 1e-4
+  tau_concentration: 1e-6
+  tau_scale: 1e-6
+
+# Training parameters
+training:
+  num_iters: 5
+  run_velocity_smoother: false
+  print_ll: true
+  velocity_smoother_method: "ekf"
+  ekf_num_iters: 1
+  smds_test_state_dim_bound: 100
+  
+# Evaluation parameters
+eval:
+  ekf_num_iters: 1
+
+# Data parameters
+data:
+  state_dim: 8
+  emission_dim: 24
+  num_trials: 750
+  num_conditions: 4
+  num_timesteps: 30
+  block_size: 1
+  regenerate_data: true
+  
+# Global parameters
+seed: 1414
+use_wandb: true
+eval_only: false
+pretrained_model: null 
+
+project: smds
+name: smds_simulated

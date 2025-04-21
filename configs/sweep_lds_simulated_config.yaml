@@ -1,0 +1,89 @@
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args_no_hyphens}
+
+# Wandb configuration
+program: /home/groups/swl1/hdlee/representational_drift/scripts/train_smds_simulated.py
+project: smds
+name: simulated_sweep
+method: grid
+
+parameters:
+  # Seed parameter
+  seed:
+    values: [1414]
+  
+  # Sweep parameters
+  model.type:
+    values: ["lds", "smds"]
+  model.state_dim:
+    values: [4, 6, 8, 10, 12]
+  model.ekf_mode:
+    value: "cov"
+  model.tau_per_dim:
+    value: true
+  model.tau_per_axis:
+    value: false
+    
+  # Default configuration parameters
+  model.has_dynamics_bias:
+    value: true
+  model.has_emissions_bias:
+    value: false
+  model.emissions_cov_eps:
+    values: [1e-9]
+  model.base_subspace_type:
+    values: ["pca"]
+  model.initial_velocity_cov:
+    value: 1e-4
+  model.fix_initial_velocity_cov:
+    value: false
+  model.init_tau:
+    values: [1e-6]
+  model.fix_tau:
+    value: false
+  model.max_tau:
+    values: [1e-4]
+  model.initial_velocity_covariance_concentration:
+    values: [1e-4]
+  model.initial_velocity_covariance_scale:
+    values: [1e-4]
+  model.tau_concentration:
+    values: [1e-6]
+  model.tau_scale:
+    values: [1e-6]
+  
+  # Training parameters
+  training.run_velocity_smoother:
+    value: false
+  training.print_ll:
+    value: true
+  training.velocity_smoother_method:
+    value: "ekf"
+  training.ekf_num_iters:
+    value: 1
+  training.num_iters:
+    value: 200
+  training.smds_test_state_dim_bound:
+    value: 4
+
+  eval.ekf_num_iters:
+    value: 1
+
+  # Data parameters
+  data.block_size:
+    value: 1
+  data.state_dim:
+    value: 8
+  data.emission_dim:
+    value: 24
+  data.num_trials:
+    value: 750
+  data.num_conditions:
+    value: 4
+  data.num_timesteps:
+    value: 30
+  data.regenerate_data:
+    value: true
