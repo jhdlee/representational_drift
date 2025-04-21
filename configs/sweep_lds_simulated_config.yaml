@@ -51,9 +51,9 @@ parameters:
   model.initial_velocity_covariance_scale:
     values: [1e-4]
   model.tau_concentration:
-    values: [1e1]
+    values: [1e2]
   model.tau_scale:
-    values: [1e-6]
+    values: [1e-9]
   
   # Training parameters
   training.run_velocity_smoother:
