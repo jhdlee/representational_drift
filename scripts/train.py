@@ -140,41 +140,6 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
     return (emissions, conditions,train_obs, test_obs, train_conditions, test_conditions, block_ids, 
             trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks)
 
-def split_and_standardize_data_trial_masks(emissions, conditions, block_size, seed, standardize=True):
-    """Split data into train/test sets and standardize"""
-    num_conditions = len(np.unique(conditions))
-    num_blocks = len(emissions) // block_size
-    num_trials = num_blocks * block_size
-    emissions = emissions[:num_trials]
-    conditions = conditions[:num_trials]
-
-    block_masks = jnp.ones(num_blocks, dtype=bool)
-    trial_masks = jnp.ones(len(emissions), dtype=bool)
-    num_test_trials = num_trials // 6
-    key = jr.PRNGKey(seed)
-    test_idx = jr.choice(key, jnp.arange(16, num_trials-16, dtype=int), shape=(num_test_trials,), replace=False)
-    trial_masks = trial_masks.at[test_idx].set(False)
-    num_train_trials = trial_masks.sum()
-    block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
-
-    if standardize:
-        train_obs_ = emissions[trial_masks]
-        train_obs_mean = jnp.mean(train_obs_, axis=(0, 1), keepdims=True)
-        train_obs_std = jnp.std(train_obs_, axis=(0, 1), keepdims=True)
-        train_obs = (emissions - train_obs_mean) / train_obs_std
-        _, sequence_length, emission_dim = train_obs.shape
-        test_obs = train_obs[~trial_masks]
-    else:
-        train_obs = emissions
-        _, sequence_length, emission_dim = train_obs.shape
-        test_obs = train_obs[~trial_masks]
-
-    train_conditions = conditions[trial_masks]
-    test_conditions = conditions[~trial_masks]
-
-    return (emissions, conditions,train_obs, test_obs, train_conditions, test_conditions, block_ids, 
-            trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks)
-
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(config: DictConfig):
     """Main function to train and evaluate SMDS model"""
@@ -224,15 +189,10 @@ def main(config: DictConfig):
     block_size = data_config.block_size
     standardize = data_config.standardize
     emissions, conditions = load_data(data_path)
-
-    if data_config.split_by_trial_masks:
-        split_method = split_and_standardize_data_trial_masks
-    else:
-        split_method = split_and_standardize_data
     (emissions, conditions, train_obs, test_obs, 
         train_conditions, test_conditions, block_ids,
         trial_masks, block_masks, sequence_length,
-        emission_dim, num_conditions, num_blocks) = split_method(emissions, conditions, block_size, seed, standardize=standardize)
+        emission_dim, num_conditions, num_blocks) = split_and_standardize_data(emissions, conditions, block_size, seed, standardize=standardize)
     sorted_var_idx = jnp.argsort(train_obs[~trial_masks].var(axis=(0, 1)))[::-1]
     held_out_idx = sorted_var_idx[:5]
     cosmoothing_mask = jnp.ones(emission_dim, dtype=bool)

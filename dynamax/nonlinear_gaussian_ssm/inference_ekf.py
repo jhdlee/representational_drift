@@ -440,7 +440,6 @@ def extended_kalman_filter_augmented_state(
     output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
     block_masks = None,
-    trial_masks = None,
     num_iters = 1,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
@@ -454,7 +453,7 @@ def extended_kalman_filter_augmented_state(
         output_fields: list of fields to return in posterior object.
             These can take the values "filtered_means", "filtered_covariances",
             "predicted_means", "predicted_covariances", and "marginal_loglik".
-        trial_masks: trial masks.
+
     Returns:
         post: posterior object.
 
@@ -490,7 +489,6 @@ def extended_kalman_filter_augmented_state(
         y = emissions[block_id]
         next_block_condition = conditions[block_id+1, 0]
         block_mask = block_masks[block_id]
-        trial_mask = trial_masks[block_id]
 
         def _inner_step(inner_carry, r):
             ll, _, _, _pred_mean, _pred_cov = inner_carry
@@ -498,7 +496,6 @@ def extended_kalman_filter_augmented_state(
             # Get parameters and inputs for time index t
             y_r = y[r]
             next_trial_condition = conditions[block_id, r+1]
-            trial_mask_r = trial_mask[r]
 
             def _inner_inner_step(inner_inner_carry, t):
                 ll, _, _, _pred_mean, _pred_cov = inner_inner_carry
@@ -549,19 +546,10 @@ def extended_kalman_filter_augmented_state(
                 return (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), None
 
             init_carry = (ll, jnp.zeros_like(_pred_mean), jnp.zeros_like(_pred_cov), _pred_mean, _pred_cov)
-
-            def inner_true_fun(inputs):
-                # Scan over time steps
-                (ll, filtered_mean, filtered_cov, _, _), _ = lax.scan(_inner_inner_step, 
-                                                                      inputs, 
-                                                                      jnp.arange(num_timesteps))
-                return ll, filtered_mean, filtered_cov
-            
-            def inner_false_fun(inputs):
-                ll, _, _, _pred_mean, _pred_cov = inputs
-                return ll, _pred_mean, _pred_cov
-            
-            ll, filtered_mean, filtered_cov = jax.lax.cond(trial_mask_r, inner_true_fun, inner_false_fun, init_carry)
+            # Scan over time steps
+            (ll, filtered_mean, filtered_cov, pred_mean, pred_cov), _ = lax.scan(_inner_inner_step, 
+                                                                                 init_carry, 
+                                                                                 jnp.arange(num_timesteps))
             
             # Get the predicted mean and covariance across trials but within block
             pred_mean = filtered_mean.at[:dim_x].set(initial_state_means[next_trial_condition])
@@ -805,7 +793,6 @@ def extended_kalman_filter_x_marginalized(
         output_fields: Optional[List[str]] = ["filtered_means", "filtered_covariances", "predicted_means",
                                               "predicted_covariances"],
         block_masks = None,
-        trial_masks = None,
         num_iters = 1,
 ) -> PosteriorGSSMFiltered:
     r"""Run an (iterated) extended Kalman filter to produce the
@@ -819,7 +806,7 @@ def extended_kalman_filter_x_marginalized(
         output_fields: list of fields to return in posterior object.
             These can take the values "filtered_means", "filtered_covariances",
             "predicted_means", "predicted_covariances", and "marginal_loglik".
-        trial_masks: trial masks.
+
     Returns:
         post: posterior object.
 
