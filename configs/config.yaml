@@ -15,6 +15,7 @@ model:
   base_subspace_type: "pca"
   initial_velocity_cov: 1e-4
   fix_initial_velocity_cov: false
+  fix_scale: true
   init_tau: 1e-6
   max_tau: 1e-4
   initial_velocity_covariance_concentration: 1e-4
@@ -36,7 +37,8 @@ eval:
 
 # Data parameters
 data:
-  path: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
+  # path: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
+  path: "/home/groups/swl1/hdlee/falcon-challenge/data_demos"
   block_size: 1
   standardize: true
   
@@ -48,4 +50,5 @@ eval_only: false
 pretrained_model: null 
 
 project: smds
-name: smds_U201202_01
+# name: smds_U201202_01
+name: smds_falcon_m1

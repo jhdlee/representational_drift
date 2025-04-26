@@ -93,8 +93,11 @@ def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_condition
 
 def load_data(data_path):
     """Load data from npy file"""
-    emissions_path = os.path.join(data_path, 'emissions_v4.npy')
-    conditions_path = os.path.join(data_path, 'conditions.npy')
+    # emissions_path = os.path.join(data_path, 'emissions_v4.npy')
+    # conditions_path = os.path.join(data_path, 'conditions.npy')
+
+    emissions_path = os.path.join(data_path, 'm1_obs_anscombe.npy').astype(jnp.float64)
+    conditions_path = os.path.join(data_path, 'm1_conditions_anscombe.npy')
 
     emissions = jnp.load(emissions_path)
     conditions = jnp.load(conditions_path, allow_pickle=True)
@@ -116,11 +119,30 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
     trial_masks = jnp.ones(len(emissions), dtype=bool)
     num_test_blocks = num_blocks // 6
     key = jr.PRNGKey(seed)
-    test_idx = jr.choice(key, jnp.arange(2, num_blocks-2, dtype=int), shape=(num_test_blocks,), replace=False)
+    # test_idx = jr.choice(key, jnp.arange(2, num_blocks-2, dtype=int), shape=(num_test_blocks,), replace=False)
+    test_idx = jr.choice(key, jnp.arange(8, num_blocks-8, dtype=int), shape=(num_test_blocks,), replace=False)
     block_masks = block_masks.at[test_idx].set(False)
     num_train_blocks = block_masks.sum()
     block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
     trial_masks = jnp.repeat(block_masks, block_size)
+
+    train_conditions = conditions[trial_masks]
+    test_conditions = conditions[~trial_masks]
+
+    while len(jnp.unique(train_conditions)) != num_conditions:
+        # continue with new keys
+        key, key_root = jr.split(key)
+        block_masks = jnp.ones(num_blocks, dtype=bool)
+        trial_masks = jnp.ones(len(emissions), dtype=bool)
+        num_test_blocks = num_blocks // 6
+        test_idx = jr.choice(key, jnp.arange(8, num_blocks-8, dtype=int), shape=(num_test_blocks,), replace=False)
+        block_masks = block_masks.at[test_idx].set(False)
+        num_train_blocks = block_masks.sum()
+        block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
+        trial_masks = jnp.repeat(block_masks, block_size)
+
+        train_conditions = conditions[trial_masks]
+        test_conditions = conditions[~trial_masks]
 
     if standardize:
         train_obs_ = emissions[trial_masks]
@@ -133,9 +155,6 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
         train_obs = emissions
         _, sequence_length, emission_dim = train_obs.shape
         test_obs = train_obs[~trial_masks]
-
-    train_conditions = conditions[trial_masks]
-    test_conditions = conditions[~trial_masks]
 
     return (emissions, conditions,train_obs, test_obs, train_conditions, test_conditions, block_ids, 
             trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks)
@@ -163,7 +182,7 @@ def main(config: DictConfig):
         model_name += f"_itau.{model_config.init_tau}_mtau.{model_config.max_tau}_eni.{training_config.ekf_num_iters}"
         model_name += f"_tc.{model_config.tau_concentration}_ts.{model_config.tau_scale}"
         model_name += f"_ece.{model_config.emissions_cov_eps}"
-        model_name += f"_iwlds.{model_config.initialize_with_lds}"
+        model_name += f"_iwlds.{model_config.initialize_with_lds}_fixscale.{model_config.fix_scale}"
     model_name = f"{model_name}_seed.{seed}"
     
     # Check for evaluation-only mode
@@ -209,6 +228,7 @@ def main(config: DictConfig):
             tau_per_axis=model_config.tau_per_axis,
             fix_tau=model_config.fix_tau,
             fix_initial_velocity_cov=model_config.fix_initial_velocity_cov,
+            fix_scale=model_config.fix_scale,
             emissions_cov_eps=model_config.emissions_cov_eps,
             velocity_smoother_method=training_config.velocity_smoother_method,
             ekf_mode=model_config.ekf_mode,
