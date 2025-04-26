@@ -1035,7 +1035,6 @@ class StiefelManifoldSSM(SSM):
         H = vmap(rotate_subspace, in_axes=(None, None, 0))(params.emissions.base_subspace, self.state_dim, Ev)
         H = jnp.einsum('bij,bk->kij', H, block_ids)
 
-
         # MAP estimation of scale
         if not self.fix_scale:
             R_s = jnp.einsum('bni,nm,bmj->bij', H, jnp.linalg.inv(params.emissions.cov), H)
@@ -1045,7 +1044,6 @@ class StiefelManifoldSSM(SSM):
             emission_scale_sufficient_stats = (ExxT_collapsed, ExyT_collapsed)
             emission_scale_posterior = mvn_posterior_update(self.scale_prior, emission_scale_sufficient_stats)
             emission_scale = emission_scale_posterior.mode()
-
 
         # Ev0 = velocity_smoother.smoothed_means[0]
         # Ev0v0T = velocity_smoother.smoothed_covariances_0 + jnp.outer(Ev0, Ev0)
