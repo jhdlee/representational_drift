@@ -644,6 +644,7 @@ class StiefelManifoldSSM(SSM):
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
             block_masks: jnp.array = None,
+            trial_masks: jnp.array = None,
             method: int = 0,
             num_iters: int = 1,
             num_particles: int = 100,
@@ -655,6 +656,8 @@ class StiefelManifoldSSM(SSM):
             conditions = jnp.zeros(emissions.shape[:2], dtype=int)
         if block_masks is None:
             block_masks = jnp.ones(num_blocks, dtype=bool)
+        if trial_masks is None:
+            trial_masks = jnp.ones(emissions.shape[:2], dtype=bool)
 
         f = self.get_f()
         if method == 0:
@@ -680,7 +683,7 @@ class StiefelManifoldSSM(SSM):
         )
 
         filtered_posterior = filtering_function(params=NLGSSM_params, model_params=params, emissions=emissions,
-                                                conditions=conditions, block_masks=block_masks)
+                                                conditions=conditions, block_masks=block_masks, trial_masks=trial_masks)
 
         return filtered_posterior.marginal_loglik
 
@@ -689,6 +692,7 @@ class StiefelManifoldSSM(SSM):
             params: ParamsSMDS,
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
+            block_masks: jnp.array = None,
             trial_masks: jnp.array = None,
             method: int = 0,
     ):
@@ -716,7 +720,8 @@ class StiefelManifoldSSM(SSM):
         )
 
         filtered_posterior = filtering_function(NLGSSM_params, params, emissions,
-                                                conditions=conditions, trial_masks=trial_masks)
+                                                conditions=conditions, block_masks=block_masks, 
+                                                trial_masks=trial_masks)
 
         return filtered_posterior
 
@@ -726,6 +731,7 @@ class StiefelManifoldSSM(SSM):
             emissions: Float[Array, "ntime emission_dim"],
             conditions: jnp.array = None,
             block_masks: jnp.array = None,
+            trial_masks: jnp.array = None,
             method: int = 0,
             num_iters: int = 1,
     ):
@@ -753,7 +759,7 @@ class StiefelManifoldSSM(SSM):
         )
 
         filtered_posterior = filtering_function(params=NLGSSM_params, model_params=params, emissions=emissions,
-                                                conditions=conditions, block_masks=block_masks)
+                                                conditions=conditions, block_masks=block_masks, trial_masks=trial_masks)
         smoothed_posterior = extended_kalman_smoother(NLGSSM_params, emissions,
                                                       filtered_posterior=filtered_posterior)
 
