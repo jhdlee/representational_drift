@@ -296,6 +296,7 @@ class StiefelManifoldSSM(SSM):
             fix_emissions_cov: bool = False,
             fix_tau: bool = False,
             fix_initial_velocity_cov: bool = False,
+            fix_scale: bool = False,
             emissions_cov_eps: float = 0.0,
             velocity_smoother_method: str = 'ekf',
             ekf_mode: str='hybrid',
@@ -324,6 +325,7 @@ class StiefelManifoldSSM(SSM):
         self.fix_emissions_cov = fix_emissions_cov
         self.fix_tau = fix_tau
         self.fix_initial_velocity_cov = fix_initial_velocity_cov
+        self.fix_scale = fix_scale
         self.emissions_cov_eps = emissions_cov_eps
 
         self.velocity_smoother_method = velocity_smoother_method
@@ -1035,14 +1037,14 @@ class StiefelManifoldSSM(SSM):
 
 
         # MAP estimation of scale
-        R_s = jnp.einsum('bni,nm,bmj->bij', H, jnp.linalg.inv(params.emissions.cov), H)
-        ExxT_collapsed = jnp.einsum('bij,bij->ij', o_emission_stats_1, R_s) # precision matrix (M)
-        ExyT_collapsed = jnp.einsum('i,bij,bji->j', Rinv_d, H, o_emission_stats_2) # b
+        if not self.fix_scale:
+            R_s = jnp.einsum('bni,nm,bmj->bij', H, jnp.linalg.inv(params.emissions.cov), H)
+            ExxT_collapsed = jnp.einsum('bij,bij->ij', o_emission_stats_1, R_s) # precision matrix (M)
+            ExyT_collapsed = jnp.einsum('i,bij,bji->j', Rinv_d, H, o_emission_stats_2) # b
 
-        emission_scale_sufficient_stats = (ExxT_collapsed, ExyT_collapsed)
-        emission_scale_posterior = mvn_posterior_update(self.scale_prior, emission_scale_sufficient_stats)
-        emission_scale = emission_scale_posterior.mode()
-        # emission_scale = jnp.ones(self.state_dim)
+            emission_scale_sufficient_stats = (ExxT_collapsed, ExyT_collapsed)
+            emission_scale_posterior = mvn_posterior_update(self.scale_prior, emission_scale_sufficient_stats)
+            emission_scale = emission_scale_posterior.mode()
 
 
         # Ev0 = velocity_smoother.smoothed_means[0]
