@@ -1,0 +1,88 @@
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args_no_hyphens}
+
+# Wandb configuration
+program: /home/groups/swl1/hdlee/representational_drift/scripts/train_fig4.py
+project: smds
+name: allen_sweep
+method: grid
+
+parameters:
+  # Seed parameter
+  seed:
+    values: [15315, 1515, 1358, 152]
+
+  model_seed:
+    values: [2014, 1234, 5721]
+  
+  # Sweep parameters
+  model.type:
+    values: ["lds"]
+  model.state_dim:
+    values: [10, 15, 20, 25, 30, 35, 40, 45, 50]
+  model.ekf_mode:
+    value: "cov"
+  model.tau_per_dim:
+    value: true
+  model.tau_per_axis:
+    value: false
+  training.num_iters:
+    value: 600
+    
+  # Default configuration parameters
+  model.initialize_with_lds:
+    values: [false]
+  model.has_dynamics_bias:
+    value: true
+  model.has_emissions_bias:
+    value: false
+  model.emissions_cov_eps:
+    values: [1e-9]
+  model.base_subspace_type:
+    values: ["random"]
+  model.initial_velocity_cov:
+    values: [1e-4]
+  model.fix_initial_velocity_cov:
+    value: false
+  model.init_tau:
+    values: [1e-5]
+  model.fix_tau:
+    value: false
+  model.max_tau:
+    values: [1e-4]
+  model.fix_scale:
+    values: [true]
+  model.initial_velocity_covariance_concentration:
+    values: [1e-4]
+  model.initial_velocity_covariance_scale:
+    values: [1e-4]
+  model.tau_concentration:
+    values: [1e-3]
+  model.tau_scale:
+    values: [1e-6]
+  
+  # Training parameters
+  training.run_velocity_smoother:
+    value: false
+  training.print_ll:
+    value: true
+  training.velocity_smoother_method:
+    value: "ekf"
+  training.ekf_num_iters:
+    value: 1
+  training.num_iters_smds_init_with_lds:
+    value: 300
+
+  eval.ekf_num_iters:
+    value: 1
+
+  # Data parameters
+  data.path:
+    value: "/home/groups/swl1/hdlee/nast/neurips_2025/figure4_data"
+  data.block_size:
+    value: 5
+  data.standardize:
+    value: true

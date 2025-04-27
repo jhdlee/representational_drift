@@ -1,0 +1,52 @@
+# SMDS model configuration
+
+# Model parameters
+model:
+  type: "smds"
+  state_dim: 5
+  initialize_with_lds: true
+  has_dynamics_bias: true
+  has_emissions_bias: false
+  ekf_mode: "cov"
+  fix_tau: false
+  tau_per_dim: true
+  tau_per_axis: false
+  emissions_cov_eps: 1e-2
+  base_subspace_type: "pca"
+  initial_velocity_cov: 1e-4
+  fix_initial_velocity_cov: false
+  fix_scale: true
+  init_tau: 1e-6
+  max_tau: 1e-4
+  initial_velocity_covariance_concentration: 1e-4
+  initial_velocity_covariance_scale: 1e-4
+  tau_concentration: 1e-9
+  tau_scale: 1e-9
+
+# Training parameters
+training:
+  num_iters: 300
+  run_velocity_smoother: false
+  print_ll: true
+  velocity_smoother_method: "ekf"
+  ekf_num_iters: 1
+  num_iters_smds_init_with_lds: 200
+# Evaluation parameters
+eval:
+  ekf_num_iters: 1
+
+# Data parameters
+data:
+  path: "/home/groups/swl1/hdlee/nast/neurips_2025/figure4_data"
+  block_size: 1
+  standardize: true
+  
+# Global parameters
+model_seed: 1234
+seed: 781899
+use_wandb: true
+eval_only: false
+pretrained_model: null 
+
+project: smds
+name: smds_allen
