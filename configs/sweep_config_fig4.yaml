@@ -7,22 +7,22 @@ command:
 # Wandb configuration
 program: /home/groups/swl1/hdlee/representational_drift/scripts/train_fig4.py
 project: smds
-name: allen_sweep
+name: alm_sweep
 method: grid
 
 parameters:
   # Seed parameter
   seed:
-    values: [15315, 1515, 1358, 152]
+    values: [2626]
 
   model_seed:
     values: [2014]
   
   # Sweep parameters
   model.type:
-    values: ["smds"]
+    values: ["lds"]
   model.state_dim:
-    values: [10, 15, 20, 25, 30, 35, 40, 45, 50]
+    values: [40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68, 70]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -54,15 +54,15 @@ parameters:
   model.max_tau:
     values: [1e-4]
   model.fix_scale:
-    values: [true, false]
+    values: [true]
   model.initial_velocity_covariance_concentration:
-    values: [1e-4, 1e-5]
+    values: [1e-4]
   model.initial_velocity_covariance_scale:
-    values: [1e-4, 1e-5]
+    values: [1e-4]
   model.tau_concentration:
-    values: [1e-4, 1e-5, 1e-6]
+    values: [1e-4]
   model.tau_scale:
-    values: [1e-4, 1e-5, 1e-6]
+    values: [1e-4]
 
   # Training parameters
   training.run_velocity_smoother:
@@ -81,8 +81,8 @@ parameters:
 
   # Data parameters
   data.path:
-    value: "/home/groups/swl1/hdlee/nast/neurips_2025/figure4_data"
+    value: "/home/groups/swl1/hdlee/nast/neurips_2025"
   data.block_size:
-    value: 5
+    value: 8
   data.standardize:
     value: true

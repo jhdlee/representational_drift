@@ -37,7 +37,7 @@ eval:
 
 # Data parameters
 data:
-  path: "/home/groups/swl1/hdlee/nast/neurips_2025/figure4_data"
+  path: "/home/groups/swl1/hdlee/nast/neurips_2025"
   block_size: 1
   standardize: true
   
@@ -49,4 +49,4 @@ eval_only: false
 pretrained_model: null 
 
 project: smds
-name: smds_allen
+name: smds_alm
