@@ -54,13 +54,13 @@ parameters:
   model.max_tau:
     values: [1e-4]
   model.fix_scale:
-    values: [true]
+    values: [true, false]
   model.initial_velocity_covariance_concentration:
     values: [1e-4]
   model.initial_velocity_covariance_scale:
     values: [1e-4]
   model.tau_concentration:
-    values: [1e-5, 1e-3, 1e-1, 1e0, 3e0]
+    values: [1e-5, 1e-3, 1e-1, 1e0]
   model.tau_scale:
     values: [1e-4, 1e-5, 1e-6]
 
