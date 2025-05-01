@@ -85,8 +85,10 @@ def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_condition
 
 def load_data(data_path):
     """Load data from npy file"""
-    emissions_path = os.path.join(data_path, 'data_calcium_v2.npy')
-    conditions_path = os.path.join(data_path, 'conditions_calcium_v2.npy')
+    # emissions_path = os.path.join(data_path, 'data_calcium_v2.npy')
+    # conditions_path = os.path.join(data_path, 'conditions_calcium_v2.npy')
+    emissions_path = os.path.join(data_path, 'data_calcium_v3.npy')
+    conditions_path = os.path.join(data_path, 'conditions_calcium_v3.npy')
 
     emissions = jnp.load(emissions_path).astype(jnp.float64)
     conditions = jnp.load(conditions_path).astype(int)
@@ -128,7 +130,8 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
     # test_idx = jr.choice(key, jnp.arange(2, num_blocks-2, dtype=int), shape=(num_test_blocks,), replace=False)
     # test_idx = jr.choice(key, jnp.arange(1, num_blocks, dtype=int), shape=(num_test_blocks,), replace=False)
     # test_idx = select_non_consecutive(key, 2, num_blocks-2, num_test_blocks)
-    test_idx = select_non_consecutive(key, 3, num_blocks-3, num_test_blocks)
+    # test_idx = select_non_consecutive(key, 3, num_blocks-3, num_test_blocks)
+    test_idx = select_non_consecutive(key, 24, num_blocks-24, num_test_blocks)
     block_masks = block_masks.at[test_idx].set(False)
     num_train_blocks = block_masks.sum()
     block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
@@ -143,7 +146,8 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
         block_masks = jnp.ones(num_blocks, dtype=bool)
         trial_masks = jnp.ones(len(emissions), dtype=bool)
         num_test_blocks = num_blocks // 4
-        test_idx = select_non_consecutive(key, 2, num_blocks-2, num_test_blocks)
+        # test_idx = select_non_consecutive(key, 3, num_blocks-3, num_test_blocks)
+        test_idx = select_non_consecutive(key, 24, num_blocks-24, num_test_blocks)
         block_masks = block_masks.at[test_idx].set(False)
         num_train_blocks = block_masks.sum()
         block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
