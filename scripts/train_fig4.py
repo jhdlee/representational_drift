@@ -87,8 +87,10 @@ def load_data(data_path):
     """Load data from npy file"""
     # emissions_path = os.path.join(data_path, 'data_calcium_v2.npy')
     # conditions_path = os.path.join(data_path, 'conditions_calcium_v2.npy')
-    emissions_path = os.path.join(data_path, 'data_calcium_v3.npy')
-    conditions_path = os.path.join(data_path, 'conditions_calcium_v3.npy')
+    # emissions_path = os.path.join(data_path, 'data_calcium_v3.npy')
+    # conditions_path = os.path.join(data_path, 'conditions_calcium_v3.npy')
+    emissions_path = os.path.join(data_path, 'data_calcium_v5.npy')
+    conditions_path = os.path.join(data_path, 'conditions_calcium_v5.npy')
 
     emissions = jnp.load(emissions_path).astype(jnp.float64)
     conditions = jnp.load(conditions_path).astype(int)
