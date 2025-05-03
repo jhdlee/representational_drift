@@ -52,7 +52,7 @@ parameters:
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [1e-5, 5e-6, 1e-6]
+    values: [1e-5, 5e-6, 1e-6, 5e-7]
     # values: [1e-5]
   model.fix_tau:
     value: false
@@ -65,10 +65,10 @@ parameters:
   model.initial_velocity_covariance_scale:
     values: [1e-4]
   model.tau_concentration:
-    values: [1e-6, 1e-5, 1e-3, 1e-1]
+    values: [1e-6, 1e-5, 1e-3, 1e-1, 1e0, 3e0]
     # values: [1e-5]
   model.tau_scale:
-    values: [1e-4, 1e-5, 1e-6]
+    values: [1e-4, 1e-5, 1e-6, 1e-7, 1e-8]
     # values: [1e-5]
 
   # Training parameters
