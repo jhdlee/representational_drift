@@ -19,7 +19,7 @@ parameters:
   model.type:
     values: ["smds"]
   model.state_dim:
-    values: [2, 4, 6]
+    values: [4, 6, 8, 10, 12]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -41,7 +41,7 @@ parameters:
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [6e-6, 1e-6, 5e-7, 1e-7, 5e-8, 1e-8]
+    values: [5e-6, 1e-6, 5e-7, 1e-7, 5e-8]
   model.fix_tau:
     value: false
   model.max_tau:
@@ -76,9 +76,9 @@ parameters:
   data.block_size:
     value: 1
   data.state_dim:
-    value: 4
+    value: 8
   data.emission_dim:
-    value: 10
+    value: 24
   data.num_trials:
     value: 750
   data.num_conditions:
@@ -86,6 +86,6 @@ parameters:
   data.num_timesteps:
     value: 30
   data.velocity_type:
-    values: ["random"]
+    values: ["sine"]
   data.regenerate_data:
     value: true

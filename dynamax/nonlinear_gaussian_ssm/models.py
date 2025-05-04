@@ -296,7 +296,7 @@ class StiefelManifoldSSM(SSM):
             fix_emissions_cov: bool = False,
             fix_tau: bool = False,
             fix_initial_velocity_cov: bool = False,
-            fix_scale: bool = False,
+            fix_scale: bool = True,
             emissions_cov_eps: float = 0.0,
             velocity_smoother_method: str = 'ekf',
             ekf_mode: str='hybrid',
