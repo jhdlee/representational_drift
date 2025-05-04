@@ -307,7 +307,13 @@ def main(config: DictConfig):
             )
         elif model_config.type == 'lds':
             key = jr.PRNGKey(seed)
-            params, props = model.initialize(key=key)
+            if model_config.base_subspace_type == 'pca':
+                base_subspace = PCA(n_components=N).fit(train_obs[trial_masks].reshape(-1, N)).components_.T
+                emission_weights = base_subspace[:, :D]
+            else:
+                key, key_root = jr.split(key)
+                emission_weights = jr.normal(key_root, shape=(N, D))
+            params, props = model.initialize(key=key, emission_weights=emission_weights)
             best_params, train_lps = model.fit_em(
                 params=params,
                 props=props,
