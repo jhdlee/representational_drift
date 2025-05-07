@@ -133,15 +133,16 @@ def main(config: DictConfig):
         
         if data_config.velocity_type == 'sine':
             _velocity = jnp.zeros((num_trials,) + dof_shape)
-            sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
-            offset = jnp.linspace(0, 0.5, num_trials)
+            # sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
+            sine_wave = jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
+            # offset = jnp.linspace(0, 0.5, num_trials)
             # sine_wave = 0.5*jnp.pi*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
-            _velocity = _velocity.at[:, 0, 0].set(sine_wave + offset)
+            _velocity = _velocity.at[:, 0, 0].set(sine_wave)
             # _velocity = _velocity.at[:, 0, 1:].set(offset[:, None])
             # _velocity = _velocity.at[:, 1, 0].set(offset)
             # set true tau to the MLE of the sine wave
             true_tau = jnp.ones(dof) * 1e-32
-            true_tau = true_tau.at[0].set(jnp.var(jnp.diff(sine_wave + offset)))
+            true_tau = true_tau.at[0].set(jnp.var(jnp.diff(sine_wave)))
         elif data_config.velocity_type == 'random':
             key, key_root = jr.split(key)
             true_tau = jr.uniform(key_root, shape=(dof,), minval=1e-10, maxval=1e-4)
