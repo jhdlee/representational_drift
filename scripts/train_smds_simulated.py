@@ -125,7 +125,8 @@ def main(config: DictConfig):
 
     if not os.path.exists(os.path.join(data_dir, data_name)) or config.data.regenerate_data:
         key = jr.PRNGKey(seed)
-        dynamics = random_dynamics_weights(key=key, n=true_state_dim, num_rotations=128)
+        # dynamics = random_dynamics_weights(key=key, n=true_state_dim, num_rotations=128)
+        dynamics = random_dynamics_weights(key=key, n=true_state_dim, num_rotations=8)
 
         key, key_root = jr.split(key)
         true_base_subspace = jr.orthogonal(key_root, emission_dim)
@@ -133,14 +134,14 @@ def main(config: DictConfig):
         if data_config.velocity_type == 'sine':
             _velocity = jnp.zeros((num_trials,) + dof_shape)
             sine_wave = 0.5*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
-            # offset = jnp.linspace(0, 0.2, num_trials)
+            offset = jnp.linspace(0, 1.0, num_trials)
             # sine_wave = 0.5*jnp.pi*jnp.sin(jnp.linspace(-jnp.pi, jnp.pi, num_trials))
-            _velocity = _velocity.at[:, 0, 0].set(sine_wave)
+            _velocity = _velocity.at[:, 0, 0].set(sine_wave + offset)
             # _velocity = _velocity.at[:, 0, 1:].set(offset[:, None])
             # _velocity = _velocity.at[:, 1, 0].set(offset)
             # set true tau to the MLE of the sine wave
             true_tau = jnp.ones(dof) * 1e-32
-            true_tau = true_tau.at[0].set(jnp.var(jnp.diff(sine_wave)))
+            true_tau = true_tau.at[0].set(jnp.var(jnp.diff(sine_wave + offset)))
         elif data_config.velocity_type == 'random':
             key, key_root = jr.split(key)
             true_tau = jr.uniform(key_root, shape=(dof,), minval=1e-10, maxval=1e-4)
