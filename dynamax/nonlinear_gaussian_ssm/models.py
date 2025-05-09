@@ -402,7 +402,7 @@ class StiefelManifoldSSM(SSM):
                                             dynamics_bias))
         lp += self.dynamics_prior.log_prob((params.dynamics.cov, dynamics_matrix))
 
-        lp += self.scale_prior.log_prob(params.emissions.scale)
+        lp += self.scale_prior.log_prob(params.emissions.scale).sum()
 
         # lp += self.initial_velocity_prior.log_prob((params.emissions.initial_velocity_cov,
         #                                             params.emissions.initial_velocity_mean))
@@ -469,7 +469,7 @@ class StiefelManifoldSSM(SSM):
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
         _dynamics_covariance = 0.1 * jnp.eye(self.state_dim)
-        _scale = jnp.ones((self.state_dim,))
+        _scale = jnp.ones((self.num_trials, self.state_dim))
 
         _initial_velocity_mean = jnp.zeros(self.dof)
         _initial_velocity_cov = 1e-6 * jnp.eye(self.dof)
@@ -651,7 +651,7 @@ class StiefelManifoldSSM(SSM):
             timestep: int=0,
     ) -> tfd.Distribution:
         inputs = inputs if inputs is not None else jnp.zeros(self.input_dim)
-        mean = params.emissions.weights[timestep] @ (params.emissions.scale * state) + params.emissions.input_weights @ inputs
+        mean = params.emissions.weights[timestep] @ (params.emissions.scale[timestep] * state) + params.emissions.input_weights @ inputs
         if self.has_emissions_bias:
             mean += params.emissions.bias[timestep]
         return MVN(mean, params.emissions.cov)
@@ -857,10 +857,10 @@ class StiefelManifoldSSM(SSM):
         return h
     
     def get_h_augmented(self, base_subspace, scale):
-        def h_augmented(u):
+        def h_augmented(u, r):
             x, v = jnp.split(u, [self.state_dim])
             C = rotate_subspace(base_subspace, self.state_dim, v)
-            y_pred = C @ (x * scale)
+            y_pred = C @ (x * scale[r])
             return y_pred, y_pred
         return h_augmented
 
@@ -911,7 +911,7 @@ class StiefelManifoldSSM(SSM):
         R = params.emissions.cov
         emission_scale = params.emissions.scale
         H = params.emissions.weights if H is None else H
-        H = H * emission_scale
+        H = H * emission_scale[:, None]
         h_params = make_lgssm_params(initial_mean=mu_0, 
                                      initial_cov=Sigma_0,
                                      dynamics_weights=A,
@@ -1018,7 +1018,7 @@ class StiefelManifoldSSM(SSM):
         Rinv_d = 1.0/jnp.diag(params.emissions.cov)
         if velocity_smoother is None:
             emission_stats_1 = jnp.einsum('bij,n->bnij', o_emission_stats_1, Rinv_d)
-            emission_stats_1 = jnp.einsum('i,bkij,j->bkij', emission_scale, emission_stats_1, emission_scale)
+            emission_stats_1 = jnp.einsum('...i,...kij,...j->...kij', emission_scale, emission_stats_1, emission_scale)
             emission_stats_1 = jnp.einsum('bkij,lb->lkij', emission_stats_1, block_ids)
             if self.ekf_mode == 'cov':
                 # dim1, dim2, dim3, dim4 = emission_stats_1.shape
@@ -1027,7 +1027,7 @@ class StiefelManifoldSSM(SSM):
                 emission_stats_1 = jnp.linalg.inv(emission_stats_1)
                 emission_stats_1 = jnp.nan_to_num(emission_stats_1, nan=0.0, posinf=0.0, neginf=0.0)
             emission_stats_2 = jnp.einsum('bin,n->bni', o_emission_stats_2, Rinv_d)
-            emission_stats_2 = jnp.einsum('i,bni,lb->lni', emission_scale, emission_stats_2, block_ids)
+            emission_stats_2 = jnp.einsum('...i,...ni,l...->lni', emission_scale, emission_stats_2, block_ids)
             if self.ekf_mode == 'cov':
                 emission_stats_2 = jnp.einsum('lnji,lni->lnj', emission_stats_1, emission_stats_2)
             velocity_smoother = self.velocity_smoother(params, emission_stats_1, emission_stats_2, block_masks)
@@ -1037,9 +1037,9 @@ class StiefelManifoldSSM(SSM):
 
         # MAP estimation of scale
         if not self.fix_scale:
-            R_s = jnp.einsum('bni,nm,bmj->bij', H, jnp.linalg.inv(params.emissions.cov), H)
-            ExxT_collapsed = jnp.einsum('bij,bij->ij', o_emission_stats_1, R_s) # precision matrix (M)
-            ExyT_collapsed = jnp.einsum('i,bij,bji->j', Rinv_d, H, o_emission_stats_2) # b
+            R_s = jnp.einsum('rni,nm,rmj->rij', H, jnp.linalg.inv(params.emissions.cov), H)
+            ExxT_collapsed = jnp.einsum('rij,rij->rij', o_emission_stats_1, R_s) # precision matrix (M)
+            ExyT_collapsed = jnp.einsum('i,rij,rji->rj', Rinv_d, H, o_emission_stats_2) # b
 
             emission_scale_sufficient_stats = (ExxT_collapsed, ExyT_collapsed)
             emission_scale_posterior = mvn_posterior_update(self.scale_prior, emission_scale_sufficient_stats)
@@ -1118,9 +1118,11 @@ class StiefelManifoldSSM(SSM):
 
         Ex, Vx = posteriors.smoothed_means, posteriors.smoothed_covariances
         emission_cov_stats_1 = (trial_masks.sum() * Ex.shape[-2]) / 2
-        Ey = jnp.einsum('...tx,x,...yx->...ty', Ex, emission_scale, H)
+        Ey = jnp.einsum('...tx,...x,...yx->...ty', Ex, emission_scale, H)
         emission_cov_stats_2 = jnp.sum(jnp.square(emissions - Ey) * trial_masks_aa, axis=(0, 1))
-        emission_cov_stats_2 += jnp.diag(jnp.einsum('...,...ix,x,...txz,z,...jz->ij', trial_masks, H, emission_scale, Vx, emission_scale, H))
+        emission_cov_stats_2 += jnp.diag(jnp.einsum('...,...ix,...x,...txz,...z,...jz->ij',
+                                                    trial_masks, H, emission_scale, Vx, 
+                                                    emission_scale, H))
         emission_cov_stats_2 = emission_cov_stats_2 / 2
         def update_emissions_cov(s2):
             emissions_cov_posterior = ig_posterior_update(self.emission_covariance_prior,

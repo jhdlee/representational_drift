@@ -506,7 +506,7 @@ def extended_kalman_filter_augmented_state(
                 y_t = y_r[t]
 
                 # Get the Jacobian of the emission function
-                H_u, y_pred = H(_pred_mean)  # (N x (V+D)), N
+                H_u, y_pred = H(_pred_mean, r + num_trials_per_block * block_id)  # (N x (V+D)), N
 
                 # Get the innovation covariance
                 s_k = H_u @ _pred_cov @ H_u.T + R
@@ -519,7 +519,7 @@ def extended_kalman_filter_augmented_state(
                 def update_step(carry, _):
                     prior_mean, prior_cov = carry
                     # Get the Jacobian of the emission function
-                    H_u, y_pred = H(prior_mean)  # (N x (V+D)), N
+                    H_u, y_pred = H(prior_mean, r + num_trials_per_block * block_id)  # (N x (V+D)), N
 
                     # Get the innovation covariance
                     s_k = H_u @ prior_cov @ H_u.T + R
