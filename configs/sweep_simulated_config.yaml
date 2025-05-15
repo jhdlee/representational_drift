@@ -14,7 +14,8 @@ parameters:
   # Seed parameter
   seed:
     # values: [1414]
-    values: [38678, 991123]
+    # values: [991123]
+    values: [996757]
 
   # Sweep parameters
   model.type:
