@@ -7,24 +7,22 @@ command:
 # Wandb configuration
 program: /home/groups/swl1/hdlee/representational_drift/scripts/train.py
 project: smds
-# name: U201202_01_sweep
-name: falcon_m1_sweep
+name: U201202_01_sweep
 method: grid
 
 parameters:
   # Seed parameter
   seed:
-    # values: [10796, 781899, 16441, 51407, 203875]
-    values: [1234]
+    values: [10796, 781899, 16441, 51407, 203875]
 
   model_seed:
-    values: [2014]
+    values: [1234]
   
   # Sweep parameters
   model.type:
     values: ["smds"]
   model.state_dim:
-    values: [10, 15, 20, 25, 30]
+    values: [5, 10, 15, 20, 25, 30, 35]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -42,7 +40,7 @@ parameters:
   model.has_emissions_bias:
     value: false
   model.emissions_cov_eps:
-    values: [1e-9]
+    values: [5e-3, 4e-3]
   model.base_subspace_type:
     values: ["pca"]
   model.initial_velocity_cov:
@@ -50,11 +48,11 @@ parameters:
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    values: [1e-5, 7e-6, 5e-6, 3e-6, 1e-6]
+    values: [2e-5, 1e-5, 7e-6, 5e-6]
   model.fix_tau:
     value: false
   model.max_tau:
-    values: [1e-4, 3e-4]
+    values: [1e-4]
   model.fix_scale:
     values: [true, false]
   model.initial_velocity_covariance_concentration:
@@ -83,10 +81,8 @@ parameters:
 
   # Data parameters
   data.path:
-    # value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
-    value: "/home/groups/swl1/hdlee/falcon-challenge/data_demos"
+    value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
   data.block_size:
-    # value: 8
-    value: 1
+    value: 8
   data.standardize:
     value: true

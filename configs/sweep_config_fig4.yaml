@@ -14,7 +14,8 @@ parameters:
   # Seed parameter
   seed:
     # values: [2626]
-    values: [81357]
+    # values: [81357]
+    values: [7832, 1395]
   model_seed:
     values: [2014]
   
