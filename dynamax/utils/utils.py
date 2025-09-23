@@ -238,11 +238,19 @@ def cayley_map(A):
 
 def rotate_subspace(base_subspace, D, v):
     N = base_subspace.shape[0]
-    dof_shape = (D, (N - D))
+    in_manifold_dof = D * (D - 1) // 2
+
+    in_manifold_v, out_manifold_v = jnp.split(v, [in_manifold_dof])
+    in_manifold_rotation = jnp.zeros((D, D))
+    in_manifold_rotation = in_manifold_rotation.at[jnp.triu_indices(D, k=1)].set(in_manifold_v)
+    in_manifold_rotation = in_manifold_rotation - in_manifold_rotation.T
+
+    out_manifold_dof_shape = (D, (N - D))
 
     rotation = jnp.zeros((N, N))
-    rotation = rotation.at[:D, D:].set(v.reshape(dof_shape))
+    rotation = rotation.at[:D, D:].set(out_manifold_v.reshape(out_manifold_dof_shape))
     rotation -= rotation.T
+    rotation = rotation.at[:D, :D].set(in_manifold_rotation)
     # rotation = jscipy.linalg.expm(rotation)
     rotation = cayley_map(rotation)
     new_subspace = base_subspace @ rotation
