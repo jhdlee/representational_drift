@@ -99,13 +99,13 @@ def load_data(data_path):
     # emissions_path = os.path.join(data_path, 'm1_obs_anscombe.npy')
     # conditions_path = os.path.join(data_path, 'm1_conditions_anscombe.npy')
 
-    # emissions = jnp.load(emissions_path)
-    # conditions = jnp.load(conditions_path, allow_pickle=True)
-    emissions = jnp.load(emissions_path).astype(jnp.float64)
-    conditions = jnp.load(conditions_path).astype(int)
-    # for c in condition_to_n.keys():
-    #     conditions[np.where(conditions==c)] = condition_to_n[c]
-    # conditions = jnp.array(conditions.astype(int))
+    emissions = jnp.load(emissions_path)
+    conditions = jnp.load(conditions_path, allow_pickle=True)
+    # emissions = jnp.load(emissions_path).astype(jnp.float64)
+    # conditions = jnp.load(conditions_path).astype(int)
+    for c in condition_to_n.keys():
+        conditions[np.where(conditions==c)] = condition_to_n[c]
+    conditions = jnp.array(conditions.astype(int))
 
     return emissions, conditions
 
