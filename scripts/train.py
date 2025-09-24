@@ -93,11 +93,11 @@ def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_condition
 
 def load_data(data_path):
     """Load data from npy file"""
-    # emissions_path = os.path.join(data_path, 'emissions_v4.npy')
-    # conditions_path = os.path.join(data_path, 'conditions.npy')
+    emissions_path = os.path.join(data_path, 'emissions_v4.npy')
+    conditions_path = os.path.join(data_path, 'conditions.npy')
 
-    emissions_path = os.path.join(data_path, 'm1_obs_anscombe.npy')
-    conditions_path = os.path.join(data_path, 'm1_conditions_anscombe.npy')
+    # emissions_path = os.path.join(data_path, 'm1_obs_anscombe.npy')
+    # conditions_path = os.path.join(data_path, 'm1_conditions_anscombe.npy')
 
     # emissions = jnp.load(emissions_path)
     # conditions = jnp.load(conditions_path, allow_pickle=True)
@@ -180,7 +180,7 @@ def main(config: DictConfig):
     model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
     model_name = f"{model_config.type}_D.{model_config.state_dim}"
     if model_config.type == 'smds':
-        model_name += f"_ekfmode.{model_config.ekf_mode}_base.{model_config.base_subspace_type}_ivc.{model_config.initial_velocity_cov}"
+        model_name += f"_allow_within_manifold_rotation_ekfmode.{model_config.ekf_mode}_base.{model_config.base_subspace_type}_ivc.{model_config.initial_velocity_cov}"
         model_name += f"_itau.{model_config.init_tau}_mtau.{model_config.max_tau}_eni.{training_config.ekf_num_iters}"
         model_name += f"_tc.{model_config.tau_concentration}_ts.{model_config.tau_scale}"
         model_name += f"_ece.{model_config.emissions_cov_eps}"
@@ -265,7 +265,7 @@ def main(config: DictConfig):
         N = emission_dim
 
         if model_config.type == 'smds':
-            ddof = D * (N - D)
+            ddof = D * (N - D) + D * (D - 1) // 2
             key = jr.PRNGKey(model_seed)
             if model_config.initialize_with_lds:
                 lds_params, props = lds_model.initialize(key=key)
