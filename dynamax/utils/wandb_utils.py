@@ -22,7 +22,8 @@ def init_wandb(config, name, project, **kwargs):
         project=project,
         name=name,
         config=config,
-        mode="online"
+        mode="online",
+        resume="allow"
     )
     
     return run, config
