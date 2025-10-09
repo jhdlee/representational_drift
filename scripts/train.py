@@ -123,6 +123,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
     key = jr.PRNGKey(seed)
     # test_idx = jr.choice(key, jnp.arange(2, num_blocks-2, dtype=int), shape=(num_test_blocks,), replace=False)
     test_idx = jr.choice(key, jnp.arange(8, num_blocks-8, dtype=int), shape=(num_test_blocks,), replace=False)
+    # test_idx = jr.choice(key, jnp.arange(12, num_blocks-12, dtype=int), shape=(num_test_blocks,), replace=False)
     block_masks = block_masks.at[test_idx].set(False)
     num_train_blocks = block_masks.sum()
     block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
@@ -137,7 +138,9 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
         block_masks = jnp.ones(num_blocks, dtype=bool)
         trial_masks = jnp.ones(len(emissions), dtype=bool)
         num_test_blocks = num_blocks // 6
+        # test_idx = jr.choice(key, jnp.arange(2, num_blocks-2, dtype=int), shape=(num_test_blocks,), replace=False)
         test_idx = jr.choice(key, jnp.arange(8, num_blocks-8, dtype=int), shape=(num_test_blocks,), replace=False)
+        # test_idx = jr.choice(key, jnp.arange(12, num_blocks-12, dtype=int), shape=(num_test_blocks,), replace=False)
         block_masks = block_masks.at[test_idx].set(False)
         num_train_blocks = block_masks.sum()
         block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
