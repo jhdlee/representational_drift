@@ -1718,9 +1718,8 @@ class ConditionallyLinearGaussianSSM(SSM):
 
         # Perform MLE estimation jointly
         sum_x0, sum_x0x0T, N = init_stats
-        print(sum_x0x0T.shape, sum_x0.shape, vmap(jnp.outer)(sum_x0, sum_x0).shape)
-        S = (sum_x0x0T - vmap(jnp.outer)(sum_x0, sum_x0)) / N
-        m = sum_x0 / N
+        S = (sum_x0x0T - vmap(jnp.outer)(sum_x0, sum_x0)) / N[:, None, None]
+        m = sum_x0 / N[:, None]
 
         FB, Q = fit_linear_regression(*dynamics_stats)
         F = FB[:, :self.state_dim]
