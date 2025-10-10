@@ -23,7 +23,8 @@ parameters:
   # Sweep parameters
   model.type:
     # values: ["smds"]
-    values: ["lds"]
+    # values: ["lds"]
+    values: ["clds"]
   model.state_dim:
     values: [5, 10, 15, 20, 25, 30, 35]
     # values: [8, 10, 12, 14, 16, 18, 20]
