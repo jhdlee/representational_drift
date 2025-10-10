@@ -1718,6 +1718,7 @@ class ConditionallyLinearGaussianSSM(SSM):
 
         # Perform MLE estimation jointly
         sum_x0, sum_x0x0T, N = init_stats
+        print(sum_x0x0T.shape, sum_x0.shape)
         S = (sum_x0x0T - vmap(jnp.outer)(sum_x0, sum_x0)) / N
         m = sum_x0 / N
 
