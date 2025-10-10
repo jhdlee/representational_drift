@@ -1270,6 +1270,7 @@ class ConditionallyLinearGaussianSSM(SSM):
         emission_dim: int,
         torus_basis_funcs,
         input_dim: int=0,
+        num_trials: int = 1,  # number of trials
         num_conditions: int = 1,
         has_dynamics_bias: bool=True,
         has_emissions_bias: bool=False,
