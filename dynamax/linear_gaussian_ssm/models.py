@@ -1667,13 +1667,28 @@ class ConditionallyLinearGaussianSSM(SSM):
         return None
 
     # need update
+    # def m_step(
+    #     self,
+    #     params: ParamsLGSSM,
+    #     props: ParamsLGSSM,
+    #     batch_stats: SuffStatsLGSSM,
+    #     m_step_state: Any
+    # ) -> Tuple[ParamsLGSSM, Any]:
+
     def m_step(
         self,
         params: ParamsLGSSM,
         props: ParamsLGSSM,
         batch_stats: SuffStatsLGSSM,
-        m_step_state: Any
-    ) -> Tuple[ParamsLGSSM, Any]:
+        m_step_state: Any,
+        posteriors,
+        emissions,
+        conditions=None,
+        trial_masks=None,
+        velocity_smoother=None,
+        block_ids=None,
+        block_masks=None,
+    ):
 
         def fit_linear_regression(ExxT, ExyT, EyyT, N):
             # Solve a linear regression given sufficient statistics
