@@ -72,7 +72,13 @@ parameters:
   model.tau_scale:
     values: [1e-4, 1e-5]
     # values: [1e-5]
-
+  model.kappa:
+    values: [0.2, 0.5, 1.0]
+  model.sigma:
+    values: [0.2, 0.5, 1.0, 1.5, 2.0]
+  model.L:
+    values: [5, 7, 9]
+  
   # Training parameters
   training.run_velocity_smoother:
     value: false

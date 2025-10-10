@@ -355,6 +355,7 @@ class SSM(ABC):
                                Float[Array, "num_batches num_timesteps input_dim"]]]=None,
         conditions: Optional[Float[Array, "num_batches"]] = None,
         trial_masks: jnp.array = None,
+        block_id_nums: jnp.array = None,
         num_iters: int=50,
         block_ids: jnp.array = None,
         block_masks: jnp.array = None,
@@ -398,6 +399,7 @@ class SSM(ABC):
         trial_ids = jnp.arange(len(batch_emissions), dtype=int)
         block_ids = jnp.eye(len(batch_emissions)) if block_ids is None else block_ids
         block_masks = jnp.ones(block_ids.shape[0], dtype=bool) if block_masks is None else block_masks
+        block_id_nums = jnp.arange(block_ids.shape[0], dtype=float) if block_id_nums is None else block_id_nums
         num_blocks = block_ids.shape[0]
         block_size = len(batch_emissions) // num_blocks
         T, N = batch_emissions.shape[1:]
@@ -431,6 +433,7 @@ class SSM(ABC):
                                                                               conditions,
                                                                               trial_masks,
                                                                               trial_ids,
+                                                                              block_id_nums,
                                                                               Hs)
             lp = self.log_prior(params)
             params, m_step_state = self.m_step(params, props, batch_stats,

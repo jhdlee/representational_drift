@@ -22,6 +22,9 @@ model:
   initial_velocity_covariance_scale: 1e-4
   tau_concentration: 1e-9
   tau_scale: 1e-9
+  kappa: 0.5
+  sigma: 1.0
+  L: 5
 
 # Training parameters
 training:

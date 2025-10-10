@@ -15,12 +15,12 @@ import numpy as np
 import pickle as pkl
 from sklearn.decomposition import PCA
 from dynamax.nonlinear_gaussian_ssm.models import StiefelManifoldSSM, make_smds_params
-from dynamax.linear_gaussian_ssm.models import LinearGaussianConjugateSSM
+from dynamax.linear_gaussian_ssm.models import LinearGaussianConjugateSSM, ConditionallyLinearGaussianSSM
 from dynamax.nonlinear_gaussian_ssm.inference_ekf import ParamsNLGSSM
 from dynamax.linear_gaussian_ssm.inference import make_lgssm_params
 from dynamax.utils.wandb_utils import init_wandb, save_model
-from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model
-from dynamax.utils.utils import gram_schmidt, rotate_subspace, compute_rotation
+from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model, evaluate_clds_model
+from dynamax.utils.utils import gram_schmidt, rotate_subspace, compute_rotation, Tm_basis
 from dynamax.utils.distributions import IG
 
 condition_to_n = {'top':0, 
@@ -127,6 +127,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
     block_masks = block_masks.at[test_idx].set(False)
     num_train_blocks = block_masks.sum()
     block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
+    block_id_nums = jnp.repeat(jnp.arange(num_blocks), block_size)
     trial_masks = jnp.repeat(block_masks, block_size)
 
     train_conditions = conditions[trial_masks]
@@ -144,6 +145,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
         block_masks = block_masks.at[test_idx].set(False)
         num_train_blocks = block_masks.sum()
         block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
+        block_id_nums = jnp.repeat(jnp.arange(num_blocks), block_size)
         trial_masks = jnp.repeat(block_masks, block_size)
 
         train_conditions = conditions[trial_masks]
@@ -162,7 +164,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
         test_obs = train_obs[~trial_masks]
 
     return (emissions, conditions,train_obs, test_obs, train_conditions, test_conditions, block_ids, 
-            trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks)
+            trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks, block_id_nums)
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(config: DictConfig):
@@ -188,6 +190,8 @@ def main(config: DictConfig):
         model_name += f"_tc.{model_config.tau_concentration}_ts.{model_config.tau_scale}"
         model_name += f"_ece.{model_config.emissions_cov_eps}"
         model_name += f"_iwlds.{model_config.initialize_with_lds}_fixscale.{model_config.fix_scale}"
+    elif model_config.type == 'clds':
+        model_name += f"_L.{model_config.L}_kappa.{model_config.kappa}_sigma.{model_config.sigma}"
     model_name = f"{model_name}_seed.{seed}"
     
     # Check for evaluation-only mode
@@ -216,7 +220,7 @@ def main(config: DictConfig):
     (emissions, conditions, train_obs, test_obs, 
         train_conditions, test_conditions, block_ids,
         trial_masks, block_masks, sequence_length,
-        emission_dim, num_conditions, num_blocks) = split_and_standardize_data(emissions, conditions, block_size, seed, standardize=standardize)
+        emission_dim, num_conditions, num_blocks, block_id_nums) = split_and_standardize_data(emissions, conditions, block_size, seed, standardize=standardize)
     sorted_var_idx = jnp.argsort(train_obs[~trial_masks].var(axis=(0, 1)))[::-1]
     held_out_idx = sorted_var_idx[:5]
     cosmoothing_mask = jnp.ones(emission_dim, dtype=bool)
@@ -256,6 +260,18 @@ def main(config: DictConfig):
             emission_dim=emission_dim,
             num_conditions=num_conditions,
             has_dynamics_bias=model_config.has_dynamics_bias,
+        )
+    elif model_config.type == 'clds':
+        _sigma, _kappa, _period = model_config.sigma, model_config.kappa, 2*jnp.pi
+        # torus_basis_funcs = Tm_basis(5, M_conditions=1, sigma=_sigma, kappa=_kappa, period=_period)
+        torus_basis_funcs = Tm_basis(model_config.L, M_conditions=1, sigma=_sigma, kappa=_kappa, period=_period)
+        model = ConditionallyLinearGaussianSSM(
+            state_dim=model_config.state_dim,
+            emission_dim=emission_dim,
+            num_conditions=num_conditions,
+            has_dynamics_bias=model_config.has_dynamics_bias,
+            torus_basis_funcs=torus_basis_funcs, 
+            num_trials=num_blocks,
         )
     
     if eval_only and pretrained_model:
@@ -336,6 +352,19 @@ def main(config: DictConfig):
                 use_wandb=use_wandb,
                 wandb_run=wandb_run if use_wandb else None,
             )
+        elif model_config.type == 'clds':
+            key = jr.PRNGKey(model_seed)
+            params, props = model.initialize(key=key)
+            best_params, train_lps = model.fit_em(
+                params=params,
+                props=props,
+                emissions=train_obs[trial_masks],
+                conditions=train_conditions,
+                block_id_nums=block_id_nums[trial_masks],
+                num_iters=training_config.num_iters,
+                use_wandb=use_wandb,
+                wandb_run=wandb_run if use_wandb else None,
+            )
 
         if use_wandb:
             wandb.log({"train_log_posteriors_min_increase": jnp.diff(jnp.array(train_lps))[2:].min()})
@@ -374,6 +403,16 @@ def main(config: DictConfig):
             params=best_params,
             test_obs=test_obs,
             test_conditions=test_conditions,
+            cosmoothing_mask=cosmoothing_mask,
+            wandb_run=wandb_run if use_wandb else None
+        )
+    elif model_config.type == 'clds':
+        metrics = evaluate_clds_model(
+            model=model,
+            params=best_params,
+            test_obs=test_obs,
+            test_conditions=test_conditions,
+            test_block_id_nums=block_id_nums[~trial_masks],
             cosmoothing_mask=cosmoothing_mask,
             wandb_run=wandb_run if use_wandb else None
         )

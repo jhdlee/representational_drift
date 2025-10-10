@@ -257,6 +257,50 @@ def evaluate_lds_model(
     
     return metrics
 
+def compute_clds_test_marginal_ll(test_model, test_params, test_obs, test_conditions, test_block_id_nums):
+    return test_model.batch_marginal_log_prob(test_params, test_obs, conditions=test_conditions, trial_ids=test_block_id_nums)
+
+def evaluate_clds_model(
+    model,
+    params,
+    test_obs,
+    test_conditions,
+    cosmoothing_mask,
+    test_block_id_nums,
+    wandb_run=None
+):
+    """Evaluate a CLDS model on test data.
+    
+    Args:
+        model: The CLDS model
+        params: Model parameters
+        test_obs: Test observations
+        test_conditions: Conditions for test observations
+        test_trial_ids: Trial IDs for test observations
+        cosmoothing_mask: Mask for held-in dimensions for co-smoothing
+        wandb_run: Optional wandb run for logging metrics
+    """
+    test_data_size = test_obs.shape[0] * test_obs.shape[1] * test_obs.shape[2]
+    
+    test_marginal_ll = compute_clds_test_marginal_ll(model, params, test_obs, test_conditions, test_block_id_nums)
+    # test_marginal_ll = test_marginal_ll / test_data_size
+    test_r2_1, test_r2_2, test_r2_3, test_r2_4, test_r2_5 = 0, 0, 0, 0, 0
+    # test_cosmoothing = compute_clds_test_cosmoothing(model, params, test_obs, test_conditions, cosmoothing_mask)
+    condition_averaged_r2 = 0
+    
+    metrics = {
+        'test_log_likelihood': float(test_marginal_ll),
+        'test_r2_1': float(test_r2_1),
+        'test_r2_2': float(test_r2_2),
+        'test_r2_3': float(test_r2_3),
+        'test_condition_averaged_r2': float(condition_averaged_r2),
+    }
+    
+    if wandb_run is not None:
+        log_evaluation_metrics(wandb_run, metrics)
+    
+    return metrics
+
 def evaluate_smds_model(
     model,
     params,

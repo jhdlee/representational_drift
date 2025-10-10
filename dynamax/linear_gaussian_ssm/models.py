@@ -358,6 +358,7 @@ class LinearGaussianSSM(SSM):
         condition: int=0,
         trial_mask: bool=True,
         trial_id: int=0,
+        block_id: float=0,
         H=None,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
@@ -1436,8 +1437,17 @@ class ConditionallyLinearGaussianSSM(SSM):
         emissions: Float[Array, "ntime emission_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         condition: int=0,
+        trial_id: int=0,
     ) -> Scalar:
-        filtered_posterior = lgssm_filter(params, emissions, inputs, condition)
+        _params = ParamsLGSSM(
+            initial=ParamsLGSSMInitial(mean=params.initial.mean, cov=params.initial.cov),
+            dynamics=ParamsLGSSMDynamics(weights=params.dynamics.weights, bias=params.dynamics.bias, 
+                input_weights=params.dynamics.input_weights, cov=params.dynamics.cov),
+            emissions=ParamsLGSSMEmissions(weights=self.wpgs_C(params.emissions.weights, trial_id), 
+                bias=params.emissions.bias, input_weights=params.emissions.input_weights, cov=params.emissions.cov)
+        )
+
+        filtered_posterior = lgssm_filter(_params, emissions, inputs, condition)
         return filtered_posterior.marginal_loglik
 
     def batch_marginal_log_prob(
@@ -1446,9 +1456,10 @@ class ConditionallyLinearGaussianSSM(SSM):
         emissions: Float[Array, "ntime emission_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         conditions = None,
+        trial_ids = None,
     ) -> Scalar:
-        marginal_log_prob_vmap = vmap(self.marginal_log_prob, in_axes=(None, 0, None, 0))
-        return marginal_log_prob_vmap(params, emissions, inputs, conditions).sum()
+        marginal_log_prob_vmap = vmap(self.marginal_log_prob, in_axes=(None, 0, None, 0, 0))
+        return marginal_log_prob_vmap(params, emissions, inputs, conditions, trial_ids).sum()
 
     def filter(
         self,
@@ -1559,6 +1570,7 @@ class ConditionallyLinearGaussianSSM(SSM):
         condition: int=0,
         trial_mask: bool=True,
         trial_id: int=0,
+        block_id: float=0,
         H=None,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
@@ -1569,7 +1581,7 @@ class ConditionallyLinearGaussianSSM(SSM):
             initial=ParamsLGSSMInitial(mean=params.initial.mean, cov=params.initial.cov),
             dynamics=ParamsLGSSMDynamics(weights=params.dynamics.weights, bias=params.dynamics.bias, 
                 input_weights=params.dynamics.input_weights, cov=params.dynamics.cov),
-            emissions=ParamsLGSSMEmissions(weights=self.wpgs_C(params.emissions.weights, trial_id), bias=params.emissions.bias, 
+            emissions=ParamsLGSSMEmissions(weights=self.wpgs_C(params.emissions.weights, block_id), bias=params.emissions.bias, 
                 input_weights=params.emissions.input_weights, cov=params.emissions.cov)
         )
 

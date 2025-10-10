@@ -894,6 +894,7 @@ class StiefelManifoldSSM(SSM):
         condition: int=0,
         trial_mask: bool=True,
         trial_id: int=0,
+        block_id: float=0,
         H=None,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
