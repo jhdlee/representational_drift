@@ -1569,7 +1569,7 @@ class ConditionallyLinearGaussianSSM(SSM):
             initial=ParamsLGSSMInitial(mean=params.initial.mean, cov=params.initial.cov),
             dynamics=ParamsLGSSMDynamics(weights=params.dynamics.weights, bias=params.dynamics.bias, 
                 input_weights=params.dynamics.input_weights, cov=params.dynamics.cov),
-            emissions=ParamsLGSSMEmissions(weights=self.wgps_C(params.emissions.weights, trial_id), bias=params.emissions.bias, 
+            emissions=ParamsLGSSMEmissions(weights=self.wpgs_C(params.emissions.weights, trial_id), bias=params.emissions.bias, 
                 input_weights=params.emissions.input_weights, cov=params.emissions.cov)
         )
 
@@ -1718,10 +1718,10 @@ class ConditionallyLinearGaussianSSM(SSM):
 
         _, R = fit_linear_regression(*emission_stats)
         wgpC_stats = (wgpC_sylvester_stats[0], wgpC_sylvester_stats[2])
-        W_C = fit_gplinear_regression(*wgpC_stats, self.wgps_C)
+        W_C = fit_gplinear_regression(*wgpC_stats, self.wpgs_C)
         # W_C = fit_gplinear_regression_sylvester(
         #         wgpC_sylvester_stats[0], wgpC_sylvester_stats[1] / wgpC_sylvester_stats[3], wgpC_sylvester_stats[2],
-        #         wgp_prior=self.wgps_C
+        #         wgp_prior=self.wpgs_C
         #         )
 
         params = ParamsLGSSM(
