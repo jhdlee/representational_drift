@@ -11,6 +11,8 @@ from jaxtyping import Array, Int
 from scipy.optimize import linear_sum_assignment
 from typing import Optional
 from jax.scipy.linalg import cho_factor, cho_solve
+import itertools
+import mpmath
 
 def has_tpu():
     try:
@@ -345,3 +347,42 @@ def compute_rotation(observations, emissions):
     explained_variances = (S ** 2) / (latent_factors_stacked.shape[0] - 1)
     
     return R, explained_variances
+
+def squared_exponential_spectral_measure(m, sigma, kappa):
+    C_inf = float(mpmath.jtheta(3, 0., mpmath.exp(-2 * mpmath.pi**2 * kappa**2)))
+    return (sigma**2 / C_inf) * jnp.exp(- 2* jnp.pi**2 * kappa**2 * m**2)
+
+def Tm_basis(N: int, M_conditions: int=1, sigma: float=1.0, kappa: float=1.0, period: jnp.ndarray | float = None) -> list:
+    '''
+    Regular Fourier Features sample approximation to GP over the M-dimensional torus.
+    For M=1, this is equivalent to T1_basis.
+    Args:
+        N: number of basis functions for each dimension (so total number of basis functions is 2*(N**M_conditions - 1) + 1)
+        M_conditions: number of conditions
+        sigma: kernel parameter
+        kappa: kernel parameter
+        period: period of the torus. Provide `period >= data_interval + 6 * kappa` for non-periodic data.
+    '''
+    def coef(index_array):
+        return jnp.sqrt(squared_exponential_spectral_measure(jnp.linalg.norm(index_array), sigma, kappa))
+    
+    if period is None:
+        period = jnp.ones(M_conditions)
+    if isinstance(period, float):
+        period = period * jnp.ones(M_conditions)
+
+    basis_funcs = []
+    for index in itertools.product(jnp.arange(N), repeat=M_conditions):
+        if index == (0,)*M_conditions:
+            constant_func = lambda x: coef(jnp.zeros(M_conditions))
+            basis_funcs.append(constant_func) # only one constant function
+        else:
+            def _f_sin(x, index=index): # use defaults to avoid late binding
+                return coef(jnp.array(index)) * jnp.sin(2*jnp.pi * jnp.dot(jnp.array(index), jnp.divide(x, period)))
+            def _f_cos(x, index=index):
+                return coef(jnp.array(index)) * jnp.cos(2*jnp.pi * jnp.dot(jnp.array(index), jnp.divide(x, period)))
+            basis_funcs.append(_f_sin)
+            basis_funcs.append(_f_cos)
+
+    assert len(basis_funcs) == 2*(N**M_conditions - 1) + 1
+    return basis_funcs
