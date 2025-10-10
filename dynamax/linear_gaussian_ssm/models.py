@@ -1333,7 +1333,7 @@ class ConditionallyLinearGaussianSSM(SSM):
         _dynamics_input_weights = jnp.zeros((self.state_dim, self.input_dim))
         _dynamics_bias = jnp.zeros((self.state_dim,)) if self.has_dynamics_bias else None
         _dynamics_covariance = 0.1 * jnp.eye(self.state_dim)
-        _emission_weights = jr.normal(key, (self.num_trials, self.emission_dim, self.state_dim))
+        _emission_weights = self.wpgs_C.sample_weights(key) #jr.normal(key, (self.num_trials, self.emission_dim, self.state_dim))
         _emission_input_weights = jnp.zeros((self.emission_dim, self.input_dim))
         _emission_bias = jnp.zeros((self.emission_dim,)) if self.has_emissions_bias else None
         _emission_covariance = 0.1 * jnp.eye(self.emission_dim)
