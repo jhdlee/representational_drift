@@ -1161,7 +1161,7 @@ class LinearGaussianConjugateSSM(LinearGaussianSSM):
 
 
 class WeightSpaceGaussianProcess():
-    '''
+    r"""
     Weight-space Gaussian Process prior for matrix-valued random functions
         A_ij(u) = \sum_l w^{(ij)} \phi_l(u),       w^{(ij)} ~ N(0, 1)
     where w are the weights and \phi_l are the basis functions.
@@ -1171,7 +1171,7 @@ class WeightSpaceGaussianProcess():
         D1: input dimension
         D2: output dimension
         M: dimension of u, the "conditions"
-    '''
+    """
     def __init__(self, basis_funcs: list, D1: int=1, D2: int=1):
         self.basis_funcs = basis_funcs
         self.L = len(basis_funcs)
@@ -1182,10 +1182,10 @@ class WeightSpaceGaussianProcess():
             weights: Float[Array, "L D1 D2"], 
             conditions: Float[Array, "M"]
         ) -> Float[Array, "T D1 D2"]:
-        '''
+        r"""
         Evaluate A_ij(u) = \sum_l w^{(ij)} \phi_l(u) at the M-dimensional points u in `conditions`
         with `weights` w^{(ij)} and basis functions \phi_l.
-        '''
+        """
         PhiX = self.evaluate_basis(conditions)
         return jnp.einsum('lij,l->ij', weights, PhiX)
     
@@ -1196,17 +1196,17 @@ class WeightSpaceGaussianProcess():
         return jnp.array([f(u) for f in self.basis_funcs]).T
 
     def sample(self, key: jr.PRNGKey, conditions: Float[Array, "T M"]) -> Float[Array, "T D1 D2"]:
-        '''
+        """
         Sample from the GP prior at the points `conditions`
-        '''
+        """
         weights = self.sample_weights(key)
         # PhiX = self.evaluate_basis(conditions)
         return self.__call__(weights, conditions)
     
     def log_prob(self, conditions: Float[Array, "T M"], fs: Float[Array, "T D1 D2"]) -> Float[Array, "D1 D2"]:
-        '''
+        """
         Compute the log probability of the GP draws at the points `conditions`
-        '''
+        """
         # Check dimensions
         if fs.ndim == 2:
             assert (self.D1 == 1) ^ (self.D2 == 1), 'Incorrect dimensions'
@@ -1223,9 +1223,9 @@ class WeightSpaceGaussianProcess():
         return model_dist.log_prob(fs.reshape(T,-1).T).reshape(self.D1, self.D2)
 
     def log_prob_weights(self, weights: Float[Array, "L D1 D2"]) -> float:
-        '''
+        """
         Standard Gaussian prior N(0,1) on the weights
-        '''
+        """
         return -0.5 * jnp.sum(weights**2) - 0.5 * jnp.asarray(weights.shape).prod() * jnp.log(2*jnp.pi)
 
 class ConditionallyLinearGaussianSSM(SSM):
