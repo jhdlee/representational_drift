@@ -1694,6 +1694,7 @@ class ConditionallyLinearGaussianSSM(SSM):
             # Solve a linear regression given sufficient statistics
             W = psd_solve(ExxT, ExyT).T
             Sigma = (EyyT - W @ ExyT - ExyT.T @ W.T + W @ ExxT @ W.T) / N
+            Sigma = symmetrize(Sigma)
             return W, Sigma
 
         def fit_gplinear_regression(ZTZ, ZTY, wgp_prior):
@@ -1734,6 +1735,7 @@ class ConditionallyLinearGaussianSSM(SSM):
         #     else (HD[:, self.state_dim:], None)
 
         _, R = fit_linear_regression(*emission_stats)
+        R = jnp.diag(jnp.diag(R))
         wgpC_stats = (wgpC_sylvester_stats[0], wgpC_sylvester_stats[2])
         W_C = fit_gplinear_regression(*wgpC_stats, self.wpgs_C)
         # W_C = fit_gplinear_regression_sylvester(
