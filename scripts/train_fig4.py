@@ -23,7 +23,7 @@ from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model, ev
 from dynamax.utils.utils import gram_schmidt, rotate_subspace, compute_rotation
 from dynamax.utils.distributions import IG
 from dynamax.linear_gaussian_ssm.models import ConditionallyLinearGaussianSSM
-from dynamax.linear_gaussian_ssm.basis import Tm_basis
+from dynamax.utils.utils import Tm_basis
 
 def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_conditions, 
                           trial_masks, model_config, ddof):
