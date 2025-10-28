@@ -12,7 +12,7 @@
 # Run a wandb sweep for SMDS model
 
 # Activate conda environment
-source /home/groups/swl1/hdlee/miniconda3/bin/activate smds
+source /oak/stanford/groups/swl1/hdlee/miniconda3/bin/activate smds
 
 # Get Sweep ID from the command line argument
 SWEEP_ID=$1
