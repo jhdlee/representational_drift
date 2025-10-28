@@ -262,7 +262,7 @@ def main(config: DictConfig):
             has_dynamics_bias=model_config.has_dynamics_bias,
         )
     elif model_config.type == 'clds':
-        _sigma, _kappa, _period = model_config.sigma, model_config.kappa, 1 + 6 * model_config.kappa
+        _sigma, _kappa, _period = model_config.sigma, model_config.kappa, 1.0 + 6.0 * model_config.kappa
         # torus_basis_funcs = Tm_basis(5, M_conditions=1, sigma=_sigma, kappa=_kappa, period=_period)
         torus_basis_funcs = Tm_basis(model_config.L, M_conditions=1, sigma=_sigma, kappa=_kappa, period=_period)
         model = ConditionallyLinearGaussianSSM(
