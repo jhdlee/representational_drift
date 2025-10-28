@@ -127,7 +127,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
     block_masks = block_masks.at[test_idx].set(False)
     num_train_blocks = block_masks.sum()
     block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
-    block_id_nums = jnp.repeat(jnp.arange(num_blocks), block_size)
+    block_id_nums = jnp.repeat(jnp.arange(num_blocks, dtype=float), block_size)
     trial_masks = jnp.repeat(block_masks, block_size)
 
     train_conditions = conditions[trial_masks]
@@ -145,7 +145,7 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
         block_masks = block_masks.at[test_idx].set(False)
         num_train_blocks = block_masks.sum()
         block_ids = jnp.repeat(jnp.eye(num_blocks), block_size, axis=1)
-        block_id_nums = jnp.repeat(jnp.arange(num_blocks), block_size)
+        block_id_nums = jnp.repeat(jnp.arange(num_blocks, dtype=float), block_size)
         trial_masks = jnp.repeat(block_masks, block_size)
 
         train_conditions = conditions[trial_masks]
@@ -163,8 +163,8 @@ def split_and_standardize_data(emissions, conditions, block_size, seed, standard
         _, sequence_length, emission_dim = train_obs.shape
         test_obs = train_obs[~trial_masks]
 
-    return (emissions, conditions,train_obs, test_obs, train_conditions, test_conditions, block_ids, 
-            trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks, block_id_nums)
+    return (emissions, conditions, train_obs, test_obs, train_conditions, test_conditions, block_ids, 
+            trial_masks, block_masks, sequence_length, emission_dim, num_conditions, num_blocks, block_id_nums / (num_blocks - 1))
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(config: DictConfig):
@@ -262,7 +262,7 @@ def main(config: DictConfig):
             has_dynamics_bias=model_config.has_dynamics_bias,
         )
     elif model_config.type == 'clds':
-        _sigma, _kappa, _period = model_config.sigma, model_config.kappa, 2*jnp.pi
+        _sigma, _kappa, _period = model_config.sigma, model_config.kappa, 1 + 6 * model_config.kappa
         # torus_basis_funcs = Tm_basis(5, M_conditions=1, sigma=_sigma, kappa=_kappa, period=_period)
         torus_basis_funcs = Tm_basis(model_config.L, M_conditions=1, sigma=_sigma, kappa=_kappa, period=_period)
         model = ConditionallyLinearGaussianSSM(
@@ -271,7 +271,7 @@ def main(config: DictConfig):
             num_conditions=num_conditions,
             has_dynamics_bias=model_config.has_dynamics_bias,
             torus_basis_funcs=torus_basis_funcs, 
-            num_trials=num_blocks,
+            num_trials=len(train_obs[trial_masks]),
         )
     
     if eval_only and pretrained_model:

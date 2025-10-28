@@ -1570,7 +1570,7 @@ class ConditionallyLinearGaussianSSM(SSM):
         condition: int=0,
         trial_mask: bool=True,
         trial_id: int=0,
-        block_id: float=0,
+        block_id: float=0.0,
         H=None,
     ) -> Tuple[SuffStatsLGSSM, Scalar]:
         num_timesteps = emissions.shape[0]
@@ -1655,7 +1655,7 @@ class ConditionallyLinearGaussianSSM(SSM):
             Provide the sufficient stats X^T X and X^T Y for the problem Y = A(C)X + noise.
             This returns the expanded stats Phi @ X^T X @ Phi^T and Phi @ X^T Y for the basis functions Phi(C).
             '''
-            _Phi = wgp_prior.evaluate_basis(trial_id)
+            _Phi = wgp_prior.evaluate_basis(block_id)
 
             ZTZ = jnp.einsum('k,ij,l->ikjl', _Phi, XTX, _Phi)
             ZTY = jnp.einsum('k,im->ikm', _Phi, XTY)

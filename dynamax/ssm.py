@@ -400,6 +400,7 @@ class SSM(ABC):
         block_ids = jnp.eye(len(batch_emissions)) if block_ids is None else block_ids
         block_masks = jnp.ones(block_ids.shape[0], dtype=bool) if block_masks is None else block_masks
         block_id_nums = jnp.arange(block_ids.shape[0], dtype=float) if block_id_nums is None else block_id_nums
+        block_id_nums = block_id_nums / (len(block_id_nums) - 1)
         num_blocks = block_ids.shape[0]
         block_size = len(batch_emissions) // num_blocks
         T, N = batch_emissions.shape[1:]
