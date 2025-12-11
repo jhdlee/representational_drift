@@ -1712,7 +1712,7 @@ class ConditionallyLinearGaussianSSM(SSM):
         def fit_gplinear_regression(ZTZ, ZTY, wgp_prior):
             # Solve a linear regression in weight-space given sufficient statistics
             weights = jax.scipy.linalg.solve(
-                ZTZ + jnp.eye(wgp_prior.L * wgp_prior.D2), ZTY, 
+                ZTZ + 1e-4 * jnp.eye(wgp_prior.L * wgp_prior.D2), ZTY, 
                 assume_a='pos'
                 )
             weights = weights.reshape(wgp_prior.D2, wgp_prior.L, wgp_prior.D1).transpose(1,2,0)
