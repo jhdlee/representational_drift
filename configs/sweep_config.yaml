@@ -74,9 +74,9 @@ parameters:
   model.tau_scale:
     values: [1e-6]
   model.kappa:
-    values: [0.05 0.4, 0.5]
+    values: [0.05, 0.4, 0.5]
   model.sigma:
-    values: [0.1]
+    values: [0.1, 0.5, 1.0]
   model.L:
     values: [5, 7, 9, 11]
   model.basis_type:
