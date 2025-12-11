@@ -74,11 +74,11 @@ parameters:
   model.tau_scale:
     values: [1e-6]
   model.kappa:
-    values: [0.01, 0.1, 0.2, 0.3]
+    values: [0.1, 0.2, 0.3]
   model.sigma:
-    values: [1.0]
+    values: [0.1]
   model.L:
-    values: [5, 7, 9]
+    values: [5, 7, 9, 11]
   model.basis_type:
     value: "rbf"  # "fourier" or "rbf"
 
