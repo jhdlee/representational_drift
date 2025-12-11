@@ -386,3 +386,35 @@ def Tm_basis(N: int, M_conditions: int=1, sigma: float=1.0, kappa: float=1.0, pe
 
     assert len(basis_funcs) == 2*(N**M_conditions - 1) + 1
     return basis_funcs
+
+
+def rbf_basis(N: int, M_conditions: int=1, sigma: float=1.0, kappa: float=1.0) -> list:
+    '''
+    Radial Basis Function (Gaussian bump) approximation to GP for non-periodic data.
+
+    Args:
+        N: number of basis functions (centers evenly spaced in [0, 1] per dimension)
+        M_conditions: number of conditions (dimensions of input)
+        sigma: kernel amplitude parameter (controls overall scale)
+        kappa: kernel lengthscale parameter (larger = wider bumps = smoother)
+
+    Returns:
+        List of basis functions. Total count is N**M_conditions.
+    '''
+    # Generate centers as grid in [0, 1]^M_conditions
+    centers_1d = jnp.linspace(0, 1, N)
+
+    basis_funcs = []
+    for center_idx in itertools.product(range(N), repeat=M_conditions):
+        center = jnp.array([centers_1d[i] for i in center_idx])
+
+        def _f(x, center=center, sigma=sigma, kappa=kappa):
+            # x can be scalar or array of shape (M_conditions,)
+            x = jnp.atleast_1d(x)
+            dist_sq = jnp.sum((x - center) ** 2)
+            return sigma * jnp.exp(-0.5 * dist_sq / (kappa ** 2))
+
+        basis_funcs.append(_f)
+
+    assert len(basis_funcs) == N**M_conditions
+    return basis_funcs
