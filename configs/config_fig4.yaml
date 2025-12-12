@@ -25,6 +25,7 @@ model:
   kappa: 0.5
   sigma: 1.0
   L: 5
+  basis_type: "rbf"  # "fourier" or "rbf"
 
 # Training parameters
 training:

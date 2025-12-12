@@ -79,7 +79,9 @@ parameters:
     values: [0.2, 0.5, 1.0, 1.5, 2.0]
   model.L:
     values: [5, 7, 9]
-  
+  model.basis_type:
+    value: "rbf"  # "fourier" or "rbf"
+
   # Training parameters
   training.run_velocity_smoother:
     value: false

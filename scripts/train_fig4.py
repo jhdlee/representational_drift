@@ -23,7 +23,7 @@ from dynamax.utils.eval_utils import evaluate_smds_model, evaluate_lds_model, ev
 from dynamax.utils.utils import gram_schmidt, rotate_subspace, compute_rotation
 from dynamax.utils.distributions import IG
 from dynamax.linear_gaussian_ssm.models import ConditionallyLinearGaussianSSM
-from dynamax.utils.utils import Tm_basis
+from dynamax.utils.utils import Tm_basis, rbf_basis
 
 def transform_lds_to_smds(key, lds_model, lds_params, train_obs, train_conditions, 
                           trial_masks, model_config, ddof):
@@ -204,7 +204,8 @@ def main(config: DictConfig):
         model_name += f"_ece.{model_config.emissions_cov_eps}"
         model_name += f"_iwlds.{model_config.initialize_with_lds}_fixscale.{model_config.fix_scale}"
     elif model_config.type == 'clds':
-        model_name += f"_L.{model_config.L}_kappa.{model_config.kappa}_sigma.{model_config.sigma}"
+        basis_type = model_config.get('basis_type', 'fourier')
+        model_name += f"_basis.{basis_type}_L.{model_config.L}_kappa.{model_config.kappa}_sigma.{model_config.sigma}"
     model_name = f"{model_name}_seed.{seed}"
     
     # Check for evaluation-only mode
@@ -275,14 +276,19 @@ def main(config: DictConfig):
             has_dynamics_bias=model_config.has_dynamics_bias,
         )
     elif model_config.type == 'clds':
-        _sigma, _kappa, _period = model_config.sigma, model_config.kappa, 1.0 + 6.0 * model_config.kappa
-        torus_basis_funcs = Tm_basis(model_config.L, M_conditions=1, sigma=_sigma, kappa=_kappa, period=_period)
+        _sigma, _kappa = model_config.sigma, model_config.kappa
+        basis_type = model_config.get('basis_type', 'fourier')
+        if basis_type == 'rbf':
+            basis_funcs = rbf_basis(model_config.L, M_conditions=1, sigma=_sigma, kappa=_kappa)
+        else:  # fourier (default)
+            _period = 1.0 + 6.0 * _kappa
+            basis_funcs = Tm_basis(model_config.L, M_conditions=1, sigma=_sigma, kappa=_kappa, period=_period)
         model = ConditionallyLinearGaussianSSM(
             state_dim=model_config.state_dim,
             emission_dim=emission_dim,
             num_conditions=num_conditions,
             has_dynamics_bias=model_config.has_dynamics_bias,
-            torus_basis_funcs=torus_basis_funcs, 
+            torus_basis_funcs=basis_funcs, 
             num_trials=len(train_obs[trial_masks]),
         )
     

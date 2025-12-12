@@ -1437,7 +1437,7 @@ class ConditionallyLinearGaussianSSM(SSM):
         emissions: Float[Array, "ntime emission_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         condition: int=0,
-        trial_id: int=0,
+        trial_id: float=0.0,
     ) -> Scalar:
         _params = ParamsLGSSM(
             initial=ParamsLGSSMInitial(mean=params.initial.mean, cov=params.initial.cov),
@@ -1712,7 +1712,7 @@ class ConditionallyLinearGaussianSSM(SSM):
         def fit_gplinear_regression(ZTZ, ZTY, wgp_prior):
             # Solve a linear regression in weight-space given sufficient statistics
             weights = jax.scipy.linalg.solve(
-                ZTZ + 1e-4 * jnp.eye(wgp_prior.L * wgp_prior.D2), ZTY, 
+                ZTZ + jnp.eye(wgp_prior.L * wgp_prior.D2), ZTY, 
                 assume_a='pos'
                 )
             weights = weights.reshape(wgp_prior.D2, wgp_prior.L, wgp_prior.D1).transpose(1,2,0)
