@@ -74,13 +74,13 @@ parameters:
   model.tau_scale:
     values: [1e-6]
   model.kappa:
-    values: [0.1, 0.2, 0.3, 0.4, 0.5]
+    values: [0.4, 0.45, 0.5]
   model.sigma:
-    values: [0.1, 0.5, 1.0]
+    values: [0.2]
   model.L:
-    values: [5, 7, 9, 11]
+    values: [65, 71, 77, 83]
   model.basis_type:
-    value: "rbf"  # "fourier" or "rbf"
+    value: "fourier"  # "fourier" or "rbf"
 
   # Training parameters
   training.run_velocity_smoother:
