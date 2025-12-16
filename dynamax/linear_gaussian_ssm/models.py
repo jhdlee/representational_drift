@@ -1486,8 +1486,18 @@ class ConditionallyLinearGaussianSSM(SSM):
         emissions: Float[Array, "ntime emission_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         condition: int=0,
+        trial_id: float=0.0,
     ) -> PosteriorGSSMSmoothed:
-        return lgssm_smoother(params, emissions, inputs, condition)
+
+        _params = ParamsLGSSM(
+            initial=ParamsLGSSMInitial(mean=params.initial.mean, cov=params.initial.cov),
+            dynamics=ParamsLGSSMDynamics(weights=params.dynamics.weights, bias=params.dynamics.bias, 
+                input_weights=params.dynamics.input_weights, cov=params.dynamics.cov),
+            emissions=ParamsLGSSMEmissions(weights=self.wpgs_C(params.emissions.weights, trial_id), 
+                bias=params.emissions.bias, input_weights=params.emissions.input_weights, cov=params.emissions.cov)
+        )
+
+        return lgssm_smoother(_params, emissions, inputs, condition)
 
     def batch_smoother(
         self,
@@ -1495,9 +1505,16 @@ class ConditionallyLinearGaussianSSM(SSM):
         emissions: Float[Array, "ntime emission_dim"],
         inputs: Optional[Float[Array, "ntime input_dim"]] = None,
         conditions = None,
+        trial_ids = None,
     ) -> PosteriorGSSMSmoothed:
-        lgssm_smoother_vmap = vmap(self.smoother, in_axes=(None, 0, None, 0))
-        return lgssm_smoother_vmap(params, emissions, inputs, conditions)
+        lgssm_smoother_vmap = vmap(self.smoother, in_axes=(None, 0, None, 0, 0))
+        return lgssm_smoother_vmap(params, emissions, inputs, conditions, trial_ids)
+
+    def get_emission_weights(self, params: ParamsLGSSM, trial_id: float=0.0) -> Float[Array, "emission_dim state_dim"]:
+        return self.wpgs_C(params.emissions.weights, trial_id)
+
+    def get_batch_emission_weights(self, params: ParamsLGSSM, trial_ids: Float[Array, "num_batches"]) -> Float[Array, "num_batches emission_dim state_dim"]:
+        return vmap(self.get_emission_weights, in_axes=(None, 0))(params, trial_ids)
 
     # need update
     def posterior_sample(
