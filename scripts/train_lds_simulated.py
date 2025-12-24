@@ -217,7 +217,7 @@ def main(config: DictConfig):
         N = emission_dim
 
         if model_config.type == 'smds':
-            ddof = D * (N - D)
+            ddof = D * (N - D) + D * (D - 1) // 2
             key = jr.PRNGKey(seed)
 
             if model_config.base_subspace_type == 'pca':
