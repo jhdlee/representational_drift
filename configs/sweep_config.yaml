@@ -78,7 +78,7 @@ parameters:
   model.sigma:
     values: [0.2]
   model.L:
-    values: [5, 11, 17, 23] #[65, 71, 77, 83]
+    values: [5, 7, 9] #[65, 71, 77, 83]
   model.basis_type:
     value: "fourier"  # "fourier" or "rbf"
 
