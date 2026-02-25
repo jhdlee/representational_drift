@@ -29,8 +29,8 @@ parameters:
     # values: [30, 32, 34, 36, 38, 40]
     # values: [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50]
     # values: [2, 3, 4, 5]#, 6, 7, 8, 9, 10]
-    # values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    values: [30, 34, 38, 42, 46, 50, 54, 58, 62, 66, 70]
+    values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # values: [30, 34, 38, 42, 46, 50, 54, 58, 62, 66, 70]
   model.ekf_mode:
     value: "cov"
   model.tau_per_dim:
@@ -80,7 +80,7 @@ parameters:
   model.sigma:
     values: [0.2]
   model.L:
-    values: [65, 71, 77, 83]
+    values: [5, 11, 17, 23] #[65, 71, 77, 83]
     # values: [65]
   model.basis_type:
     value: "fourier"  # "fourier" or "rbf"
