@@ -1,13 +1,23 @@
 #!/bin/bash
 #SBATCH --job-name=rt
-#SBATCH --error=.logs/rt_%j_%a.err         
-#SBATCH --output=.logs/rt_%j_%a.out     
-#SBATCH --time=47:59:59                 
+#SBATCH --time=47:59:59
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-gpu=4
-#SBATCH --constraint='(GPU_SKU:H100_SXM5&GPU_MEM:80GB)|(GPU_SKU:A100_SXM4&GPU_MEM:80GB)'
 #SBATCH --mail-type=ALL
 #SBATCH --requeue
+
+# Sherlock-specific options (comment out for Marlowe)
+# #SBATCH --error=/scratch/users/hdlee/representational_drift/logs/rt_%j_%a.err
+# #SBATCH --output=/scratch/users/hdlee/representational_drift/logs/rt_%j_%a.out
+# #SBATCH --constraint='(GPU_SKU:H100_SXM5&GPU_MEM:80GB)|(GPU_SKU:A100_SXM4&GPU_MEM:80GB)'
+
+# Marlowe-specific options (uncomment for Marlowe, comment out Sherlock options above)
+#SBATCH --error=/scratch/m000215-pm05/hdlee/representational_drift/logs/rt_%j_%a.err
+#SBATCH --output=/scratch/m000215-pm05/hdlee/representational_drift/logs/rt_%j_%a.out
+#SBATCH -p batch
+#SBATCH --nodes=1
+#SBATCH -A marlowe-m000215-pm05
+#SBATCH --qos=medium
 
 # Run a wandb sweep for SMDS model
 
