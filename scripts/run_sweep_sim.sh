@@ -12,7 +12,10 @@
 # Run a wandb sweep for simulated data from LDS and SMDS models
 
 # Activate conda environment
-source /home/groups/swl1/hdlee/miniconda3/bin/activate smds
+source /scratch/users/hdlee/miniconda3/bin/activate smds
+
+# Use local scratch for wandb to avoid filesystem slowness
+export WANDB_DIR=$LOCAL_SCRATCH
 
 # Get Sweep ID from the command line argument
 SWEEP_ID=$1

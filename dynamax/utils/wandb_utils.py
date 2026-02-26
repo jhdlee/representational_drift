@@ -23,7 +23,7 @@ def init_wandb(config, name, project, **kwargs):
         name=name,
         config=config,
         mode="online",
-        settings=wandb.Settings(start_method="thread", _service_wait=600)
+        settings=wandb.Settings(start_method="thread", _service_wait=1800)
     )
     
     return run, config
