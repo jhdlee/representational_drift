@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=rt
-#SBATCH --time=5:59:59
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-gpu=4
+#SBATCH --time=23:59:59
+#SBATCH --cpus-per-task=4
+# #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
 #SBATCH --requeue
 
@@ -53,6 +53,9 @@ echo "WANDB_DIR: $WANDB_DIR"
 echo "========================"
 
 export JAX_TRACEBACK_FILTERING=off
+
+# TEMPORARY: Force CPU to bypass cuSolver error on Marlowe (remove once GPU issue is resolved)
+export JAX_PLATFORMS=cpu
 
 # Get Sweep ID from the command line argument
 SWEEP_ID=$1
