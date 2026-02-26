@@ -2,7 +2,7 @@
 #SBATCH --job-name=rt
 #SBATCH --time=1:59:59
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-gpu=4
+#SBATCH --cpus-per-gpu=8
 #SBATCH --mail-type=ALL
 #SBATCH --requeue
 
@@ -25,7 +25,7 @@
 if [ -d "/projects/m000215/hdlee" ]; then
     # Marlowe cluster
     export CLUSTER_NAME=marlowe
-    module load stockcuda/12.6.2 cudnn/cuda12
+    module load nvhpc cudnn/cuda12
     export CC=gcc
     export WANDB_DIR=/scratch/m000215-pm05/hdlee/representational_drift
     mkdir -p $WANDB_DIR
