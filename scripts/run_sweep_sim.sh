@@ -25,6 +25,7 @@
 if [ -d "/projects/m000215/hdlee" ]; then
     # Marlowe cluster
     export CLUSTER_NAME=marlowe
+    module load cudatoolkit/12.5
     export WANDB_DIR=/scratch/m000215-pm05/hdlee/representational_drift
     mkdir -p $WANDB_DIR
     source /projects/m000215/hdlee/miniconda3/bin/activate smds
