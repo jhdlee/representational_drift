@@ -12,7 +12,7 @@
 # Run a wandb sweep for SMDS model
 
 # Activate conda environment
-source /scratch/users/hdlee/miniconda3/bin/activate smds
+source /oak/stanford/groups/swl1/hdlee/miniconda3/bin/activate /scratch/users/hdlee/miniconda3/envs/smds
 
 # Use local scratch for wandb to avoid filesystem slowness
 export WANDB_DIR=$LOCAL_SCRATCH
