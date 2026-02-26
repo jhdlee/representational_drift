@@ -25,7 +25,7 @@
 if [ -d "/projects/m000215/hdlee" ]; then
     # Marlowe cluster
     export CLUSTER_NAME=marlowe
-    module load nvhpc cudnn/cuda12
+    module load stockcuda/12.6.2 cudnn/cuda12
     export CC=gcc
     export WANDB_DIR=/scratch/m000215-pm05/hdlee/representational_drift
     mkdir -p $WANDB_DIR
@@ -40,6 +40,19 @@ else
     echo "Warning: Unknown cluster, attempting default conda activation"
     conda activate smds
 fi
+
+# Log environment info
+echo "=== Environment Info ==="
+echo "Cluster: $CLUSTER_NAME"
+echo "Hostname: $(hostname)"
+echo "Date: $(date)"
+echo "Python: $(which python)"
+echo "CUDA: $(nvcc --version 2>&1 | tail -1 || echo 'nvcc not found')"
+python -c "import jax; print(f'JAX: {jax.__version__}, Devices: {jax.devices()}')" 2>&1
+echo "WANDB_DIR: $WANDB_DIR"
+echo "========================"
+
+export JAX_TRACEBACK_FILTERING=off
 
 # Get Sweep ID from the command line argument
 SWEEP_ID=$1
