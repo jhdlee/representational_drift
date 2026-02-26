@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=rt
-#SBATCH --time=47:59:59
+#SBATCH --time=5:59:59
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-gpu=4
 #SBATCH --mail-type=ALL
@@ -25,7 +25,8 @@
 if [ -d "/projects/m000215/hdlee" ]; then
     # Marlowe cluster
     export CLUSTER_NAME=marlowe
-    module load cudatoolkit/12.5
+    module load nvhpc cudnn/cuda12
+    export CC=gcc
     export WANDB_DIR=/scratch/m000215-pm05/hdlee/representational_drift
     mkdir -p $WANDB_DIR
     source /projects/m000215/hdlee/miniconda3/bin/activate smds
