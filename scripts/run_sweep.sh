@@ -11,11 +11,23 @@
 
 # Run a wandb sweep for SMDS model
 
-# Activate conda environment
-source /oak/stanford/groups/swl1/hdlee/miniconda3/bin/activate /scratch/users/hdlee/miniconda3/envs/smds
-
-# Use local scratch for wandb to avoid filesystem slowness
-export WANDB_DIR=$LOCAL_SCRATCH
+# Detect cluster and activate conda environment
+if [ -d "/projects/m000215/hdlee" ]; then
+    # Marlowe cluster
+    export CLUSTER_NAME=marlowe
+    export WANDB_DIR=/scratch/m000215-pm05/hdlee/representational_drift
+    mkdir -p $WANDB_DIR
+    source /projects/m000215/hdlee/miniconda3/bin/activate smds
+elif [ -d "/oak/stanford/groups/swl1/hdlee" ]; then
+    # Sherlock cluster
+    export CLUSTER_NAME=sherlock
+    export WANDB_DIR=/scratch/users/hdlee/representational_drift
+    mkdir -p $WANDB_DIR
+    source /oak/stanford/groups/swl1/hdlee/miniconda3/bin/activate /scratch/users/hdlee/miniconda3/envs/smds
+else
+    echo "Warning: Unknown cluster, attempting default conda activation"
+    conda activate smds
+fi
 
 # Get Sweep ID from the command line argument
 SWEEP_ID=$1

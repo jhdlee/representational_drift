@@ -195,7 +195,10 @@ def main(config: DictConfig):
     np.random.seed(seed)
     random.seed(seed)
 
-    model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
+    if os.path.isdir('/projects/m000215/hdlee'):
+        model_dir = '/projects/m000215/hdlee/crcns/'
+    else:
+        model_dir = '/oak/stanford/groups/swl1/hdlee/crcns/'
     model_name = f"{model_config.type}_D.{model_config.state_dim}"
     if model_config.type == 'smds':
         model_name += f"_allow_within_manifold_rotation_ekfmode.{model_config.ekf_mode}_base.{model_config.base_subspace_type}_ivc.{model_config.initial_velocity_cov}"
@@ -228,6 +231,10 @@ def main(config: DictConfig):
     # Load data
     data_config = config.data
     data_path = data_config.path
+    if os.path.isdir('/projects/m000215/hdlee'):
+        data_path = data_path.replace('/home/groups/swl1/hdlee/nast/neurips_2025', '/projects/m000215/hdlee/alm')
+        data_path = data_path.replace('/oak/stanford/groups/swl1/hdlee', '/projects/m000215/hdlee')
+        data_path = data_path.replace('/home/groups/swl1/hdlee', '/projects/m000215/hdlee')
     block_size = data_config.block_size
     standardize = data_config.standardize
     emissions, conditions = load_data(data_path)

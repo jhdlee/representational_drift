@@ -77,7 +77,11 @@ def main(config: DictConfig):
     num_timesteps = data_config.num_timesteps
     block_size = data_config.block_size
 
-    data_dir = model_dir = f'/oak/stanford/groups/swl1/hdlee/smds/lds_simulated_{true_state_dim}x{emission_dim}/'
+    if os.path.isdir('/projects/m000215/hdlee'):
+        base_dir = '/projects/m000215/hdlee/smds'
+    else:
+        base_dir = '/oak/stanford/groups/swl1/hdlee/smds'
+    data_dir = model_dir = f'{base_dir}/lds_simulated_{true_state_dim}x{emission_dim}/'
     os.makedirs(data_dir, exist_ok=True)
     model_name = f"{model_config.type}_D.{model_config.state_dim}"
     if model_config.type == 'smds':

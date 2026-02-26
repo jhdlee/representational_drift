@@ -5,7 +5,7 @@ command:
   - ${args_no_hyphens}
 
 # Wandb configuration
-program: /home/groups/swl1/hdlee/representational_drift/scripts/train.py
+program: scripts/train.py
 project: smds
 name: U201202_01_sweep
 method: grid

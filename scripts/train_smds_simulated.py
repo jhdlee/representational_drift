@@ -85,7 +85,11 @@ def main(config: DictConfig):
     #     # Skip the rest of the function
     #     return
 
-    data_dir = model_dir = f'/oak/stanford/groups/swl1/hdlee/smds/simulated_{true_state_dim}x{emission_dim}/'
+    if os.path.isdir('/projects/m000215/hdlee'):
+        base_dir = '/projects/m000215/hdlee/smds'
+    else:
+        base_dir = '/oak/stanford/groups/swl1/hdlee/smds'
+    data_dir = model_dir = f'{base_dir}/simulated_{true_state_dim}x{emission_dim}/'
     os.makedirs(data_dir, exist_ok=True)
     model_name = f"{model_config.type}_D.{model_config.state_dim}"
     if model_config.type == 'smds':
