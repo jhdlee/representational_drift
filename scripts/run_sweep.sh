@@ -41,18 +41,18 @@ else
     conda activate smds
 fi
 
-# Log environment info
-echo "=== Environment Info ==="
-echo "Cluster: $CLUSTER_NAME"
-echo "Hostname: $(hostname)"
-echo "Date: $(date)"
-echo "Python: $(which python)"
-echo "CUDA: $(nvcc --version 2>&1 | tail -1 || echo 'nvcc not found')"
-python -c "import jax; print(f'JAX: {jax.__version__}, Devices: {jax.devices()}')" 2>&1
-echo "WANDB_DIR: $WANDB_DIR"
-echo "========================"
+# # Log environment info
+# echo "=== Environment Info ==="
+# echo "Cluster: $CLUSTER_NAME"
+# echo "Hostname: $(hostname)"
+# echo "Date: $(date)"
+# echo "Python: $(which python)"
+# echo "CUDA: $(nvcc --version 2>&1 | tail -1 || echo 'nvcc not found')"
+# python -c "import jax; print(f'JAX: {jax.__version__}, Devices: {jax.devices()}')" 2>&1
+# echo "WANDB_DIR: $WANDB_DIR"
+# echo "========================"
 
-export JAX_TRACEBACK_FILTERING=off
+# export JAX_TRACEBACK_FILTERING=off
 
 
 # Get Sweep ID from the command line argument
