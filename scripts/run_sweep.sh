@@ -25,7 +25,6 @@
 if [ -d "/projects/m000215/hdlee" ]; then
     # Marlowe cluster
     export CLUSTER_NAME=marlowe
-    module load nvhpc cudnn/cuda12
     export CC=gcc
     export WANDB_DIR=/scratch/m000215-pm05/hdlee/representational_drift
     mkdir -p $WANDB_DIR
