@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=rt
-#SBATCH --time=1:59:59
+#SBATCH --time=3:59:59
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-gpu=8
 #SBATCH --mail-type=ALL
@@ -18,6 +18,7 @@
 #SBATCH --nodes=1
 #SBATCH -A marlowe-m000215-pm05
 #SBATCH --qos=medium
+#SBATCH --exclude=n21
 
 # Run a wandb sweep for SMDS model
 
