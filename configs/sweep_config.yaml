@@ -23,8 +23,8 @@ parameters:
   
   # Sweep parameters
   model.type:
-    # values: ["smds"]
-    values: ["lds"]
+    values: ["smds"]
+    # values: ["lds"]
     # values: ["clds"]
   model.state_dim:
     values: [5, 10, 15, 20, 25, 30, 35]
@@ -57,8 +57,8 @@ parameters:
   model.fix_initial_velocity_cov:
     value: false
   model.init_tau:
-    # values: [2e-5, 1e-5, 7e-6, 5e-6]
-    values: [5e-6]
+    values: [2e-5, 1e-5, 7e-6, 5e-6]
+    # values: [5e-6]
   model.fix_tau:
     value: false
   model.max_tau:
@@ -70,8 +70,8 @@ parameters:
   model.initial_velocity_covariance_scale:
     values: [1e-4]
   model.tau_concentration:
-    # values: [1e-3, 1e-2, 1e-1]
-    values: [1e-3]
+    values: [1e-3, 1e-2, 1e-1]
+    # values: [1e-3]
   model.tau_scale:
     values: [1e-6]
   model.kappa:
