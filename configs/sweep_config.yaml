@@ -7,7 +7,8 @@ command:
 # Wandb configuration
 program: scripts/train.py
 project: smds
-name: U201202_01_sweep
+# name: U201202_01_sweep
+name: H200113_01_sweep
 method: grid
 
 parameters:
@@ -23,8 +24,8 @@ parameters:
   # Sweep parameters
   model.type:
     # values: ["smds"]
-    # values: ["lds"]
-    values: ["clds"]
+    values: ["lds"]
+    # values: ["clds"]
   model.state_dim:
     values: [5, 10, 15, 20, 25, 30, 35]
     # values: [8, 10, 12, 14, 16, 18, 20]
@@ -74,11 +75,11 @@ parameters:
   model.tau_scale:
     values: [1e-6]
   model.kappa:
-    values: [0.4, 0.45, 0.5]
+    values: [0.5] #[0.4, 0.45, 0.5]
   model.sigma:
     values: [0.2]
   model.L:
-    values: [5, 9, 13, 17] #[65, 71, 77, 83]
+    values: [65] #[5, 9, 13, 17] #[65, 71, 77, 83]
   model.basis_type:
     value: "fourier"  # "fourier" or "rbf"
 
@@ -99,7 +100,8 @@ parameters:
 
   # Data parameters
   data.path:
-    value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
+    # value: "/oak/stanford/groups/swl1/hdlee/crcns/U201202_01"
+    value: "/oak/stanford/groups/swl1/hdlee/crcns/H200113_01"
   data.block_size:
     value: 8
   data.standardize:
