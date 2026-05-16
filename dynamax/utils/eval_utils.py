@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import jax.random as jr
 from sklearn.metrics import r2_score
 from dynamax.linear_gaussian_ssm.inference import make_lgssm_params, lgssm_smoother
 from jax import vmap
@@ -75,15 +76,45 @@ def compute_lds_test_condition_averaged_r2(test_model, test_params, test_obs, te
 
     return jnp.corrcoef(condition_averaged_true_psths, condition_averaged_pred_psths)[0, 1]
 
-def compute_smds_test_marginal_ll(test_model, test_params, obs, conditions, block_masks, method, num_iters):
-    xy_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, 
-                                                      block_masks=jnp.ones(len(obs), dtype=bool), 
-                                                      method=method, num_iters=num_iters)
-    y_ekf_marginal_ll = test_model.marginal_log_prob(test_params, obs, conditions=conditions, 
-                                                     block_masks=block_masks, 
-                                                     method=method, num_iters=num_iters)
-    test_ekf_marginal_ll = xy_ekf_marginal_ll - y_ekf_marginal_ll
-    return test_ekf_marginal_ll
+def compute_smds_test_marginal_ll(
+    test_model,
+    test_params,
+    obs,
+    conditions,
+    block_masks,
+    method,
+    num_iters,
+    key=None,
+    num_particles=100,
+    return_components=False,
+):
+    """Compute held-out conditional SMDS MLL as ``log p(all) - log p(train)``."""
+    if key is None:
+        key = jr.PRNGKey(0)
+    key_all, key_train = jr.split(key)
+
+    all_kwargs = dict(
+        conditions=conditions,
+        block_masks=jnp.ones(len(obs), dtype=bool),
+        method=method,
+        num_iters=num_iters,
+        key=key_all,
+        num_particles=num_particles,
+    )
+    train_kwargs = dict(
+        conditions=conditions,
+        block_masks=block_masks,
+        method=method,
+        num_iters=num_iters,
+        key=key_train,
+        num_particles=num_particles,
+    )
+    xy_marginal_ll = test_model.marginal_log_prob(test_params, obs, **all_kwargs)
+    y_marginal_ll = test_model.marginal_log_prob(test_params, obs, **train_kwargs)
+    test_marginal_ll = xy_marginal_ll - y_marginal_ll
+    if return_components:
+        return test_marginal_ll, xy_marginal_ll, y_marginal_ll
+    return test_marginal_ll
 
 def compute_smds_test_r2(test_model, Hs, test_params, test_obs, test_conditions):
     mu_0 = test_params.initial.mean
