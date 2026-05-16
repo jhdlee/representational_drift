@@ -3,10 +3,16 @@
 import argparse
 import csv
 import os
+import sys
 import time
 from pathlib import Path
 
 os.environ.setdefault("XLA_PYTHON_CLIENT_ALLOCATOR", "platform")
+os.environ.setdefault("MPLCONFIGDIR", str(Path(os.environ.get("TMPDIR", "/tmp")) / "matplotlib"))
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import jax
 
@@ -18,6 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from jax import vmap
 
+from dynamax.linear_gaussian_ssm.inference import make_lgssm_params, lgssm_filter
 from dynamax.nonlinear_gaussian_ssm.models import StiefelManifoldSSM
 from dynamax.utils.eval_utils import compute_smds_test_marginal_ll
 from dynamax.utils.utils import random_dynamics_weights, rotate_subspace
@@ -36,6 +43,29 @@ def append_csv(path, fieldnames, row):
         if write_header:
             writer.writeheader()
         writer.writerow(row)
+
+
+def resolve_csv_path(path, fieldnames):
+    path = Path(path)
+    if not path.exists() or path.stat().st_size == 0:
+        return path
+    with path.open(newline="") as f:
+        reader = csv.reader(f)
+        existing_header = next(reader, None)
+    if existing_header == fieldnames:
+        return path
+
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    candidate = path.with_name(f"{path.stem}_{timestamp}{path.suffix}")
+    counter = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.stem}_{timestamp}_{counter}{path.suffix}")
+        counter += 1
+    print(
+        f"[output] existing {path} has a different schema; writing new rows to {candidate}",
+        flush=True,
+    )
+    return candidate
 
 
 def as_float(value):
@@ -191,6 +221,158 @@ def run_one_smc(args, model, params, obs, conditions, block_masks, particle_coun
     return conditional_ll, all_ll, train_ll, time.perf_counter() - start
 
 
+def _select_trial_param(param, absolute_trial_id, default):
+    if param is None:
+        return default
+    if getattr(param, "ndim", 0) == 2:
+        return param[absolute_trial_id]
+    return param
+
+
+def _flatten_fixed_cs(fixed_Cs, num_blocks, block_size):
+    fixed_Cs = jnp.asarray(fixed_Cs)
+    if fixed_Cs.ndim == 2:
+        return jnp.broadcast_to(fixed_Cs, (num_blocks * block_size,) + fixed_Cs.shape)
+    if fixed_Cs.ndim == 4:
+        return fixed_Cs.reshape(num_blocks * block_size, fixed_Cs.shape[-2], fixed_Cs.shape[-1])
+    return fixed_Cs
+
+
+def fixed_c_loglik(params, emissions, conditions, block_masks, trial_masks, fixed_Cs):
+    """Exact log p(observed emissions | fixed C, theta_x) via LGSSM filtering."""
+
+    num_blocks, block_size = emissions.shape[:2]
+    if conditions is None:
+        conditions = jnp.zeros((num_blocks, block_size), dtype=int)
+    if block_masks is None:
+        block_masks = jnp.ones((num_blocks,), dtype=bool)
+    if trial_masks is None:
+        trial_masks = jnp.ones((num_blocks, block_size), dtype=bool)
+
+    fixed_Cs = _flatten_fixed_cs(fixed_Cs, num_blocks, block_size)
+    A = params.dynamics.weights
+    Q = params.dynamics.cov
+    R = params.emissions.cov
+    dynamics_bias = params.dynamics.bias
+    dynamics_input_weights = params.dynamics.input_weights
+    emissions_input_weights = params.emissions.input_weights
+    emission_bias_default = jnp.zeros((emissions.shape[-1],))
+    emission_scale_default = jnp.ones((fixed_Cs.shape[-1],))
+
+    def trial_loglik(trial_emissions, condition, block_observed, trial_observed, block_id, trial_id):
+        absolute_trial_id = block_id * block_size + trial_id
+        C = fixed_Cs[absolute_trial_id]
+        emissions_bias = _select_trial_param(params.emissions.bias, absolute_trial_id, emission_bias_default)
+        emissions_scale = _select_trial_param(params.emissions.scale, absolute_trial_id, emission_scale_default)
+        lgssm_params = make_lgssm_params(
+            initial_mean=params.initial.mean,
+            initial_cov=params.initial.cov,
+            dynamics_weights=A,
+            dynamics_cov=Q,
+            emissions_weights=C * emissions_scale[jnp.newaxis, :],
+            emissions_cov=R,
+            dynamics_bias=dynamics_bias,
+            dynamics_input_weights=dynamics_input_weights,
+            emissions_bias=emissions_bias,
+            emissions_input_weights=emissions_input_weights,
+        )
+
+        def observed(args):
+            y, c = args
+            return lgssm_filter(lgssm_params, y, condition=c).marginal_loglik
+
+        def skipped(args):
+            del args
+            return jnp.array(0.0)
+
+        return jax.lax.cond(block_observed & trial_observed, observed, skipped, (trial_emissions, condition))
+
+    def block_loglik(block_emissions, block_conditions, block_observed, block_trial_masks, block_id):
+        trial_ids = jnp.arange(block_size)
+        block_ids = jnp.full((block_size,), block_id)
+        block_observed = jnp.full((block_size,), block_observed)
+        trial_lls = vmap(trial_loglik)(
+            block_emissions,
+            block_conditions,
+            block_observed,
+            block_trial_masks,
+            block_ids,
+            trial_ids,
+        )
+        return jnp.sum(trial_lls)
+
+    block_ids = jnp.arange(num_blocks)
+    block_lls = vmap(block_loglik)(emissions, conditions, block_masks, trial_masks, block_ids)
+    return jnp.sum(block_lls)
+
+
+def compute_fixed_c_conditional_mll(params, emissions, conditions, block_masks, fixed_Cs, trial_masks=None):
+    """Compute log p(all observed | fixed C) - log p(train observed | fixed C)."""
+
+    all_block_masks = jnp.ones((emissions.shape[0],), dtype=bool)
+    all_ll = fixed_c_loglik(params, emissions, conditions, all_block_masks, trial_masks, fixed_Cs)
+    train_ll = fixed_c_loglik(params, emissions, conditions, block_masks, trial_masks, fixed_Cs)
+    return all_ll - train_ll, all_ll, train_ll
+
+
+def infer_train_fixed_cs(model, params, emissions, conditions, block_masks, trial_masks=None, num_iters=1):
+    """Infer a block-level drift path using training blocks only, then freeze C."""
+
+    smoother = model.smoother(
+        params,
+        emissions,
+        conditions=conditions,
+        block_masks=block_masks,
+        trial_masks=trial_masks,
+        method=1,
+        num_iters=num_iters,
+    )
+    block_Cs = vmap(rotate_subspace, in_axes=(None, None, 0))(
+        params.emissions.base_subspace,
+        model.state_dim,
+        smoother.smoothed_means,
+    )
+    trial_Cs = jnp.repeat(block_Cs, emissions.shape[1], axis=0)
+    return trial_Cs
+
+
+def run_fixed_c_oracle(params, obs, conditions, block_masks, trial_masks):
+    start = time.perf_counter()
+    conditional_ll, all_ll, train_ll = compute_fixed_c_conditional_mll(
+        params,
+        obs,
+        conditions,
+        block_masks,
+        params.emissions.weights,
+        trial_masks=trial_masks,
+    )
+    conditional_ll, all_ll, train_ll = map(as_float, (conditional_ll, all_ll, train_ll))
+    return conditional_ll, all_ll, train_ll, time.perf_counter() - start
+
+
+def run_fixed_c_train_inferred(args, model, params, obs, conditions, block_masks, trial_masks):
+    start = time.perf_counter()
+    fixed_Cs = infer_train_fixed_cs(
+        model,
+        params,
+        obs,
+        conditions,
+        block_masks,
+        trial_masks=trial_masks,
+        num_iters=args.ekf_num_iters,
+    )
+    conditional_ll, all_ll, train_ll = compute_fixed_c_conditional_mll(
+        params,
+        obs,
+        conditions,
+        block_masks,
+        fixed_Cs,
+        trial_masks=trial_masks,
+    )
+    conditional_ll, all_ll, train_ll = map(as_float, (conditional_ll, all_ll, train_ll))
+    return conditional_ll, all_ll, train_ll, time.perf_counter() - start
+
+
 def make_figure(summary_rows, output_dir):
     if not summary_rows:
         return None
@@ -219,6 +401,59 @@ def make_figure(summary_rows, output_dir):
     fig.tight_layout()
     png_path = output_dir / "ekf_minus_smc_mll.png"
     pdf_path = output_dir / "ekf_minus_smc_mll.pdf"
+    fig.savefig(png_path, dpi=200)
+    fig.savefig(pdf_path)
+    plt.close(fig)
+    return png_path, pdf_path
+
+
+def make_fixed_c_figure(summary_rows, output_dir):
+    if not summary_rows:
+        return None
+    output_dir = Path(output_dir)
+    particle_count = max(int(row["num_particles"]) for row in summary_rows)
+    rows = [row for row in summary_rows if int(row["num_particles"]) == particle_count]
+    xs = np.asarray([float(row["mean_angle_deg"]) for row in rows])
+    entries = np.asarray([float(row["test_entries"]) for row in rows])
+    order = np.argsort(xs)
+
+    fig, ax = plt.subplots(figsize=(6.0, 3.8))
+    ax.plot(
+        xs[order],
+        (np.asarray([float(row["ekf_conditional_ll"]) for row in rows]) / entries)[order],
+        marker="o",
+        linewidth=1.5,
+        label="EKF marginal",
+    )
+    ax.errorbar(
+        xs[order],
+        (np.asarray([float(row["smc_conditional_mean"]) for row in rows]) / entries)[order],
+        yerr=(np.asarray([float(row["smc_conditional_se"]) for row in rows]) / entries)[order],
+        marker="o",
+        linewidth=1.5,
+        capsize=3,
+        label=f"RB-SMC marginal ({particle_count} particles)",
+    )
+    ax.plot(
+        xs[order],
+        (np.asarray([float(row["fixed_c_oracle_conditional_ll"]) for row in rows]) / entries)[order],
+        marker="o",
+        linewidth=1.5,
+        label="Oracle fixed C",
+    )
+    ax.plot(
+        xs[order],
+        (np.asarray([float(row["fixed_c_train_inferred_conditional_ll"]) for row in rows]) / entries)[order],
+        marker="o",
+        linewidth=1.5,
+        label="Train-inferred fixed C",
+    )
+    ax.set_xlabel("Mean consecutive principal angle (deg)")
+    ax.set_ylabel("Held-out conditional MLL / entry")
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    png_path = output_dir / "fixed_c_mll_comparison.png"
+    pdf_path = output_dir / "fixed_c_mll_comparison.pdf"
     fig.savefig(png_path, dpi=200)
     fig.savefig(pdf_path)
     plt.close(fig)
@@ -259,8 +494,6 @@ def main():
     summary_csv = output_dir / "summary_results.csv"
 
     print("[config]", vars(args), flush=True)
-    print(f"[output] replicate_csv={replicate_csv}", flush=True)
-    print(f"[output] summary_csv={summary_csv}", flush=True)
 
     replicate_fields = [
         "tau",
@@ -274,10 +507,27 @@ def main():
         "ekf_all_ll",
         "ekf_train_ll",
         "ekf_conditional_ll",
+        "fixed_c_oracle_all_ll",
+        "fixed_c_oracle_train_ll",
+        "fixed_c_oracle_conditional_ll",
+        "fixed_c_oracle_runtime_sec",
+        "fixed_c_train_inferred_all_ll",
+        "fixed_c_train_inferred_train_ll",
+        "fixed_c_train_inferred_conditional_ll",
+        "fixed_c_train_inferred_runtime_sec",
         "smc_all_ll",
         "smc_train_ll",
         "smc_conditional_ll",
         "smc_runtime_sec",
+        "ekf_minus_smc",
+        "ekf_minus_smc_per_entry",
+        "ekf_minus_fixed_c_oracle",
+        "ekf_minus_fixed_c_oracle_per_entry",
+        "ekf_minus_fixed_c_train_inferred",
+        "ekf_minus_fixed_c_train_inferred_per_entry",
+        "fixed_c_oracle_minus_train_inferred",
+        "fixed_c_oracle_minus_train_inferred_per_entry",
+        "test_entries",
     ]
     summary_fields = [
         "tau",
@@ -290,21 +540,43 @@ def main():
         "ekf_train_ll",
         "ekf_conditional_ll",
         "ekf_runtime_sec",
+        "fixed_c_oracle_all_ll",
+        "fixed_c_oracle_train_ll",
+        "fixed_c_oracle_conditional_ll",
+        "fixed_c_oracle_runtime_sec",
+        "fixed_c_train_inferred_all_ll",
+        "fixed_c_train_inferred_train_ll",
+        "fixed_c_train_inferred_conditional_ll",
+        "fixed_c_train_inferred_runtime_sec",
         "smc_conditional_mean",
         "smc_conditional_se",
         "smc_conditional_se_per_entry",
         "ekf_minus_smc",
         "ekf_minus_smc_per_entry",
+        "ekf_minus_fixed_c_oracle",
+        "ekf_minus_fixed_c_oracle_per_entry",
+        "ekf_minus_fixed_c_train_inferred",
+        "ekf_minus_fixed_c_train_inferred_per_entry",
+        "fixed_c_oracle_minus_train_inferred",
+        "fixed_c_oracle_minus_train_inferred_per_entry",
         "test_entries",
     ]
+    replicate_csv = resolve_csv_path(replicate_csv, replicate_fields)
+    summary_csv = resolve_csv_path(summary_csv, summary_fields)
+    print(f"[output] replicate_csv={replicate_csv}", flush=True)
+    print(f"[output] summary_csv={summary_csv}", flush=True)
+
     summary_rows = []
 
     for tau_index, tau in enumerate(tau_values):
         for data_seed in data_seeds:
             print(f"[dataset] tau_index={tau_index} tau={tau:g} data_seed={data_seed}", flush=True)
             dataset_start = time.perf_counter()
-            model, params, obs, conditions, block_masks, _, mean_angle, max_angle = make_dataset(args, tau, data_seed)
-            test_entries = int((~np.asarray(block_masks)).sum() * args.block_size * args.num_timesteps * args.emission_dim)
+            model, params, obs, conditions, block_masks, trial_masks, mean_angle, max_angle = make_dataset(
+                args, tau, data_seed
+            )
+            test_trial_count = int(np.sum((~np.asarray(block_masks))[:, None] & np.asarray(trial_masks)))
+            test_entries = test_trial_count * args.num_timesteps * args.emission_dim
             print(
                 f"[dataset] built in {time.perf_counter() - dataset_start:.2f}s "
                 f"mean_angle={mean_angle:.4f}deg max_angle={max_angle:.4f}deg test_entries={test_entries}",
@@ -315,6 +587,31 @@ def main():
             print(
                 f"[ekf] all={ekf_all:.4f} train={ekf_train:.4f} conditional={ekf_cond:.4f} "
                 f"runtime={ekf_runtime:.2f}s",
+                flush=True,
+            )
+
+            fixed_oracle_cond, fixed_oracle_all, fixed_oracle_train, fixed_oracle_runtime = run_fixed_c_oracle(
+                params,
+                obs,
+                conditions,
+                block_masks,
+                trial_masks,
+            )
+            print(
+                f"[fixed-c/oracle] all={fixed_oracle_all:.4f} train={fixed_oracle_train:.4f} "
+                f"conditional={fixed_oracle_cond:.4f} runtime={fixed_oracle_runtime:.2f}s",
+                flush=True,
+            )
+
+            (
+                fixed_train_cond,
+                fixed_train_all,
+                fixed_train_train,
+                fixed_train_runtime,
+            ) = run_fixed_c_train_inferred(args, model, params, obs, conditions, block_masks, trial_masks)
+            print(
+                f"[fixed-c/train-inferred] all={fixed_train_all:.4f} train={fixed_train_train:.4f} "
+                f"conditional={fixed_train_cond:.4f} runtime={fixed_train_runtime:.2f}s",
                 flush=True,
             )
 
@@ -356,10 +653,31 @@ def main():
                             "ekf_all_ll": ekf_all,
                             "ekf_train_ll": ekf_train,
                             "ekf_conditional_ll": ekf_cond,
+                            "fixed_c_oracle_all_ll": fixed_oracle_all,
+                            "fixed_c_oracle_train_ll": fixed_oracle_train,
+                            "fixed_c_oracle_conditional_ll": fixed_oracle_cond,
+                            "fixed_c_oracle_runtime_sec": fixed_oracle_runtime,
+                            "fixed_c_train_inferred_all_ll": fixed_train_all,
+                            "fixed_c_train_inferred_train_ll": fixed_train_train,
+                            "fixed_c_train_inferred_conditional_ll": fixed_train_cond,
+                            "fixed_c_train_inferred_runtime_sec": fixed_train_runtime,
                             "smc_all_ll": smc_all,
                             "smc_train_ll": smc_train,
                             "smc_conditional_ll": smc_cond,
                             "smc_runtime_sec": smc_runtime,
+                            "ekf_minus_smc": ekf_cond - smc_cond,
+                            "ekf_minus_smc_per_entry": (ekf_cond - smc_cond) / test_entries,
+                            "ekf_minus_fixed_c_oracle": ekf_cond - fixed_oracle_cond,
+                            "ekf_minus_fixed_c_oracle_per_entry": (ekf_cond - fixed_oracle_cond) / test_entries,
+                            "ekf_minus_fixed_c_train_inferred": ekf_cond - fixed_train_cond,
+                            "ekf_minus_fixed_c_train_inferred_per_entry": (
+                                ekf_cond - fixed_train_cond
+                            ) / test_entries,
+                            "fixed_c_oracle_minus_train_inferred": fixed_oracle_cond - fixed_train_cond,
+                            "fixed_c_oracle_minus_train_inferred_per_entry": (
+                                fixed_oracle_cond - fixed_train_cond
+                            ) / test_entries,
+                            "test_entries": test_entries,
                         },
                     )
 
@@ -375,11 +693,27 @@ def main():
                     "ekf_train_ll": ekf_train,
                     "ekf_conditional_ll": ekf_cond,
                     "ekf_runtime_sec": ekf_runtime,
+                    "fixed_c_oracle_all_ll": fixed_oracle_all,
+                    "fixed_c_oracle_train_ll": fixed_oracle_train,
+                    "fixed_c_oracle_conditional_ll": fixed_oracle_cond,
+                    "fixed_c_oracle_runtime_sec": fixed_oracle_runtime,
+                    "fixed_c_train_inferred_all_ll": fixed_train_all,
+                    "fixed_c_train_inferred_train_ll": fixed_train_train,
+                    "fixed_c_train_inferred_conditional_ll": fixed_train_cond,
+                    "fixed_c_train_inferred_runtime_sec": fixed_train_runtime,
                     "smc_conditional_mean": smc_mean,
                     "smc_conditional_se": smc_se,
                     "smc_conditional_se_per_entry": smc_se / test_entries,
                     "ekf_minus_smc": ekf_cond - smc_mean,
                     "ekf_minus_smc_per_entry": (ekf_cond - smc_mean) / test_entries,
+                    "ekf_minus_fixed_c_oracle": ekf_cond - fixed_oracle_cond,
+                    "ekf_minus_fixed_c_oracle_per_entry": (ekf_cond - fixed_oracle_cond) / test_entries,
+                    "ekf_minus_fixed_c_train_inferred": ekf_cond - fixed_train_cond,
+                    "ekf_minus_fixed_c_train_inferred_per_entry": (ekf_cond - fixed_train_cond) / test_entries,
+                    "fixed_c_oracle_minus_train_inferred": fixed_oracle_cond - fixed_train_cond,
+                    "fixed_c_oracle_minus_train_inferred_per_entry": (
+                        fixed_oracle_cond - fixed_train_cond
+                    ) / test_entries,
                     "test_entries": test_entries,
                 }
                 summary_rows.append(row)
@@ -391,10 +725,14 @@ def main():
                 )
 
     figure_paths = make_figure(summary_rows, output_dir)
+    fixed_c_figure_paths = make_fixed_c_figure(summary_rows, output_dir)
     print(f"[done] summary_csv={summary_csv}", flush=True)
     if figure_paths is not None:
         print(f"[done] figure_png={figure_paths[0]}", flush=True)
         print(f"[done] figure_pdf={figure_paths[1]}", flush=True)
+    if fixed_c_figure_paths is not None:
+        print(f"[done] fixed_c_figure_png={fixed_c_figure_paths[0]}", flush=True)
+        print(f"[done] fixed_c_figure_pdf={fixed_c_figure_paths[1]}", flush=True)
 
 
 if __name__ == "__main__":

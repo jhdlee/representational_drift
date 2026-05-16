@@ -13,6 +13,11 @@ from dynamax.nonlinear_gaussian_ssm.inference_smc import (
 )
 from dynamax.nonlinear_gaussian_ssm.models import StiefelManifoldSSM
 from dynamax.utils.utils import rotate_subspace
+from scripts.compare_ekf_smc_mll import (
+    compute_fixed_c_conditional_mll,
+    fixed_c_loglik,
+    infer_train_fixed_cs,
+)
 
 tfd = tfp.distributions
 
@@ -57,15 +62,61 @@ def build_small_smds(num_blocks=4, block_size=2, num_timesteps=5, key=0):
     return model, params, emissions, conditions, block_velocities
 
 
+def direct_fixed_c_loglik(params, emissions, conditions, block_masks, trial_masks, fixed_Cs):
+    num_blocks, block_size = emissions.shape[:2]
+    if fixed_Cs.ndim == 4:
+        fixed_Cs = fixed_Cs.reshape(num_blocks * block_size, fixed_Cs.shape[-2], fixed_Cs.shape[-1])
+    if fixed_Cs.ndim == 2:
+        fixed_Cs = jnp.broadcast_to(fixed_Cs, (num_blocks * block_size,) + fixed_Cs.shape)
+
+    total = jnp.array(0.0)
+    for block_id in range(num_blocks):
+        if not bool(block_masks[block_id]):
+            continue
+        for trial_id in range(block_size):
+            if not bool(trial_masks[block_id, trial_id]):
+                continue
+            absolute_trial_id = block_id * block_size + trial_id
+            C = fixed_Cs[absolute_trial_id]
+            scale = (
+                params.emissions.scale[absolute_trial_id]
+                if getattr(params.emissions.scale, "ndim", 0) == 2
+                else params.emissions.scale
+            )
+            bias = (
+                params.emissions.bias[absolute_trial_id]
+                if getattr(params.emissions.bias, "ndim", 0) == 2
+                else params.emissions.bias
+            )
+            lgssm_params = make_lgssm_params(
+                params.initial.mean,
+                params.initial.cov,
+                params.dynamics.weights,
+                params.dynamics.cov,
+                C * scale[jnp.newaxis, :],
+                params.emissions.cov,
+                dynamics_bias=params.dynamics.bias,
+                dynamics_input_weights=params.dynamics.input_weights,
+                emissions_bias=bias,
+                emissions_input_weights=params.emissions.input_weights,
+            )
+            total += lgssm_filter(
+                lgssm_params,
+                emissions[block_id, trial_id],
+                condition=conditions[block_id, trial_id],
+            ).marginal_loglik
+    return total
+
+
 def test_smc_normalizer_matches_gaussian_integral():
     q_std = 1.25
     num_steps = 5
     num_particles = 1500
 
     def transition_fn(key, state, obs, t):
-        del state, obs, t
+        del obs, t
         q_dist = tfd.Normal(0.0, q_std)
-        x = q_dist.sample(seed=key)
+        x = q_dist.sample(seed=key).astype(state.dtype)
         log_q = q_dist.log_prob(x)
         log_p = -jnp.square(x) / 2.0
         return x, log_p - log_q
@@ -173,6 +224,107 @@ def test_fixed_velocity_block_loglik_equals_direct_lgssm_filters():
 
     direct_ll = jnp.sum(vmap(direct_trial_ll)(emissions[block_id], conditions[block_id], trial_mask))
     assert jnp.allclose(helper_ll, direct_ll)
+
+
+def test_fixed_c_loglik_equals_direct_lgssm_filters():
+    _, params, emissions, conditions, _ = build_small_smds()
+    block_masks = jnp.array([True, False, True, True])
+    trial_masks = jnp.ones(conditions.shape, dtype=bool).at[2, 1].set(False)
+    helper_ll = fixed_c_loglik(
+        params,
+        emissions,
+        conditions,
+        block_masks,
+        trial_masks,
+        params.emissions.weights,
+    )
+    direct_ll = direct_fixed_c_loglik(
+        params,
+        emissions,
+        conditions,
+        block_masks,
+        trial_masks,
+        params.emissions.weights,
+    )
+    assert jnp.allclose(helper_ll, direct_ll)
+
+
+def test_fixed_c_masked_emissions_are_ignored():
+    _, params, emissions, conditions, _ = build_small_smds()
+    block_masks = jnp.array([True, False, True, False])
+    trial_masks = jnp.ones(conditions.shape, dtype=bool).at[2, 0].set(False)
+    changed = jnp.where(block_masks[:, None, None, None], emissions, emissions + 1000.0)
+    changed = changed.at[2, 0].add(500.0)
+
+    kwargs = dict(
+        params=params,
+        conditions=conditions,
+        block_masks=block_masks,
+        trial_masks=trial_masks,
+        fixed_Cs=params.emissions.weights,
+    )
+    ll = fixed_c_loglik(emissions=emissions, **kwargs)
+    changed_ll = fixed_c_loglik(emissions=changed, **kwargs)
+    assert jnp.allclose(ll, changed_ll)
+
+
+def test_oracle_fixed_c_conditional_mll_matches_direct_emission_weights_likelihood():
+    _, params, emissions, conditions, _ = build_small_smds()
+    block_masks = jnp.array([True, False, True, False])
+    trial_masks = jnp.ones(conditions.shape, dtype=bool)
+    conditional_ll, all_ll, train_ll = compute_fixed_c_conditional_mll(
+        params,
+        emissions,
+        conditions,
+        block_masks,
+        params.emissions.weights,
+        trial_masks=trial_masks,
+    )
+    direct_all_ll = direct_fixed_c_loglik(
+        params,
+        emissions,
+        conditions,
+        jnp.ones((emissions.shape[0],), dtype=bool),
+        trial_masks,
+        params.emissions.weights,
+    )
+    direct_train_ll = direct_fixed_c_loglik(
+        params,
+        emissions,
+        conditions,
+        block_masks,
+        trial_masks,
+        params.emissions.weights,
+    )
+    assert jnp.allclose(all_ll, direct_all_ll)
+    assert jnp.allclose(train_ll, direct_train_ll)
+    assert jnp.allclose(conditional_ll, direct_all_ll - direct_train_ll)
+
+
+def test_train_inferred_fixed_c_does_not_use_heldout_emissions():
+    model, params, emissions, conditions, _ = build_small_smds()
+    block_masks = jnp.array([True, False, True, False])
+    trial_masks = jnp.ones(conditions.shape, dtype=bool)
+    fixed_Cs = infer_train_fixed_cs(
+        model,
+        params,
+        emissions,
+        conditions,
+        block_masks,
+        trial_masks=trial_masks,
+        num_iters=1,
+    )
+    changed = jnp.where(block_masks[:, None, None, None], emissions, emissions + 1000.0)
+    changed_fixed_Cs = infer_train_fixed_cs(
+        model,
+        params,
+        changed,
+        conditions,
+        block_masks,
+        trial_masks=trial_masks,
+        num_iters=1,
+    )
+    assert jnp.allclose(fixed_Cs, changed_fixed_Cs, atol=1e-6)
 
 
 def test_cayley_geometry_uses_full_within_and_out_of_manifold_velocity():
