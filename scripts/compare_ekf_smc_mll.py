@@ -79,6 +79,53 @@ def summarize(values):
     return mean, se
 
 
+def logmeanexp(log_values, axis=None):
+    log_values = np.asarray(log_values, dtype=float)
+    if axis is None:
+        max_value = np.max(log_values)
+        return float(max_value + np.log(np.mean(np.exp(log_values - max_value))))
+    max_value = np.max(log_values, axis=axis, keepdims=True)
+    return np.squeeze(max_value, axis=axis) + np.log(np.mean(np.exp(log_values - max_value), axis=axis))
+
+
+def bootstrap_logmeanexp_ratio_se(all_lls, train_lls, num_bootstrap=1000, seed=0):
+    all_lls = np.asarray(all_lls, dtype=float)
+    train_lls = np.asarray(train_lls, dtype=float)
+    num_replicates = len(all_lls)
+    if num_replicates <= 1 or num_bootstrap <= 1:
+        return 0.0
+
+    rng = np.random.default_rng(seed)
+    all_indices = rng.integers(0, num_replicates, size=(num_bootstrap, num_replicates))
+    train_indices = rng.integers(0, num_replicates, size=(num_bootstrap, num_replicates))
+    estimates = logmeanexp(all_lls[all_indices], axis=1) - logmeanexp(train_lls[train_indices], axis=1)
+    return float(np.std(estimates, ddof=1))
+
+
+def summarize_smc_log_replicates(all_lls, train_lls, num_bootstrap=1000, bootstrap_seed=0):
+    all_lls = np.asarray(all_lls, dtype=float)
+    train_lls = np.asarray(train_lls, dtype=float)
+    conditional_lls = all_lls - train_lls
+    mean_log_conditional, mean_log_conditional_se = summarize(conditional_lls)
+    all_logmeanexp = logmeanexp(all_lls)
+    train_logmeanexp = logmeanexp(train_lls)
+    conditional_logmeanexp = all_logmeanexp - train_logmeanexp
+    conditional_bootstrap_se = bootstrap_logmeanexp_ratio_se(
+        all_lls,
+        train_lls,
+        num_bootstrap=num_bootstrap,
+        seed=bootstrap_seed,
+    )
+    return {
+        "all_logmeanexp": all_logmeanexp,
+        "train_logmeanexp": train_logmeanexp,
+        "conditional_logmeanexp": conditional_logmeanexp,
+        "conditional_bootstrap_se": conditional_bootstrap_se,
+        "mean_log_conditional": mean_log_conditional,
+        "mean_log_conditional_se": mean_log_conditional_se,
+    }
+
+
 def principal_angle_summary(emission_weights):
     angles = []
     for t in range(len(emission_weights) - 1):
@@ -474,6 +521,7 @@ def build_parser():
     parser.add_argument("--data_seeds", default="0,1")
     parser.add_argument("--particle_counts", default="256,1024")
     parser.add_argument("--smc_replicates", type=int, default=4)
+    parser.add_argument("--smc_bootstrap_samples", type=int, default=1000)
     parser.add_argument("--smc_seed", type=int, default=1000)
     parser.add_argument("--ekf_num_iters", type=int, default=1)
     parser.add_argument("--initial_velocity_cov", type=float, default=1e-8)
@@ -548,9 +596,16 @@ def main():
         "fixed_c_train_inferred_train_ll",
         "fixed_c_train_inferred_conditional_ll",
         "fixed_c_train_inferred_runtime_sec",
+        "smc_all_logmeanexp",
+        "smc_train_logmeanexp",
+        "smc_conditional_logmeanexp",
         "smc_conditional_mean",
         "smc_conditional_se",
         "smc_conditional_se_per_entry",
+        "smc_conditional_mean_log",
+        "smc_conditional_mean_log_se",
+        "smc_conditional_mean_log_se_per_entry",
+        "smc_bootstrap_samples",
         "ekf_minus_smc",
         "ekf_minus_smc_per_entry",
         "ekf_minus_fixed_c_oracle",
@@ -616,7 +671,8 @@ def main():
             )
 
             for particle_count in particle_counts:
-                smc_conditionals = []
+                smc_alls = []
+                smc_trains = []
                 print(f"[smc] starting num_particles={particle_count}", flush=True)
                 for replicate in range(args.smc_replicates):
                     smc_seed = args.smc_seed + 100000 * tau_index + 1000 * data_seed + 17 * replicate + particle_count
@@ -630,12 +686,21 @@ def main():
                         particle_count,
                         smc_seed,
                     )
-                    smc_conditionals.append(smc_cond)
-                    running_mean, running_se = summarize(smc_conditionals)
+                    smc_alls.append(smc_all)
+                    smc_trains.append(smc_train)
+                    running_summary = summarize_smc_log_replicates(
+                        smc_alls,
+                        smc_trains,
+                        num_bootstrap=args.smc_bootstrap_samples,
+                        bootstrap_seed=smc_seed,
+                    )
                     print(
                         f"[smc] particles={particle_count} rep={replicate + 1}/{args.smc_replicates} "
                         f"seed={smc_seed} all={smc_all:.4f} train={smc_train:.4f} conditional={smc_cond:.4f} "
-                        f"runtime={smc_runtime:.2f}s running_mean={running_mean:.4f} running_se={running_se:.4f}",
+                        f"runtime={smc_runtime:.2f}s "
+                        f"running_logmeanexp={running_summary['conditional_logmeanexp']:.4f} "
+                        f"running_bootstrap_se={running_summary['conditional_bootstrap_se']:.4f} "
+                        f"running_mean_log={running_summary['mean_log_conditional']:.4f}",
                         flush=True,
                     )
                     append_csv(
@@ -681,7 +746,14 @@ def main():
                         },
                     )
 
-                smc_mean, smc_se = summarize(smc_conditionals)
+                smc_summary = summarize_smc_log_replicates(
+                    smc_alls,
+                    smc_trains,
+                    num_bootstrap=args.smc_bootstrap_samples,
+                    bootstrap_seed=args.smc_seed + 100000 * tau_index + 1000 * data_seed + particle_count,
+                )
+                smc_mean = smc_summary["conditional_logmeanexp"]
+                smc_se = smc_summary["conditional_bootstrap_se"]
                 row = {
                     "tau": tau,
                     "tau_index": tau_index,
@@ -701,9 +773,18 @@ def main():
                     "fixed_c_train_inferred_train_ll": fixed_train_train,
                     "fixed_c_train_inferred_conditional_ll": fixed_train_cond,
                     "fixed_c_train_inferred_runtime_sec": fixed_train_runtime,
+                    "smc_all_logmeanexp": smc_summary["all_logmeanexp"],
+                    "smc_train_logmeanexp": smc_summary["train_logmeanexp"],
+                    "smc_conditional_logmeanexp": smc_mean,
                     "smc_conditional_mean": smc_mean,
                     "smc_conditional_se": smc_se,
                     "smc_conditional_se_per_entry": smc_se / test_entries,
+                    "smc_conditional_mean_log": smc_summary["mean_log_conditional"],
+                    "smc_conditional_mean_log_se": smc_summary["mean_log_conditional_se"],
+                    "smc_conditional_mean_log_se_per_entry": (
+                        smc_summary["mean_log_conditional_se"] / test_entries
+                    ),
+                    "smc_bootstrap_samples": args.smc_bootstrap_samples,
                     "ekf_minus_smc": ekf_cond - smc_mean,
                     "ekf_minus_smc_per_entry": (ekf_cond - smc_mean) / test_entries,
                     "ekf_minus_fixed_c_oracle": ekf_cond - fixed_oracle_cond,

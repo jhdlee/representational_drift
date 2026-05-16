@@ -17,6 +17,7 @@ from scripts.compare_ekf_smc_mll import (
     compute_fixed_c_conditional_mll,
     fixed_c_loglik,
     infer_train_fixed_cs,
+    summarize_smc_log_replicates,
 )
 
 tfd = tfp.distributions
@@ -131,6 +132,20 @@ def test_smc_normalizer_matches_gaussian_integral():
     )
     expected = (num_steps / 2.0) * (jnp.log(2.0) + jnp.log(jnp.pi))
     assert jnp.allclose(result.log_Z_hat, expected, atol=8e-2)
+
+
+def test_smc_replicate_summary_uses_logmeanexp_likelihood_estimator():
+    all_lls = jnp.log(jnp.array([1.0, 3.0]))
+    train_lls = jnp.log(jnp.array([1.0, 1.0]))
+    summary = summarize_smc_log_replicates(
+        all_lls,
+        train_lls,
+        num_bootstrap=0,
+    )
+    expected = jnp.log(jnp.array(2.0))
+    mean_of_logs = jnp.mean(all_lls - train_lls)
+    assert jnp.allclose(summary["conditional_logmeanexp"], expected)
+    assert not jnp.allclose(summary["conditional_logmeanexp"], mean_of_logs)
 
 
 def test_rb_smc_all_masked_returns_zero():
