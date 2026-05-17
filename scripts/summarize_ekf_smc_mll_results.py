@@ -404,10 +404,9 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_l
                 continue
 
             xs = np.asarray([to_int(row, "num_particles") for row in seed_rows], dtype=float)
-            entries = np.asarray([to_float(row, "test_entries", default=1.0) for row in seed_rows], dtype=float)
-            ys = np.asarray([smc_conditional(row) for row in seed_rows], dtype=float) / entries
+            ys = np.asarray([smc_conditional(row) for row in seed_rows], dtype=float)
             yerr = np.asarray(
-                [to_float(row, "smc_conditional_se_per_entry", default=0.0) for row in seed_rows],
+                [to_float(row, "smc_conditional_se", default=0.0) for row in seed_rows],
                 dtype=float,
             )
             ax.errorbar(
@@ -420,11 +419,7 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_l
                 color=color,
                 label="RB-SMC",
             )
-            ekf_y = to_float(seed_rows[-1], "ekf_conditional_ll") / to_float(
-                seed_rows[-1],
-                "test_entries",
-                default=1.0,
-            )
+            ekf_y = to_float(seed_rows[-1], "ekf_conditional_ll")
             ax.axhline(
                 ekf_y,
                 color="black",
@@ -438,7 +433,16 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_l
             if seed_index == 0:
                 ax.set_title(f"tau={tau:g}")
             if tau_index == 0:
-                ax.set_ylabel(f"seed {data_seed}\nMLL / entry")
+                ax.set_ylabel("Conditional log likelihood")
+                ax.text(
+                    0.02,
+                    0.95,
+                    f"seed {data_seed}",
+                    ha="left",
+                    va="top",
+                    transform=ax.transAxes,
+                    fontsize=8,
+                )
             if seed_index == num_rows - 1:
                 ax.set_xlabel("SMC particles")
             if seed_index == 0 and tau_index == 0:
@@ -480,25 +484,25 @@ def plot_oracle_advantage(rows, output_dir):
     rows = sorted_rows(rows_at_largest_particles(rows))
     if not rows:
         return None
-    xs = np.asarray([to_float(row, "mean_angle_deg") for row in rows])
-    entries = np.asarray([to_float(row, "test_entries", default=1.0) for row in rows])
-    smc = np.asarray([smc_conditional(row) for row in rows])
-    oracle = np.asarray([to_float(row, "fixed_c_oracle_conditional_ll") for row in rows])
-    train_fixed = np.asarray([to_float(row, "fixed_c_train_inferred_conditional_ll") for row in rows])
-    order = np.argsort(xs)
-
     fig, ax = plt.subplots(figsize=(5.8, 3.8))
-    ax.plot(xs[order], ((oracle - smc) / entries)[order], marker="o", linewidth=1.5, label="Oracle fixed C - RB-SMC")
-    ax.plot(
-        xs[order],
-        ((train_fixed - smc) / entries)[order],
-        marker="o",
-        linewidth=1.5,
-        label="Train-inferred fixed C - RB-SMC",
-    )
+    data_seeds = sorted({to_int(row, "data_seed") for row in rows})
+    for data_seed in data_seeds:
+        seed_rows = [row for row in rows if to_int(row, "data_seed") == data_seed]
+        seed_rows = sorted(seed_rows, key=lambda row: to_float(row, "tau"))
+        xs = np.asarray([to_float(row, "tau") for row in seed_rows])
+        ys = np.asarray(
+            [
+                to_float(row, "fixed_c_oracle_conditional_ll") - smc_conditional(row)
+                for row in seed_rows
+            ],
+            dtype=float,
+        )
+        ax.plot(xs, ys, marker="o", linewidth=1.5, label=f"data seed {data_seed}")
+
     ax.axhline(0, color="black", linewidth=1, linestyle=":")
-    ax.set_xlabel("Mean rotation angle (deg)")
-    ax.set_ylabel("Conditional MLL advantage / entry")
+    ax.set_xscale("log")
+    ax.set_xlabel("tau")
+    ax.set_ylabel("Oracle fixed-C - RB-SMC conditional log likelihood")
     ax.legend(frameon=False)
     fig.tight_layout()
     return savefig(fig, output_dir, "fixed_c_advantage_over_smc")
