@@ -429,20 +429,13 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_l
             )
 
             ax.set_xscale("log", base=2)
+            ax.set_xticks([2**4, 2**8, 2**12, 2**16])
+            ax.set_xticklabels([r"$2^4$", r"$2^8$", r"$2^{12}$", r"$2^{16}$"])
             ax.grid(alpha=0.18)
             if seed_index == 0:
                 ax.set_title(f"tau={tau:g}")
             if tau_index == 0:
-                ax.set_ylabel("Conditional log likelihood")
-                ax.text(
-                    0.02,
-                    0.95,
-                    f"seed {data_seed}",
-                    ha="left",
-                    va="top",
-                    transform=ax.transAxes,
-                    fontsize=8,
-                )
+                ax.set_ylabel("Marginal LL")
             if seed_index == num_rows - 1:
                 ax.set_xlabel("SMC particles")
             if seed_index == 0 and tau_index == 0:
@@ -502,7 +495,7 @@ def plot_oracle_advantage(rows, output_dir):
     ax.axhline(0, color="black", linewidth=1, linestyle=":")
     ax.set_xscale("log")
     ax.set_xlabel("tau")
-    ax.set_ylabel("Oracle fixed-C - RB-SMC conditional log likelihood")
+    ax.set_ylabel("Conditional LL - EKF Marginal LL")
     ax.legend(frameon=False)
     fig.tight_layout()
     return savefig(fig, output_dir, "fixed_c_advantage_over_smc")
