@@ -412,6 +412,18 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, max_data_se
                 color=colors[seed_index % len(colors)],
                 label=f"data seed {data_seed}",
             )
+            ekf_y = to_float(seed_rows[-1], "ekf_conditional_ll") / to_float(
+                seed_rows[-1],
+                "test_entries",
+                default=1.0,
+            )
+            ax.axhline(
+                ekf_y,
+                color=colors[seed_index % len(colors)],
+                linewidth=1.2,
+                linestyle=":",
+                label=f"EKF seed {data_seed}",
+            )
 
         ax.set_xscale("log", base=2)
         ax.set_title(f"tau={tau:g}")
