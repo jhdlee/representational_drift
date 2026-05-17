@@ -359,42 +359,50 @@ def plot_smc_convergence(rows, output_dir):
     return savefig(fig, output_dir, "smc_particle_convergence")
 
 
-def select_smc_path_rows(rows, tau_values, max_data_seeds):
+def select_smc_path_rows(rows, tau_values, data_seed_limit=None):
     selected = []
     for tau in tau_values:
         tau_rows = [row for row in rows if matches_tau(row, tau)]
-        data_seeds = sorted({to_int(row, "data_seed") for row in tau_rows})[:max_data_seeds]
+        data_seeds = sorted({to_int(row, "data_seed") for row in tau_rows})
+        if data_seed_limit is not None:
+            data_seeds = data_seeds[:data_seed_limit]
         for data_seed in data_seeds:
             seed_rows = [row for row in tau_rows if to_int(row, "data_seed") == data_seed]
             selected.extend(sorted(seed_rows, key=lambda row: to_int(row, "num_particles")))
     return selected
 
 
-def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, max_data_seeds):
-    num_panels = len(tau_values)
-    if num_panels == 0:
+def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_limit=None):
+    num_cols = len(tau_values)
+    if num_cols == 0:
         return None, []
 
-    fig, axes = plt.subplots(1, num_panels, figsize=(4.1 * num_panels, 3.4), sharey=True)
-    if num_panels == 1:
-        axes = [axes]
+    selected_rows = select_smc_path_rows(rows, tau_values, data_seed_limit=data_seed_limit)
+    data_seeds = sorted({to_int(row, "data_seed") for row in selected_rows})
+    num_rows = max(1, len(data_seeds))
+    fig, axes = plt.subplots(
+        num_rows,
+        num_cols,
+        figsize=(3.8 * num_cols, 2.75 * num_rows),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
 
-    selected_rows = []
-    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for ax, tau in zip(axes, tau_values):
-        tau_rows = [row for row in rows if matches_tau(row, tau)]
-        data_seeds = sorted({to_int(row, "data_seed") for row in tau_rows})[:max_data_seeds]
-        if not data_seeds:
-            ax.text(0.5, 0.5, f"tau={tau:g}\nnot found", ha="center", va="center", transform=ax.transAxes)
-            ax.set_axis_off()
-            continue
-
-        for seed_index, data_seed in enumerate(data_seeds):
+    color = plt.rcParams["axes.prop_cycle"].by_key()["color"][0]
+    for seed_index, data_seed in enumerate(data_seeds):
+        for tau_index, tau in enumerate(tau_values):
+            ax = axes[seed_index, tau_index]
+            tau_rows = [row for row in rows if matches_tau(row, tau)]
             seed_rows = sorted(
                 [row for row in tau_rows if to_int(row, "data_seed") == data_seed],
                 key=lambda row: to_int(row, "num_particles"),
             )
-            selected_rows.extend(seed_rows)
+            if not seed_rows:
+                ax.text(0.5, 0.5, "not run", ha="center", va="center", transform=ax.transAxes)
+                ax.set_axis_off()
+                continue
+
             xs = np.asarray([to_int(row, "num_particles") for row in seed_rows], dtype=float)
             entries = np.asarray([to_float(row, "test_entries", default=1.0) for row in seed_rows], dtype=float)
             ys = np.asarray([smc_conditional(row) for row in seed_rows], dtype=float) / entries
@@ -409,8 +417,8 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, max_data_se
                 marker="o",
                 linewidth=1.6,
                 capsize=3,
-                color=colors[seed_index % len(colors)],
-                label=f"data seed {data_seed}",
+                color=color,
+                label="RB-SMC",
             )
             ekf_y = to_float(seed_rows[-1], "ekf_conditional_ll") / to_float(
                 seed_rows[-1],
@@ -419,19 +427,23 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, max_data_se
             )
             ax.axhline(
                 ekf_y,
-                color=colors[seed_index % len(colors)],
+                color="black",
                 linewidth=1.2,
                 linestyle=":",
-                label=f"EKF seed {data_seed}",
+                label="EKF",
             )
 
-        ax.set_xscale("log", base=2)
-        ax.set_title(f"tau={tau:g}")
-        ax.set_xlabel("SMC particles")
-        ax.grid(alpha=0.18)
-        ax.legend(frameon=False, fontsize=8)
+            ax.set_xscale("log", base=2)
+            ax.grid(alpha=0.18)
+            if seed_index == 0:
+                ax.set_title(f"tau={tau:g}")
+            if tau_index == 0:
+                ax.set_ylabel(f"seed {data_seed}\nMLL / entry")
+            if seed_index == num_rows - 1:
+                ax.set_xlabel("SMC particles")
+            if seed_index == 0 and tau_index == 0:
+                ax.legend(frameon=False, fontsize=8)
 
-    axes[0].set_ylabel("RB-SMC logmeanexp conditional MLL / entry")
     fig.tight_layout()
     paths = savefig(fig, output_dir, "smc_logmeanexp_vs_particles_by_tau")
     return paths, selected_rows
@@ -567,7 +579,7 @@ def build_parser():
     parser.add_argument("--bootstrap_samples", type=int, default=2000)
     parser.add_argument("--bootstrap_seed", type=int, default=0)
     parser.add_argument("--convergence_tau_values", default="1e-5,1e-4,1e-3")
-    parser.add_argument("--convergence_num_data_seeds", type=int, default=2)
+    parser.add_argument("--convergence_num_data_seeds", type=int, default=0)
     parser.add_argument("--no_recompute_smc_from_replicates", action="store_true")
     return parser
 
@@ -617,7 +629,7 @@ def main():
         rows,
         output_dir,
         convergence_tau_values,
-        args.convergence_num_data_seeds,
+        data_seed_limit=args.convergence_num_data_seeds or None,
     )
     if smc_path_rows:
         write_csv(
