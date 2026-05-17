@@ -353,7 +353,7 @@ def plot_smc_convergence(rows, output_dir):
     )
     ax.set_xscale("log", base=2)
     ax.set_xlabel("SMC particles")
-    ax.set_ylabel("|SMC - largest-particle SMC| / entry")
+    ax.set_ylabel("|SMC - largest-particle SMC|")
     ax.legend(frameon=False)
     fig.tight_layout()
     return savefig(fig, output_dir, "smc_particle_convergence")
@@ -404,11 +404,12 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_l
                 continue
 
             xs = np.asarray([to_int(row, "num_particles") for row in seed_rows], dtype=float)
-            ys = np.asarray([smc_conditional(row) for row in seed_rows], dtype=float)
+            entries = np.asarray([to_float(row, "test_entries", default=1.0) for row in seed_rows], dtype=float)
+            ys = np.asarray([smc_conditional(row) for row in seed_rows], dtype=float) / entries
             yerr = np.asarray(
                 [to_float(row, "smc_conditional_se", default=0.0) for row in seed_rows],
                 dtype=float,
-            )
+            ) / entries
             ax.errorbar(
                 xs,
                 ys,
@@ -417,9 +418,13 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_l
                 linewidth=1.6,
                 capsize=3,
                 color=color,
-                label="RB-SMC",
+                label="SMC",
             )
-            ekf_y = to_float(seed_rows[-1], "ekf_conditional_ll")
+            ekf_y = to_float(seed_rows[-1], "ekf_conditional_ll") / to_float(
+                seed_rows[-1],
+                "test_entries",
+                default=1.0,
+            )
             ax.axhline(
                 ekf_y,
                 color="black",
@@ -429,6 +434,7 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_l
             )
 
             ax.set_xscale("log", base=2)
+            ax.set_xlim(2**3, 2**17)
             ax.set_xticks([2**4, 2**8, 2**12, 2**16])
             ax.set_xticklabels([r"$2^4$", r"$2^8$", r"$2^{12}$", r"$2^{16}$"])
             ax.grid(alpha=0.18)
@@ -458,7 +464,7 @@ def plot_ekf_degradation(rows, output_dir):
     fig, axes = plt.subplots(1, 2, figsize=(8.0, 3.4), sharex=True)
     axes[0].errorbar(xs[order], ys[order], yerr=yerr[order], marker="o", linewidth=1.5, capsize=3)
     axes[0].axhline(0, color="black", linewidth=1, linestyle=":")
-    axes[0].set_ylabel("EKF - RB-SMC / entry")
+    axes[0].set_ylabel("EKF - SMC")
     axes[0].set_xlabel("Mean rotation angle (deg)")
 
     abs_y = np.abs(ys)
@@ -467,7 +473,7 @@ def plot_ekf_degradation(rows, output_dir):
         grid = np.linspace(float(np.min(xs)), float(np.max(xs)), 100)
         coef = np.polyfit(xs, abs_y, 1)
         axes[1].plot(grid, coef[0] * grid + coef[1], color="black", linewidth=1.5)
-    axes[1].set_ylabel("|EKF - RB-SMC| / entry")
+    axes[1].set_ylabel("|EKF - SMC|")
     axes[1].set_xlabel("Mean rotation angle (deg)")
     fig.tight_layout()
     return savefig(fig, output_dir, "ekf_smc_rotation_degradation")
@@ -485,18 +491,18 @@ def plot_oracle_advantage(rows, output_dir):
         xs = np.asarray([to_float(row, "tau") for row in seed_rows])
         ys = np.asarray(
             [
-                to_float(row, "fixed_c_oracle_conditional_ll") - smc_conditional(row)
+                (to_float(row, "fixed_c_oracle_conditional_ll") - smc_conditional(row))
+                / to_float(row, "test_entries", default=1.0)
                 for row in seed_rows
             ],
             dtype=float,
         )
-        ax.plot(xs, ys, marker="o", linewidth=1.5, label=f"data seed {data_seed}")
+        ax.plot(xs, ys, marker="o", linewidth=1.5)
 
     ax.axhline(0, color="black", linewidth=1, linestyle=":")
     ax.set_xscale("log")
     ax.set_xlabel("tau")
     ax.set_ylabel("Conditional LL - EKF Marginal LL")
-    ax.legend(frameon=False)
     fig.tight_layout()
     return savefig(fig, output_dir, "fixed_c_advantage_over_smc")
 
@@ -505,7 +511,6 @@ def write_markdown_summary(path, rows, convergence_summary, claim_rows, figure_p
     metrics = {row["metric"]: row["value"] for row in claim_rows}
     particle_counts = sorted({to_int(row, "num_particles") for row in rows})
     tau_values = sorted({to_float(row, "tau") for row in rows})
-    data_seeds = sorted({to_int(row, "data_seed") for row in rows})
 
     lines = [
         "# EKF/SMC MLL Result Summary",
@@ -513,7 +518,6 @@ def write_markdown_summary(path, rows, convergence_summary, claim_rows, figure_p
         f"- Conditions: {len(rows)} rows",
         f"- Particle counts: {particle_counts}",
         f"- Tau values: {tau_values}",
-        f"- Data seeds: {data_seeds}",
         "",
         "## Claim 1: SMC Convergence",
         "",
@@ -535,11 +539,11 @@ def write_markdown_summary(path, rows, convergence_summary, claim_rows, figure_p
             "",
             "## Claim 2: EKF Matches SMC, Then Degrades With Rotation",
             "",
-            f"- Mean |EKF - RB-SMC| / entry at largest particle count: "
+            f"- Mean |EKF - SMC| / entry at largest particle count: "
             f"{metrics['ekf_minus_smc_abs_mean_per_entry_largest_particles']:.6g}",
-            f"- Max |EKF - RB-SMC| / entry at largest particle count: "
+            f"- Max |EKF - SMC| / entry at largest particle count: "
             f"{metrics['ekf_minus_smc_abs_max_per_entry_largest_particles']:.6g}",
-            f"- Correlation of |EKF - RB-SMC| with mean rotation angle: "
+            f"- Correlation of |EKF - SMC| with mean rotation angle: "
             f"{metrics['corr_abs_ekf_minus_smc_with_mean_angle']:.6g}",
             f"- Low-rotation mean absolute error / entry: "
             f"{metrics['low_rotation_abs_ekf_minus_smc_mean_per_entry']:.6g}",
@@ -548,11 +552,11 @@ def write_markdown_summary(path, rows, convergence_summary, claim_rows, figure_p
             "",
             "## Claim 3: Oracle Fixed-C Conditional LL Is Higher",
             "",
-            f"- Min oracle fixed-C minus RB-SMC / entry: "
+            f"- Min oracle fixed-C minus SMC / entry: "
             f"{metrics['oracle_fixed_c_minus_smc_min_per_entry']:.6g}",
-            f"- Median oracle fixed-C minus RB-SMC / entry: "
+            f"- Median oracle fixed-C minus SMC / entry: "
             f"{metrics['oracle_fixed_c_minus_smc_median_per_entry']:.6g}",
-            f"- Fraction of largest-particle conditions with oracle fixed-C > RB-SMC: "
+            f"- Fraction of largest-particle conditions with oracle fixed-C > SMC: "
             f"{metrics['oracle_fixed_c_minus_smc_positive_fraction']:.3f}",
             "",
             "## Figures",
@@ -568,7 +572,7 @@ def write_markdown_summary(path, rows, convergence_summary, claim_rows, figure_p
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description="Summarize EKF/RB-SMC/fixed-C MLL validation results.")
+    parser = argparse.ArgumentParser(description="Summarize EKF/SMC/fixed-C MLL validation results.")
     parser.add_argument("--results_dir", default="results/ekf_smc_mll_validation")
     parser.add_argument("--summary_csv", default=None)
     parser.add_argument("--replicate_csv", default=None)

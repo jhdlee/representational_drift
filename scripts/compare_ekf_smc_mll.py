@@ -479,7 +479,7 @@ def make_fixed_c_figure(summary_rows, output_dir):
         marker="o",
         linewidth=1.5,
         capsize=3,
-        label=f"RB-SMC marginal ({particle_count} particles)",
+        label=f"SMC marginal ({particle_count} particles)",
     )
     ax.plot(
         xs[order],
@@ -508,7 +508,7 @@ def make_fixed_c_figure(summary_rows, output_dir):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description="Compare EKF and RB-SMC SMDS held-out marginal log likelihood.")
+    parser = argparse.ArgumentParser(description="Compare EKF and SMC SMDS held-out marginal log likelihood.")
     parser.add_argument("--output_dir", default="results/ekf_smc_mll_validation")
     parser.add_argument("--state_dim", type=int, default=2)
     parser.add_argument("--emission_dim", type=int, default=6)
