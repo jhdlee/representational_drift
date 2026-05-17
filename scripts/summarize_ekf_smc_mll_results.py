@@ -8,8 +8,12 @@ from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path(os.environ.get("TMPDIR", "/tmp")) / "matplotlib"))
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+
+mpl.rcParams["pdf.fonttype"] = 42
+mpl.rcParams["ps.fonttype"] = 42
 
 
 def parse_csv(value, cast):
@@ -304,6 +308,13 @@ def savefig(fig, output_dir, stem):
     return png, pdf
 
 
+def style_axis(ax, grid=False):
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    if grid:
+        ax.grid(alpha=0.18)
+
+
 def plot_smc_convergence(rows, output_dir):
     conv = convergence_rows(rows)
     if not conv:
@@ -355,6 +366,7 @@ def plot_smc_convergence(rows, output_dir):
     ax.set_xlabel("SMC particles")
     ax.set_ylabel("|SMC - largest-particle SMC|")
     ax.legend(frameon=False)
+    style_axis(ax)
     fig.tight_layout()
     return savefig(fig, output_dir, "smc_particle_convergence")
 
@@ -437,7 +449,7 @@ def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, data_seed_l
             ax.set_xlim(2**3, 2**17)
             ax.set_xticks([2**4, 2**8, 2**12, 2**16])
             ax.set_xticklabels([r"$2^4$", r"$2^8$", r"$2^{12}$", r"$2^{16}$"])
-            ax.grid(alpha=0.18)
+            style_axis(ax, grid=True)
             if seed_index == 0:
                 ax.set_title(f"tau={tau:g}")
             if tau_index == 0:
@@ -466,6 +478,7 @@ def plot_ekf_degradation(rows, output_dir):
     axes[0].axhline(0, color="black", linewidth=1, linestyle=":")
     axes[0].set_ylabel("EKF - SMC")
     axes[0].set_xlabel("Mean rotation angle (deg)")
+    style_axis(axes[0])
 
     abs_y = np.abs(ys)
     axes[1].scatter(xs, abs_y, s=32)
@@ -475,6 +488,7 @@ def plot_ekf_degradation(rows, output_dir):
         axes[1].plot(grid, coef[0] * grid + coef[1], color="black", linewidth=1.5)
     axes[1].set_ylabel("|EKF - SMC|")
     axes[1].set_xlabel("Mean rotation angle (deg)")
+    style_axis(axes[1])
     fig.tight_layout()
     return savefig(fig, output_dir, "ekf_smc_rotation_degradation")
 
@@ -503,6 +517,7 @@ def plot_oracle_advantage(rows, output_dir):
     ax.set_xscale("log")
     ax.set_xlabel("tau")
     ax.set_ylabel("Conditional LL - EKF Marginal LL")
+    style_axis(ax, grid=True)
     fig.tight_layout()
     return savefig(fig, output_dir, "fixed_c_advantage_over_smc")
 
