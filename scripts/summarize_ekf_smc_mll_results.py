@@ -12,6 +12,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def parse_csv(value, cast):
+    return [cast(item.strip()) for item in value.split(",") if item.strip()]
+
+
 def read_csv(path):
     with Path(path).open(newline="") as f:
         return list(csv.DictReader(f))
@@ -91,6 +95,11 @@ def smc_conditional(row):
     if "smc_conditional_logmeanexp" in row and row["smc_conditional_logmeanexp"] != "":
         return to_float(row, "smc_conditional_logmeanexp")
     return to_float(row, "smc_conditional_mean")
+
+
+def matches_tau(row, tau):
+    row_tau = to_float(row, "tau")
+    return np.isclose(row_tau, tau, rtol=1e-6, atol=1e-12)
 
 
 def recompute_smc_from_replicates(summary_rows, replicate_rows, num_bootstrap, seed):
@@ -350,6 +359,72 @@ def plot_smc_convergence(rows, output_dir):
     return savefig(fig, output_dir, "smc_particle_convergence")
 
 
+def select_smc_path_rows(rows, tau_values, max_data_seeds):
+    selected = []
+    for tau in tau_values:
+        tau_rows = [row for row in rows if matches_tau(row, tau)]
+        data_seeds = sorted({to_int(row, "data_seed") for row in tau_rows})[:max_data_seeds]
+        for data_seed in data_seeds:
+            seed_rows = [row for row in tau_rows if to_int(row, "data_seed") == data_seed]
+            selected.extend(sorted(seed_rows, key=lambda row: to_int(row, "num_particles")))
+    return selected
+
+
+def plot_smc_logmeanexp_particle_paths(rows, output_dir, tau_values, max_data_seeds):
+    num_panels = len(tau_values)
+    if num_panels == 0:
+        return None, []
+
+    fig, axes = plt.subplots(1, num_panels, figsize=(4.1 * num_panels, 3.4), sharey=True)
+    if num_panels == 1:
+        axes = [axes]
+
+    selected_rows = []
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    for ax, tau in zip(axes, tau_values):
+        tau_rows = [row for row in rows if matches_tau(row, tau)]
+        data_seeds = sorted({to_int(row, "data_seed") for row in tau_rows})[:max_data_seeds]
+        if not data_seeds:
+            ax.text(0.5, 0.5, f"tau={tau:g}\nnot found", ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            continue
+
+        for seed_index, data_seed in enumerate(data_seeds):
+            seed_rows = sorted(
+                [row for row in tau_rows if to_int(row, "data_seed") == data_seed],
+                key=lambda row: to_int(row, "num_particles"),
+            )
+            selected_rows.extend(seed_rows)
+            xs = np.asarray([to_int(row, "num_particles") for row in seed_rows], dtype=float)
+            entries = np.asarray([to_float(row, "test_entries", default=1.0) for row in seed_rows], dtype=float)
+            ys = np.asarray([smc_conditional(row) for row in seed_rows], dtype=float) / entries
+            yerr = np.asarray(
+                [to_float(row, "smc_conditional_se_per_entry", default=0.0) for row in seed_rows],
+                dtype=float,
+            )
+            ax.errorbar(
+                xs,
+                ys,
+                yerr=yerr,
+                marker="o",
+                linewidth=1.6,
+                capsize=3,
+                color=colors[seed_index % len(colors)],
+                label=f"data seed {data_seed}",
+            )
+
+        ax.set_xscale("log", base=2)
+        ax.set_title(f"tau={tau:g}")
+        ax.set_xlabel("SMC particles")
+        ax.grid(alpha=0.18)
+        ax.legend(frameon=False, fontsize=8)
+
+    axes[0].set_ylabel("RB-SMC logmeanexp conditional MLL / entry")
+    fig.tight_layout()
+    paths = savefig(fig, output_dir, "smc_logmeanexp_vs_particles_by_tau")
+    return paths, selected_rows
+
+
 def plot_ekf_degradation(rows, output_dir):
     rows = sorted_rows(rows_at_largest_particles(rows))
     if not rows:
@@ -479,12 +554,15 @@ def build_parser():
     parser.add_argument("--output_dir", default=None)
     parser.add_argument("--bootstrap_samples", type=int, default=2000)
     parser.add_argument("--bootstrap_seed", type=int, default=0)
+    parser.add_argument("--convergence_tau_values", default="1e-5,1e-4,1e-3")
+    parser.add_argument("--convergence_num_data_seeds", type=int, default=2)
     parser.add_argument("--no_recompute_smc_from_replicates", action="store_true")
     return parser
 
 
 def main():
     args = build_parser().parse_args()
+    convergence_tau_values = parse_csv(args.convergence_tau_values, float)
     results_dir = Path(args.results_dir)
     summary_csv = Path(args.summary_csv) if args.summary_csv else results_dir / "summary_results.csv"
     replicate_csv = Path(args.replicate_csv) if args.replicate_csv else results_dir / "replicate_results.csv"
@@ -523,7 +601,48 @@ def main():
     )
     write_csv(output_dir / "claim_metrics.csv", ["metric", "value"], claim_rows)
 
+    smc_path_figure, smc_path_rows = plot_smc_logmeanexp_particle_paths(
+        rows,
+        output_dir,
+        convergence_tau_values,
+        args.convergence_num_data_seeds,
+    )
+    if smc_path_rows:
+        write_csv(
+            output_dir / "smc_logmeanexp_vs_particles_by_tau_rows.csv",
+            [
+                "tau",
+                "tau_index",
+                "data_seed",
+                "num_particles",
+                "mean_angle_deg",
+                "max_angle_deg",
+                "smc_conditional_logmeanexp",
+                "smc_conditional_logmeanexp_per_entry",
+                "smc_conditional_se_per_entry",
+                "test_entries",
+            ],
+            [
+                {
+                    "tau": row.get("tau", ""),
+                    "tau_index": row.get("tau_index", ""),
+                    "data_seed": row.get("data_seed", ""),
+                    "num_particles": row.get("num_particles", ""),
+                    "mean_angle_deg": row.get("mean_angle_deg", ""),
+                    "max_angle_deg": row.get("max_angle_deg", ""),
+                    "smc_conditional_logmeanexp": smc_conditional(row),
+                    "smc_conditional_logmeanexp_per_entry": (
+                        smc_conditional(row) / to_float(row, "test_entries", default=1.0)
+                    ),
+                    "smc_conditional_se_per_entry": row.get("smc_conditional_se_per_entry", ""),
+                    "test_entries": row.get("test_entries", ""),
+                }
+                for row in smc_path_rows
+            ],
+        )
+
     figure_paths = [
+        smc_path_figure,
         plot_smc_convergence(rows, output_dir),
         plot_ekf_degradation(rows, output_dir),
         plot_oracle_advantage(rows, output_dir),
